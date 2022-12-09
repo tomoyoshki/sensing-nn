@@ -62,26 +62,8 @@ def parse_base_args(option="train"):
         default=None,
         help="Used in inference and train-separated, providing the missing modalities separated by ,",
     )
-    parser.add_argument(
-        "-miss_detector",
-        type=str,
-        default="FakeDetector",
-        help="The approach used to detect the noise.",
-    )
-    parser.add_argument(
-        "-miss_handler",
-        type=str,
-        default="FakeHandler",
-        help="The approach used to handle the missing modalities.",
-    )
 
     # related to noise generator
-    parser.add_argument(
-        "-noise_position",
-        type=str,
-        default="feature",
-        help="The noise could be added to time/frequency/feature",
-    )
     parser.add_argument(
         "-noise_std_multipler",
         type=float,
@@ -133,19 +115,7 @@ def parse_base_args(option="train"):
         help="Specify the learning rate to try.",
     )
 
-    # evaluation configurations
-    parser.add_argument(
-        "-eval_detector",
-        type=str,
-        default="false",
-        help="Whether to evaluate the noise detector",
-    )
-    parser.add_argument(
-        "-save_emb",
-        type=str,
-        default="false",
-        help="Whether to save the encoded embeddings.",
-    )
+    # evaluation configurationslp="Whether to evaluate the noise detector",
     parser.add_argument(
         "-test_noisy_parkland",
         type=str,
