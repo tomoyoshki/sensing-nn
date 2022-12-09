@@ -163,7 +163,7 @@ class TransformerV3(nn.Module):
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
-    def forward(self, org_time_x, miss_simulator):
+    def forward(self, org_time_x, augmenter):
         """The forward function of DeepSense.
         Args:
             time_x (_type_): time_x is a dictionary consisting of the Tensor input of each input modality.
@@ -176,44 +176,20 @@ class TransformerV3(nn.Module):
             for mod in org_time_x[loc]:
                 org_time_x[loc][mod] = org_time_x[loc][mod].to(args.device)
 
-        # Step 1: Add noise to the time-domain data
-        noisy_time_x, gt_loc_miss_ids = miss_simulator.generate_noise(org_time_x)
-
-        # Step 2: Noise experiment at time level
-        proc_time_x = (
-            miss_simulator.detect_and_handle_noise(noisy_time_x, gt_loc_miss_ids)
-            if args.noise_position == "time"
-            else noisy_time_x
-        )
-        time_handler_loss = (
-            self.calc_input_handler_loss(miss_simulator, org_time_x, proc_time_x)
-            if args.noise_position == "time"
-            else 0
-        )
+        # Step 1 Optional data augmentation
+        augmented_time_x = augmenter.augment_forward(org_time_x)
 
         # Step 3: FFT on the time domain data
-        org_freq_x = fft_preprocess(proc_time_x, args)
-
-        # Step 4: Noise experiment at frequency level
-        proc_freq_x = (
-            miss_simulator.detect_and_handle_noise(org_freq_x, gt_loc_miss_ids)
-            if args.noise_position == "frequency"
-            else org_freq_x
-        )
-        freq_handler_loss = (
-            self.calc_input_handler_loss(miss_simulator, org_freq_x, proc_freq_x)
-            if args.noise_position == "frequency"
-            else 0
-        )
+        freq_x = fft_preprocess(augmented_time_x, args)
 
         # Step 5: Single (loc, mod, freq) feature extraction, [b * i, int(s / stride), stride * c]
-        org_loc_mod_features = dict()
+        loc_mod_features = dict()
         for loc in self.locations:
-            org_loc_mod_features[loc] = []
+            loc_mod_features[loc] = []
             for mod in self.modalities:
                 """freq feature extraction"""
                 # [b, c, i, spectrum] -- > [b, i, spectrum, c]
-                freq_input = torch.permute(proc_freq_x[loc][mod], [0, 2, 3, 1])
+                freq_input = torch.permute(freq_x[loc][mod], [0, 2, 3, 1])
                 b, i, s, c = freq_input.shape
                 stride = self.config["in_stride"][mod]
                 freq_input = torch.reshape(freq_input, (b * i, -1, stride * c))
@@ -231,50 +207,11 @@ class TransformerV3(nn.Module):
 
                 """interval feature fusion, [b, 1, c]"""
                 loc_mod_input = self.interval_fusion_layers[loc][mod](interval_context_feature)
-                org_loc_mod_features[loc].append(loc_mod_input)
+                loc_mod_features[loc].append(loc_mod_input)
 
             # [b, 1, sensor, c]
-            org_loc_mod_features[loc] = torch.stack(org_loc_mod_features[loc], dim=2)
+            loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=2)
 
-        # Step 6:  Noise experiment at feature level
-        proc_loc_mod_features = (
-            miss_simulator.detect_and_handle_noise(org_loc_mod_features, gt_loc_miss_ids)
-            if args.noise_position == "feature"
-            else org_loc_mod_features
-        )
-
-        # Step 7: Fusion + Classification layers
-        proc_fused_loc_features, proc_logits = self.classification_forward(proc_loc_mod_features, miss_simulator)
-
-        # Step 8: Compute the handler loss for feature level
-        if args.noise_position == "feature":
-            feature_handler_loss = self.calc_feature_handler_loss(
-                miss_simulator,
-                org_loc_mod_features,
-                proc_loc_mod_features,
-                proc_fused_loc_features,
-                proc_logits,
-            )
-        else:
-            feature_handler_loss = 0
-
-        # get the right handler loss
-        if args.noise_position == "time":
-            handler_loss = time_handler_loss
-        elif args.noise_position == "frequency":
-            handler_loss = freq_handler_loss
-        else:
-            handler_loss = feature_handler_loss
-
-        return proc_logits, handler_loss
-
-    def classification_forward(self, loc_mod_features, miss_simulator):
-        """Separate the fusion and classification layer forward into this function.
-
-        Args:
-            loc_mod_features (_type_): dict of {loc: loc_features with shape [b * i, int(s / stride), mods, c]}
-            return_fused_features (_type_, optional): Flag indicator. Defaults to False.
-        """
         # Step 2: Loc mod feature extraction, [b, i, location, c]
         loc_features = []
         for loc in loc_mod_features:
@@ -302,56 +239,4 @@ class TransformerV3(nn.Module):
         # Step 5: Classification
         logits = self.class_layer(sample_features.flatten(start_dim=1))
 
-        return loc_features, logits
-
-    def calc_input_handler_loss(self, miss_simulator, org_loc_inputs, proc_loc_inputs):
-        """Calculate the loss for the input handler at the time/frequency level.
-
-        Args:
-            org_loc_inputs (_type_): {loc: {mod: [b, c, i, s]}}
-            proc_loc_inputs (_type_): {loc: {mod: [b, c, i, s]}}
-        """
-        input_handler_loss = miss_simulator.miss_handler.handler_loss_all_locs(org_loc_inputs, proc_loc_inputs)
-
-        return input_handler_loss
-
-    def calc_feature_handler_loss(
-        self,
-        miss_simulator,
-        org_loc_mod_features,
-        proc_loc_mod_features=None,
-        proc_fused_loc_features=None,
-        proc_logits=None,
-    ):
-        """
-        Calculate the handler loss according to the given loss level.
-        """
-        if miss_simulator.miss_handler.loss_feature_level == "mod":
-            feature_handler_loss = miss_simulator.miss_handler.handler_loss_all_locs(
-                org_loc_mod_features,
-                proc_loc_mod_features,
-            )
-        elif miss_simulator.miss_handler.loss_feature_level == "loc":
-            org_fused_loc_features, org_logits = self.classification_forward(org_loc_mod_features, miss_simulator)
-            feature_handler_loss = miss_simulator.miss_handler.handler_loss_all_locs(
-                org_fused_loc_features,
-                proc_fused_loc_features,
-            )
-        elif miss_simulator.miss_handler.loss_feature_level == "logit":
-            org_fused_loc_features, org_logits = self.classification_forward(org_loc_mod_features, miss_simulator)
-            feature_handler_loss = miss_simulator.miss_handler.handler_loss_all_locs(
-                org_logits,
-                proc_logits,
-            )
-        elif miss_simulator.miss_handler.loss_feature_level == "mod+logit":
-            org_fused_loc_features, org_logits = self.classification_forward(org_loc_mod_features, miss_simulator)
-            feature_handler_loss = miss_simulator.miss_handler.handler_loss_all_locs(
-                org_loc_mod_features,
-                org_logits,
-                proc_loc_mod_features,
-                proc_logits,
-            )
-        else:
-            raise Exception("Unknown loss feature level: {}".format(miss_simulator.miss_handler.loss_feature_level))
-
-        return feature_handler_loss
+        return logits
