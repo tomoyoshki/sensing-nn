@@ -1,0 +1,521 @@
+# data paths  
+base_path: /home/sl29/data/RealWorld-HAR  # dataset root dir
+train_index_file: time_data_partition/train_index.txt  # train images (relative to 'path') 128 images
+val_index_file: time_data_partition/val_index.txt  # val images (relative to 'path') 128 images
+test_index_file: time_data_partition/test_index.txt # test images (optional)
+
+# Classes
+num_classes: 8  # number of classes
+class_names: ["climbingdown", "climbingup", "jumping", "lying", "running", "sitting", "standing", "walking"]
+
+# Segments
+num_segments: 9
+
+# Locations
+num_locaiton: 5
+location_names: ["head", "chest", "upperarm", "waist", "shin"]
+
+# Modality names
+num_sensors: 4
+modality_names: ["acc", "gyr", "mag", "lig"]
+
+# Location modalities
+loc_mod_in_freq_channels:
+        head: 
+                acc: 6
+                gyr: 6
+                mag: 6
+                lig: 2
+        chest: 
+                acc: 6
+                gyr: 6
+                mag: 6
+                lig: 2
+        upperarm: 
+                acc: 6
+                gyr: 6
+                mag: 6
+                lig: 2
+        waist: 
+                acc: 6
+                gyr: 6
+                mag: 6
+                lig: 2
+        shin:  
+                acc: 6
+                gyr: 6
+                mag: 6
+                lig: 2
+loc_mod_in_time_channels:
+        head: 
+                acc: 3
+                gyr: 3
+                mag: 3
+                lig: 1
+        chest: 
+                acc: 3
+                gyr: 3
+                mag: 3
+                lig: 1
+        upperarm: 
+                acc: 3
+                gyr: 3
+                mag: 3
+                lig: 1
+        waist: 
+                acc: 3
+                gyr: 3
+                mag: 3
+                lig: 1
+        shin:  
+                acc: 3
+                gyr: 3
+                mag: 3
+                lig: 1
+loc_mod_spectrum_len:
+        head: 
+                acc: 50
+                gyr: 50
+                mag: 50
+                lig: 50
+        chest: 
+                acc: 50
+                gyr: 50
+                mag: 50
+                lig: 50
+        upperarm: 
+                acc: 50
+                gyr: 50
+                mag: 50
+                lig: 50
+        waist: 
+                acc: 50
+                gyr: 50
+                mag: 50
+                lig: 50
+        shin:  
+                acc: 50
+                gyr: 50
+                mag: 50
+                lig: 50    
+
+# DeepSense config
+DeepSense:
+        interval_num: 9
+        dropout_ratio: 0.2
+        # single interval + location + modality
+        loc_mod_in_conv_stride:
+                acc: [1, 1]
+                gyr: [1, 1]
+                mag: [1, 1]
+                lig: [1, 1]    
+        loc_mod_conv_lens:
+                acc: [[1, 3], [1, 3], [1, 3]]
+                gyr: [[1, 3], [1, 3], [1, 3]]
+                mag: [[1, 3], [1, 3], [1, 3]]
+                lig: [[1, 3], [1, 3], [1, 3]] 
+        loc_mod_out_channels: 96
+        loc_mod_conv_inter_layers: 4
+        # single interval + location
+        loc_conv_lens: [[1, 4], [1, 4], [1, 4]]
+        loc_out_channels: 192
+        loc_conv_inter_layers: 3
+        # recurrent layer
+        recurrent_dim: 256
+        recurrent_layers: 2
+        # FC layer
+        fc_dim: 256
+        # Training config
+        train_epochs: 120
+        scheduler_step: 30
+        scheduler_gamma: 0.2
+        start_lr: 0.00005
+
+# ResNet config              
+ResNet:
+        interval_num: 9
+        dropout_ratio: 0.5
+        # single interval + location + modality
+        loc_mod_in_conv_stride:
+                acc: [1, 1]
+                gyr: [1, 1]
+                mag: [1, 1]
+                lig: [1, 1] 
+        loc_mod_conv_lens:
+                acc: [[3, 3], [3, 3], [3, 3]]
+                gyr: [[3, 3], [3, 3], [3, 3]]
+                mag: [[3, 3], [3, 3], [3, 3]]
+                lig: [[3, 3], [3, 3], [3, 3]] 
+        loc_mod_out_channels: 64
+        loc_mod_conv_inter_layers: 1
+        # single interval + location
+        loc_conv_lens: [[4, 4], [4, 4], [4, 4]]
+        loc_out_channels: 96
+        loc_conv_inter_layers: 2
+        # FC layer
+        fc_dim: 128
+        # Training config
+        train_epochs: 250
+        scheduler_step: 50
+        scheduler_gamma: 0.2
+        start_lr: 0.00005
+        
+# Transformer config
+Transformer:
+        dropout_ratio: 0.4
+        # single modality
+        loc_mod_out_channels: 128
+        loc_mod_head_num: 4
+        loc_mod_block_num: 2
+        # single location
+        loc_out_channels: 128
+        loc_head_num: 4
+        loc_block_num: 3
+        # sample
+        sample_out_channels: 128
+        sample_head_num: 4
+        sample_block_num: 3
+        # FC layer
+        fc_dim: 256
+        # Training config
+        train_epochs: 250
+        scheduler_step: 50
+        scheduler_gamma: 0.2
+        start_lr: 0.00005
+
+# Transformer config
+TransformerV2:
+        dropout_ratio: 0.4
+        # loc mod freq feature
+        loc_mod_in_stride:
+                audio: 80
+                seismic: 1
+        loc_mod_freq_out_channels: 256
+        loc_mod_freq_head_num: 4
+        loc_mod_freq_block_num: 4
+        # single modality
+        loc_mod_out_channels: 128
+        loc_mod_head_num: 4
+        loc_mod_block_num: 2
+        # single location
+        loc_out_channels: 128
+        loc_head_num: 4
+        loc_block_num: 3
+        # sample
+        sample_out_channels: 128
+        sample_head_num: 4
+        sample_block_num: 3
+        # FC layer
+        fc_dim: 256
+        # Training config
+        train_epochs: 250
+        scheduler_step: 50
+        scheduler_gamma: 0.2
+        start_lr: 0.00005
+
+# Missing Modality Generator
+MissModalityGenerator:
+        sensors: 4
+        miss_ratio: 0.5
+
+# --------------------------------- Noise detectors ---------------------------------
+# Density Detector 
+DensityDetector:
+        sensors: 4
+        interval_num: 9
+        # Pretrain config
+        pretrain_epochs: 1
+        # threshold
+        threshold: -50
+
+# Reconstruction Detection
+ReconstructionDetector:
+        sensors: 4
+        interval_num: 9
+        # threshold
+        threshold: 0.005
+        # Architecture dims
+        conv_inter_channels: 128
+        conv_out_channels: 64
+        conv_kernel_size:
+                feature: [[3, 3], [3, 3], [3, 3]]
+                time:
+                        acc: [[1, 5], [3, 3], [3, 3]]
+                        gyr: [[1, 5], [3, 3], [3, 3]]
+                        mag: [[1, 5], [3, 3], [3, 3]]
+                        lig: [[1, 5], [3, 3], [3, 3]] 
+                frequency:
+                        acc: [[1, 5], [3, 3], [3, 3]]
+                        gyr: [[1, 5], [3, 3], [3, 3]]
+                        mag: [[1, 5], [3, 3], [3, 3]]
+                        lig: [[1, 5], [3, 3], [3, 3]]   
+        conv_stride:
+                feature: [[1, 1], [1, 1], [1, 1]]
+                time:
+                        acc: [[1, 5], [1, 1], [1, 1]]
+                        gyr: [[1, 5], [1, 1], [1, 1]]
+                        mag: [[1, 5], [1, 1], [1, 1]]
+                        lig: [[1, 5], [1, 1], [1, 1]] 
+                frequency:
+                        acc: [[1, 5], [1, 1], [1, 1]]
+                        gyr: [[1, 5], [1, 1], [1, 1]]
+                        mag: [[1, 5], [1, 1], [1, 1]]
+                        lig: [[1, 5], [1, 1], [1, 1]] 
+        fc_dim: 32
+        conv_inter_layer_num: 4
+        # Handler loss weight
+        classifier_loss_weight: 0
+        detector_loss_weight: 1
+        # Pretrain config 
+        pretrain_epochs: 100
+        pretrain_scheduler_step: 30
+        pretrain_scheduler_gamma: 0.2
+        pretrain_start_lr: 
+                feature_DeepSense: 0.0005
+                feature_ResNet: 0.005
+                feature_Transformer: 0.0005
+                time: 20
+                frequency: 10
+
+# VAE Plus Detector 
+VAEPlusDetector:
+        sensors: 4
+        interval_num: 9
+        # threshold
+        threshold: 20
+        # Architecture dims
+        conv_inter_channels: 128
+        conv_out_channels: 128
+        conv_kernel_size:
+                feature: [[3, 3], [3, 3], [3, 3]]
+                time:
+                        acc: [[1, 5], [3, 3], [3, 3]]
+                        gyr: [[1, 5], [3, 3], [3, 3]]
+                        mag: [[1, 5], [3, 3], [3, 3]]
+                        lig: [[1, 5], [3, 3], [3, 3]] 
+                frequency:
+                        acc: [[1, 5], [3, 3], [3, 3]]
+                        gyr: [[1, 5], [3, 3], [3, 3]]
+                        mag: [[1, 5], [3, 3], [3, 3]]
+                        lig: [[1, 5], [3, 3], [3, 3]]   
+        conv_stride:
+                feature: [[1, 1], [1, 1], [1, 1]]
+                time:
+                        acc: [[1, 5], [1, 1], [1, 1]]
+                        gyr: [[1, 5], [1, 1], [1, 1]]
+                        mag: [[1, 5], [1, 1], [1, 1]]
+                        lig: [[1, 5], [1, 1], [1, 1]] 
+                frequency:
+                        acc: [[1, 5], [1, 1], [1, 1]]
+                        gyr: [[1, 5], [1, 1], [1, 1]]
+                        mag: [[1, 5], [1, 1], [1, 1]]
+                        lig: [[1, 5], [1, 1], [1, 1]] 
+        fc_dim: 32
+        conv_inter_layer_num: 4
+        # VAE loss
+        classifier_loss_weight: 1
+        detector_loss_weight: 1
+        kl_divergence_weight:  
+                feature_DeepSense: 0.001
+                feature_ResNet: 0.001
+                feature_Transformer: 0.001
+                time: 0.001
+                frequency: 0.001 
+        corr_loss_weight: 0.5
+        # Pretrain config 
+        pretrain_epochs: 100
+        pretrain_scheduler_step: 20
+        pretrain_scheduler_gamma: 0.2
+        pretrain_start_lr: 
+                feature_DeepSense: 0.002
+                feature_ResNet: 0.005
+                feature_Transformer: 0.002
+                time: 0.0005
+                frequency: 0.0005
+
+
+# --------------------------------- Noise handlers ---------------------------------
+# ResilientHandler
+ResilientHandler:
+        # architecture
+        inter_dim: 8
+        # Handler loss weight
+        handler_loss_weight: 0.
+        classifier_loss_weight: 1
+        # Pretrain config 
+        pretrain_epochs: 50
+        pretrain_scheduler_step: 10
+        pretrain_scheduler_gamma: 0.2
+        pretrain_start_lr: 
+                feature_DeepSense: 0.01
+                feature_ResNet: 0.001
+                feature_Transformer: 0.001
+                time: 0.0005
+                frequency: 0.000001
+        # Finetuning config 
+        finetune_epochs: 50
+        finetune_scheduler_step: 10
+        finetune_scheduler_gamma: 0.2
+        finetune_start_lr: 0.0001
+
+# Cascaded Residual AutoEncoder
+CascadedResidualAutoencoder:
+        sensors: 4
+        # Architecture dims
+        ra_block_num: 1
+        interval_num: 9
+        conv_inter_channels: 128
+        conv_out_channels: 128
+        conv_kernel_size:
+                feature: [[3, 3], [3, 3], [3, 3]]
+                time:
+                        acc: [[1, 5], [3, 3], [3, 3]]
+                        gyr: [[1, 5], [3, 3], [3, 3]]
+                        mag: [[1, 5], [3, 3], [3, 3]]
+                        lig: [[1, 5], [3, 3], [3, 3]] 
+                frequency:
+                        acc: [[1, 5], [3, 3], [3, 3]]
+                        gyr: [[1, 5], [3, 3], [3, 3]]
+                        mag: [[1, 5], [3, 3], [3, 3]]
+                        lig: [[1, 5], [3, 3], [3, 3]]   
+        conv_stride:
+                feature: [[1, 1], [1, 1], [1, 1]]
+                time:
+                        acc: [[1, 5], [1, 1], [1, 1]]
+                        gyr: [[1, 5], [1, 1], [1, 1]]
+                        mag: [[1, 5], [1, 1], [1, 1]]
+                        lig: [[1, 5], [1, 1], [1, 1]] 
+                frequency:
+                        acc: [[1, 5], [1, 1], [1, 1]]
+                        gyr: [[1, 5], [1, 1], [1, 1]]
+                        mag: [[1, 5], [1, 1], [1, 1]]
+                        lig: [[1, 5], [1, 1], [1, 1]] 
+        fc_dim: 32
+        conv_inter_layer_num: 4
+        # Handler loss weight
+        classifier_loss_weight: 1
+        handler_loss_weight: 3
+        # Pretrain config 
+        pretrain_epochs: 100
+        pretrain_scheduler_step: 30
+        pretrain_scheduler_gamma: 0.2
+        pretrain_start_lr: 0.0002
+        # Finetuning config 
+        finetune_epochs: 50
+        finetune_scheduler_step: 10
+        finetune_scheduler_gamma: 0.2
+        finetune_start_lr: 0.00001
+
+# CyclicAutoencoder
+CyclicAutoencoder:
+        sensors: 4
+        interval_num: 9
+        conv_kernel_size:
+                feature: [[3, 3], [3, 3], [3, 3]]
+                time:
+                        acc: [[1, 5], [3, 3], [3, 3]]
+                        gyr: [[1, 5], [3, 3], [3, 3]]
+                        mag: [[1, 5], [3, 3], [3, 3]]
+                        lig: [[1, 5], [3, 3], [3, 3]] 
+                frequency:
+                        acc: [[1, 5], [3, 3], [3, 3]]
+                        gyr: [[1, 5], [3, 3], [3, 3]]
+                        mag: [[1, 5], [3, 3], [3, 3]]
+                        lig: [[1, 5], [3, 3], [3, 3]]   
+        conv_stride:
+                feature: [[1, 1], [1, 1], [1, 1]]
+                time:
+                        acc: [[1, 5], [1, 1], [1, 1]]
+                        gyr: [[1, 5], [1, 1], [1, 1]]
+                        mag: [[1, 5], [1, 1], [1, 1]]
+                        lig: [[1, 5], [1, 1], [1, 1]] 
+                frequency:
+                        acc: [[1, 5], [1, 1], [1, 1]]
+                        gyr: [[1, 5], [1, 1], [1, 1]]
+                        mag: [[1, 5], [1, 1], [1, 1]]
+                        lig: [[1, 5], [1, 1], [1, 1]] 
+        conv_inter_channels: 128
+        conv_out_channels: 128
+        fc_dim: 64
+        conv_inter_layer_num: 3
+        # Handler loss weight
+        classifier_loss_weight: 1
+        handler_loss_weight: 3
+        # Pretrain config 
+        pretrain_epochs: 50
+        pretrain_scheduler_step: 20
+        pretrain_scheduler_gamma: 0.2
+        pretrain_start_lr: 0.0005
+        # Finetuning config 
+        finetune_epochs: 50
+        finetune_scheduler_step: 10
+        finetune_scheduler_gamma: 0.2
+        finetune_start_lr: 0.00001
+
+# Adversarial AutoEncoder
+AdAutoencoder:
+        sensors: 4
+        # Architecture dims
+        ra_block_num: 3
+        interval_num: 9
+        conv_inter_channels: 128
+        conv_out_channels: 64
+        conv_kernel_size:
+                feature: [[3, 3], [3, 3], [3, 3]]
+                time:
+                        acc: [[1, 5], [3, 3], [3, 3]]
+                        gyr: [[1, 5], [3, 3], [3, 3]]
+                        mag: [[1, 5], [3, 3], [3, 3]]
+                        lig: [[1, 5], [3, 3], [3, 3]] 
+                frequency:
+                        acc: [[1, 5], [3, 3], [3, 3]]
+                        gyr: [[1, 5], [3, 3], [3, 3]]
+                        mag: [[1, 5], [3, 3], [3, 3]]
+                        lig: [[1, 5], [3, 3], [3, 3]]   
+        conv_stride:
+                feature: [[1, 1], [1, 1], [1, 1]]
+                time:
+                        acc: [[1, 5], [1, 1], [1, 1]]
+                        gyr: [[1, 5], [1, 1], [1, 1]]
+                        mag: [[1, 5], [1, 1], [1, 1]]
+                        lig: [[1, 5], [1, 1], [1, 1]] 
+                frequency:
+                        acc: [[1, 5], [1, 1], [1, 1]]
+                        gyr: [[1, 5], [1, 1], [1, 1]]
+                        mag: [[1, 5], [1, 1], [1, 1]]
+                        lig: [[1, 5], [1, 1], [1, 1]] 
+        fc_dim: 128
+        conv_inter_layer_num: 1
+        dropout_ratio: 0.
+        # GAN
+        leaky_slope: 0.2
+        discriminator_kernel: [3, 1]
+        discriminator_conv_channels: 96
+        discriminator_conv_channels_out: 16
+        linear_in_dim: 512
+        # Handler loss weight
+        classifier_loss_weight: 1
+        handler_loss_weight: 2
+        # Pretrain config 
+        pretrain_epochs: 50
+        pretrain_scheduler_step: 20
+        pretrain_scheduler_gamma: 0.2
+        pretrain_start_lr: 0.0001
+        # Finetuning config 
+        finetuning_epoch: 50
+        finetuning_scheduler_step: 10
+        finetuning_scheduler_gamma: 0.2
+        fine_tuning_start_lr: 0.00001
+
+# GateHandler
+GateHandler:
+        # Handler loss weight
+        handler_loss_weight: 0.5
+        classifier_loss_weight: 1
+        # Finetuning config 
+        finetune_epochs: 50
+        finetune_scheduler_step: 10
+        finetune_scheduler_gamma: 0.2
+        finetune_start_lr: 0.0001
+
+
