@@ -19,13 +19,13 @@ def parse_base_args(option="train"):
     parser.add_argument(
         "-dataset",
         type=str,
-        default="RealWorld_HAR",
+        default="Parkland",
         help="Dataset to evaluate.",
     )
     parser.add_argument(
         "-model",
         type=str,
-        default="DeepSense",
+        default="TransformerV3",
         help="The backbone classification model to use.",
     )
 
@@ -33,48 +33,34 @@ def parse_base_args(option="train"):
     parser.add_argument(
         "-train_mode",
         type=str,
-        default="noisy",
-        help="The used mode for model training (original/separate/random/noisy).",
+        default="supervised",
+        help="The used mode for model training (supervised/original/contrastive/...).",
     )
     parser.add_argument(
         "-inference_mode",
         type=str,
-        default="noisy",
-        help="The used mode for model inference (original/separate/random/noisy).",
+        default="original",
+        help="The used mode for model inference (original/separate).",
+    )
+    parser.add_argument(
+        "-augmenter",
+        type=str,
+        default="NoAugmenter",
+        help="The used data augmenter.",
     )
     parser.add_argument(
         "-stage",
         type=str,
-        default="pretrain_handler",
-        help="The train/inference stage for random/noisy modes, pretrain_classifier/pretrain_handler/finetune.",
-    )
-    parser.add_argument(
-        "-elastic_mod",
-        type=str,
-        default="true",
-        help="Whether to enable random modality miss during the pretraining of backbone model.",
+        default="pretrain",
+        help="The pretrain/finetune, used for foundation model only.",
     )
 
-    # model, miss generator, tracker and handler configs
+    # used for separate training and inference
     parser.add_argument(
-        "-miss_modalities",
+        "-sep_modalities",
         type=str,
         default=None,
-        help="Used in inference and train-separated, providing the missing modalities separated by ,",
-    )
-
-    # related to noise generator
-    parser.add_argument(
-        "-noise_std_multipler",
-        type=float,
-        default=5,
-        help="The standard deviation of the added noise in the noisy generator",
-    )
-    parser.add_argument(
-        "-noise_mode",
-        type=str,
-        default="fixed_gaussian",
-        help="The mode of noise to be added to the data",
+        help="Specify the used modalities separated by ,",
     )
 
     # weight path

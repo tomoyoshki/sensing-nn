@@ -3,7 +3,6 @@ import json
 import torch
 import getpass
 
-from miss_generator.noisy_generator import NoisyGenerator
 from params.output_paths import set_model_weight_file, set_output_paths, set_model_weight_folder
 from input_utils.yaml_utils import load_yaml
 
@@ -61,67 +60,16 @@ def select_device(device="", batch_size=0, newline=True):
     return torch.device("cuda:0" if cuda else "cpu")
 
 
-def auto_select_miss_generator(args):
-    """Automatically select the miss generator, which is decided by the experiment mode."""
+def auto_select_augmenter(args):
+    """Automatically select the data augmenter, mainly for separate training mode."""
     if args.option == "train":
-        if args.train_mode == "separate":
-            args.miss_generator = "SeparateGenerator"
-        elif args.train_mode == "random" and args.stage != "pretrain_classifier":
-            args.miss_generator = "RandomGenerator"
-        elif args.train_mode == "noisy" and args.stage != "pretrain_classifier":
-            args.miss_generator = "NoisyGenerator"
-        else:
-            """Including the original mode and pretrain_classifier stage."""
-            args.miss_generator = "NoGenerator"
+        if args.inference_mode == "separate":
+            args.augmenter = "SeparateAugmenter"
     else:
         if args.inference_mode == "separate":
-            args.miss_generator = "SeparateGenerator"
-        elif args.inference_mode == "random" and args.stage != "pretrain_classifier":
-            args.miss_generator = "RandomGenerator"
-        elif args.inference_mode == "noisy" and args.stage != "pretrain_classifier":
-            args.miss_generator = "NoisyGenerator"
+            args.augmenter = "SeparateAugmenter"
         else:
-            """Only the original mode."""
-            args.miss_generator = "NoGenerator"
-
-    return args
-
-
-def auto_select_miss_detector(args):
-    """Automatically select the miss detector for modes other than random."""
-    if args.option == "train":
-        if args.train_mode != "noisy" or args.stage == "pretrain_classifier":
-            args.miss_detector = "GtDetector"
-    else:
-        if args.inference_mode != "noisy" or args.stage == "pretrain_classifier":
-            args.miss_detector = "GtDetector"
-
-    return args
-
-
-def auto_select_miss_handler(args):
-    """Automatically select the miss handler for some modes"""
-    if args.train_mode == "separate":
-        args.miss_handler = "SeparateHandler"
-    elif args.train_mode == "original" or args.stage == "pretrain_classifier":
-        args.miss_handler = "FakeHandler"
-
-    return args
-
-
-def sanity_check(args):
-    """Sanity check function on the training mode and option"""
-    # train_mode and stage matching
-    if args.train_mode in {"original", "separate"} and args.stage != "pretrain_classifier":
-        args.stage = "pretrain_classifier"
-
-    # set batch size for corner cases
-    if args.miss_handler == "MatrixCompletionHandler":
-        args.batch_size = max(args.batch_size, 128)
-
-    # train_mode and inference_mode matching during the testing
-    if args.option == "test" and args.train_mode == "separate" and args.inference_mode not in {"original", "separate"}:
-        raise Exception(f"Invalid inference mode: {args.inference_mode} provided for the separate model!")
+            args.augmenter = "NoAugmenter"
 
     return args
 
@@ -143,7 +91,6 @@ def set_auto_params(args):
 
     # verbose
     args.verbose = str_to_bool(args.verbose)
-    args.eval_detector = str_to_bool(args.eval_detector)
     args.save_emb = str_to_bool(args.save_emb)
     args.elastic_mod = str_to_bool(args.elastic_mod)
     args.test_noisy_parkland = str_to_bool(args.test_noisy_parkland)
@@ -175,16 +122,11 @@ def set_auto_params(args):
         args.miss_modalities = set()
 
     # automatically set the miss generator and the detector
-    args = auto_select_miss_generator(args)
-    args = auto_select_miss_detector(args)
-    args = auto_select_miss_handler(args)
+    args = auto_select_augmenter(args)
 
     # set output path
     args = set_model_weight_folder(args)
     args = set_model_weight_file(args)
     args = set_output_paths(args)
-
-    # perform sanity check on the configuration
-    args = sanity_check(args)
 
     return args

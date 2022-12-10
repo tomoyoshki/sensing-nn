@@ -19,25 +19,20 @@ def set_model_weight_folder(args):
     Args:
         args (_type_): _description_
     """
-    base_path = f"/home/{args.username}/AutoCuration/weights"
+    base_path = f"/home/{args.username}/FoundationSense/weights"
     dataset_model_path = os.path.join(base_path, f"{args.dataset}_{args.model}")
     check_paths([dataset_model_path])
 
     # suffix for different modes, only related to the **train mode**
     if args.train_mode == "separate" and len(args.miss_modalities) > 0:
-        suffix = "miss"
+        suffix = f"{args.train_mode}-"
         ordered_miss_modalities = list(args.miss_modalities)
         ordered_miss_modalities.sort()
         for mod in ordered_miss_modalities:
             suffix += f"-{mod}"
-    elif args.train_mode == "random":
-        suffix = "random"
-    elif args.train_mode == "noisy":
-        suffix = "noisy"
-        if args.elastic_mod:
-            suffix += "_elastic_mod"
     else:
-        suffix = "original"
+        """Other modes include: supervised, contrastive, and more..."""
+        suffix = args.train_mode
 
     # get the newest id matching the current config
     newest_id = -1
@@ -52,22 +47,11 @@ def set_model_weight_folder(args):
             if weight_id > newest_id:
                 newest_id = weight_id
                 newest_weight = weight
-
-    if args.option == "train" and (args.train_mode in {"original", "separate"} or args.stage == "pretrain_classifier"):
-        # set the weight path to avoid redundancy
-        weight_folder = os.path.join(dataset_model_path, f"exp{newest_id+1}")
-
-        # append learning rate if we have one
-        if args.lr is not None:
-            weight_folder += f"_lr-{args.lr}"
-
-        # append missing modality suffix
-        weight_folder += f"_{suffix}"
-
-        # check the folder
+                
+    # set the weight path to avoid redundancy
+    if args.option == "train":
+        weight_folder = os.path.join(dataset_model_path, f"exp{newest_id+1}") + f"_{suffix}"
         check_paths([weight_folder])
-
-        # save the model config
         model_config = args.dataset_config[args.model]
         with open(os.path.join(weight_folder, "model_config.json"), "w") as f:
             f.write(json.dumps(model_config, indent=4))
@@ -83,11 +67,12 @@ def set_model_weight_folder(args):
 
     # set log files
     if args.option == "train":
-        args.train_log_file = os.path.join(weight_folder, f"{args.stage}_log.txt")
-        if args.stage == "pretrain_classifier":
-            args.tensorboard_log = os.path.join(weight_folder, f"{args.stage}_events")
+        if args.train_mode in {"supervised", "separate"}:
+            args.train_log_file = os.path.join(weight_folder, f"train_log.txt")
+            args.tensorboard_log = os.path.join(weight_folder, f"train_events")
         else:
-            args.tensorboard_log = os.path.join(weight_folder, f"{args.stage}_{args.miss_handler}_events")
+            args.train_log_file = os.path.join(weight_folder, f"{args.stage}_log.txt")
+            args.tensorboard_log = os.path.join(weight_folder, f"{args.stage}_events")
 
     print(f"[Model weights path]: {weight_folder}")
     args.weight_folder = weight_folder
@@ -96,61 +81,27 @@ def set_model_weight_folder(args):
 
 
 def set_model_weight_file(args):
-    """Automatically select the classifier weight and simulator weight during the training/testing"""
-    if args.train_mode in {"original", "separate"} or args.stage == "pretrain_classifier":
+    """Automatically select the classifier weight during the training/testing"""
+    if args.train_mode in {"supervised", "separate"}:
         args.classifier_weight = os.path.join(
             args.weight_folder,
-            f"{args.dataset}_{args.model}_pretrain_best.pt",
+            f"{args.dataset}_{args.model}_best.pt",
         )
-        args.detector_weight = None
-        args.handler_weight = None
-
-        return args
-    elif args.stage == "pretrain_handler":
-        args.classifier_weight = os.path.join(
-            args.weight_folder,
-            f"{args.dataset}_{args.model}_pretrain_best.pt",
-            # f"{args.dataset}_{args.model}_on_GateHandler_finetune_best.pt",
-        )
-        args.detector_weight = os.path.join(
-            args.weight_folder,
-            f"{args.dataset}_{args.miss_detector}_{args.noise_position}_pretrain_best.pt",
-        )
-        args.handler_weight = os.path.join(
-            args.weight_folder,
-            f"{args.dataset}_{args.miss_handler}_{args.noise_position}_pretrain_best.pt",
-        )
-    elif args.stage == "pretrain_detector":
-        args.classifier_weight = os.path.join(
-            args.weight_folder,
-            f"{args.dataset}_{args.model}_pretrain_best.pt",
-        )
-        args.detector_weight = args.handler_weight = os.path.join(
-            args.weight_folder,
-            f"{args.dataset}_{args.miss_detector}_{args.noise_position}_pretrain_best.pt",
-        )
-        args.handler_weight = os.path.join(
-            args.weight_folder,
-            f"{args.dataset}_{args.miss_handler}_{args.noise_position}_pretrain_best.pt",
-        )
-    elif args.stage == "finetune":
-        args.classifier_weight = os.path.join(
-            args.weight_folder,
-            f"{args.dataset}_{args.model}_on_{args.miss_handler}_finetune_best.pt",
-        )
-        args.detector_weight = args.handler_weight = os.path.join(
-            args.weight_folder,
-            f"{args.dataset}_{args.miss_detector}_{args.noise_position}_pretrain_best.pt",
-        )
-        args.handler_weight = os.path.join(
-            args.weight_folder,
-            f"{args.dataset}_{args.miss_handler}_{args.noise_position}_finetune_best.pt",
-        )
+    elif args.train_mode in {"contrastive"}:
+        if args.stage == "pretrain":
+            args.classifier_weight = os.path.join(
+                args.weight_folder,
+                f"{args.dataset}_{args.model}_on_{args.miss_handler}_pretrain_best.pt",
+            )
+        else:
+            args.classifier_weight = os.path.join(
+                args.weight_folder,
+                f"{args.dataset}_{args.model}_on_{args.miss_handler}_finetune_best.pt",
+            )
     else:
-        raise Exception(f"Invalid stage provided: {args.stage}")
+        raise Exception(f"Invalid training mode provided: {args.stage}")
 
     print(f"[Classifier weight file]: {os.path.basename(args.classifier_weight)}")
-    print(f"[Handler weight file]: {os.path.basename(args.handler_weight)}")
 
     return args
 
