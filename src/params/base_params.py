@@ -40,7 +40,7 @@ def parse_base_args(option="train"):
         "-inference_mode",
         type=str,
         default="original",
-        help="The used mode for model inference (original/separate).",
+        help="The used mode for model inference (original).",
     )
     parser.add_argument(
         "-augmenter",
@@ -57,10 +57,10 @@ def parse_base_args(option="train"):
 
     # used for separate training and inference
     parser.add_argument(
-        "-sep_modalities",
+        "-miss_modalities",
         type=str,
         default=None,
-        help="Specify the used modalities separated by ,",
+        help="Specify the unused modalities separated by ,",
     )
 
     # weight path

@@ -24,8 +24,8 @@ def set_model_weight_folder(args):
     check_paths([dataset_model_path])
 
     # suffix for different modes, only related to the **train mode**
-    if args.train_mode == "separate" and len(args.miss_modalities) > 0:
-        suffix = f"{args.train_mode}-"
+    if args.train_mode == "supervised" and len(args.miss_modalities) > 0:
+        suffix = f"{args.train_mode}-miss-"
         ordered_miss_modalities = list(args.miss_modalities)
         ordered_miss_modalities.sort()
         for mod in ordered_miss_modalities:
@@ -50,7 +50,7 @@ def set_model_weight_folder(args):
                 
     # set the weight path to avoid redundancy
     if args.option == "train":
-        weight_folder = os.path.join(dataset_model_path, f"exp{newest_id+1}") + f"_{suffix}"
+        weight_folder = os.path.join(dataset_model_path, f"exp{newest_id + 1}") + f"_{suffix}"
         check_paths([weight_folder])
         model_config = args.dataset_config[args.model]
         with open(os.path.join(weight_folder, "model_config.json"), "w") as f:
@@ -67,7 +67,7 @@ def set_model_weight_folder(args):
 
     # set log files
     if args.option == "train":
-        if args.train_mode in {"supervised", "separate"}:
+        if args.train_mode == "supervised":
             args.train_log_file = os.path.join(weight_folder, f"train_log.txt")
             args.tensorboard_log = os.path.join(weight_folder, f"train_events")
         else:
@@ -82,7 +82,7 @@ def set_model_weight_folder(args):
 
 def set_model_weight_file(args):
     """Automatically select the classifier weight during the training/testing"""
-    if args.train_mode in {"supervised", "separate"}:
+    if args.train_mode == "supervised":
         args.classifier_weight = os.path.join(
             args.weight_folder,
             f"{args.dataset}_{args.model}_best.pt",
@@ -91,12 +91,12 @@ def set_model_weight_file(args):
         if args.stage == "pretrain":
             args.classifier_weight = os.path.join(
                 args.weight_folder,
-                f"{args.dataset}_{args.model}_on_{args.miss_handler}_pretrain_best.pt",
+                f"{args.dataset}_{args.model}_pretrain_best.pt",
             )
         else:
             args.classifier_weight = os.path.join(
                 args.weight_folder,
-                f"{args.dataset}_{args.model}_on_{args.miss_handler}_finetune_best.pt",
+                f"{args.dataset}_{args.model}_finetune_best.pt",
             )
     else:
         raise Exception(f"Invalid training mode provided: {args.stage}")

@@ -13,10 +13,10 @@ from train_utils.eval_functions import val_and_logging
 from general_utils.time_utils import time_sync
 
 
-def pretrain_classifier(
+def supervised_train_classifier(
     args,
     classifier,
-    miss_simulator,
+    augmenter,
     train_dataloader,
     val_dataloader,
     test_dataloader,
@@ -24,7 +24,10 @@ def pretrain_classifier(
     tb_writer,
     num_batches,
 ):
-    """The pretraining function for tbe backbone network."""
+    """
+    The supervised training function for tbe backbone network,
+    used in train of supervised mode or fine-tune of foundation models.
+    """
     # model config
     classifier_config = args.dataset_config[args.model]
 
@@ -47,20 +50,17 @@ def pretrain_classifier(
     logging.info("---------------------------Start Pretraining Classifier-------------------------------")
     start = time_sync()
     best_val_acc = 0
-    best_classifier_weight = os.path.join(
-        args.weight_folder,
-        f"{args.dataset}_{args.model}_pretrain_best.pt",
-    )
-    latest_classifier_weight = os.path.join(
-        args.weight_folder,
-        f"{args.dataset}_{args.model}_pretrain_latest.pt",
-    )
+    if args.train_mode == "supervised":
+        best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_best.pt")
+        latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_latest.pt")
+    else:
+        best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_best.pt")
+        latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_latest.pt")
 
     for epoch in range(classifier_config["train_epochs"]):
-
         # set model to train mode
         classifier.train()
-        miss_simulator.eval()
+        augmenter.train()
         args.epoch = epoch
 
         # training loop
@@ -68,7 +68,7 @@ def pretrain_classifier(
         for i, (data, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
             # send data label to device (data is sent in the model)
             labels = labels.to(args.device)
-            logits, handler_loss = classifier(data, miss_simulator)
+            logits = classifier(data, augmenter)
             loss = classifier_loss_func(logits, labels)
 
             # back propagation
@@ -88,7 +88,7 @@ def pretrain_classifier(
             epoch,
             tb_writer,
             classifier,
-            miss_simulator,
+            augmenter,
             val_dataloader,
             test_dataloader,
             classifier_loss_func,
@@ -96,17 +96,17 @@ def pretrain_classifier(
         )
 
         # Save the latest model
-        torch.save(classifier.state_dict(), latest_classifier_weight)
+        torch.save(classifier.state_dict(), latest_weight)
 
         # Save the best model according to validation result
         if args.elastic_mod:
-            if epoch > miss_simulator.miss_handler.start_miss_epoch and val_acc > best_val_acc:
+            if epoch > augmenter.miss_handler.start_miss_epoch and val_acc > best_val_acc:
                 best_val_acc = val_acc
-                torch.save(classifier.state_dict(), best_classifier_weight)
+                torch.save(classifier.state_dict(), best_weight)
         else:
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
-                torch.save(classifier.state_dict(), best_classifier_weight)
+                torch.save(classifier.state_dict(), best_weight)
 
         # Update the learning rate scheduler
         scheduler.step()

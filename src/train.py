@@ -10,7 +10,7 @@ from tqdm import tqdm
 from test import eval_given_model
 
 # import models
-from models.MissSimulator import MissSimulator
+from data_augmenter import Augmenter
 from models.ResNet import ResNet
 from models.DeepSense import DeepSense
 from models.Transformer import Transformer
@@ -18,9 +18,7 @@ from models.TransformerV2 import TransformerV2
 from models.TransformerV3 import TransformerV3
 
 # train utils
-from train_utils.pretrain_classifier import pretrain_classifier
-from train_utils.pretrain_handler import pretrain_handler, pretrain_handler_gan
-from train_utils.pretrain_detector import pretrain_density_detector, pretrain_detector
+from train_utils.supervised_train import supervised_train_classifier
 from train_utils.finetune import finetune
 
 # utils
@@ -38,15 +36,13 @@ def train(args):
     num_batches = len(train_dataloader)
 
     # Init the miss modality simulator
-    miss_simulator = MissSimulator(args)
-    miss_simulator.to(args.device)
-    args.miss_simulator = miss_simulator
+    augmenter = Augmenter(args)
+    augmenter.to(args.device)
+    args.augmenter = augmenter
 
     # Init the classifier model
     if args.model == "DeepSense":
         classifier = DeepSense(args, self_attention=False)
-    elif args.model == "SADeepSense":
-        classifier = DeepSense(args, self_attention=True)
     elif args.model == "Transformer":
         classifier = Transformer(args)
     elif args.model == "TransformerV2":
@@ -69,87 +65,36 @@ def train(args):
     else:
         classifier_loss_func = nn.CrossEntropyLoss()
 
-    if args.stage == "pretrain_classifier":
-        pretrain_classifier(
+    if args.train_mode == "supervised":
+        supervised_train_classifier(
             args,
             classifier,
-            miss_simulator,
+            augmenter,
             train_dataloader,
             val_dataloader,
             test_dataloader,
             classifier_loss_func,
             tb_writer,
             num_batches,
-        )
-    elif args.stage == "pretrain_handler":
-        if args.miss_handler == "AdAutoencoder":
-            pretrain_handler_gan(
-                args,
-                classifier,
-                miss_simulator,
-                train_dataloader,
-                val_dataloader,
-                test_dataloader,
-                classifier_loss_func,
-                tb_writer,
-                num_batches,
-                triplet_flag,
-            )
-        else:
-            pretrain_handler(
-                args,
-                classifier,
-                miss_simulator,
-                train_dataloader,
-                val_dataloader,
-                test_dataloader,
-                classifier_loss_func,
-                tb_writer,
-                num_batches,
-                triplet_flag,
-            )
-    elif args.stage == "pretrain_detector":
-        if args.miss_detector == "DensityDetector":
-            pretrain_density_detector(
-                args,
-                classifier,
-                miss_simulator,
-                train_dataloader,
-                val_dataloader,
-                test_dataloader,
-                classifier_loss_func,
-                tb_writer,
-                num_batches,
-                triplet_flag,
-            )
-        else:
-            pretrain_detector(
-                args,
-                classifier,
-                miss_simulator,
-                train_dataloader,
-                val_dataloader,
-                test_dataloader,
-                classifier_loss_func,
-                tb_writer,
-                num_batches,
-                triplet_flag,
-            )
-    elif args.stage == "finetune":
-        finetune(
-            args,
-            classifier,
-            miss_simulator,
-            train_dataloader,
-            val_dataloader,
-            test_dataloader,
-            classifier_loss_func,
-            tb_writer,
-            num_batches,
-            triplet_flag,
         )
     else:
-        pass
+        if args.stage == "pretrain_classifier":
+            pass
+        elif args.stage == "finetune":
+            finetune(
+                args,
+                classifier,
+                augmenter,
+                train_dataloader,
+                val_dataloader,
+                test_dataloader,
+                classifier_loss_func,
+                tb_writer,
+                num_batches,
+                triplet_flag,
+            )
+        else:
+            raise Exception(f"Invalid stage provided: {args.stage}")
 
 
 def main_train():

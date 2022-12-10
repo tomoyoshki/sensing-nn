@@ -63,10 +63,10 @@ def select_device(device="", batch_size=0, newline=True):
 def auto_select_augmenter(args):
     """Automatically select the data augmenter, mainly for separate training mode."""
     if args.option == "train":
-        if args.inference_mode == "separate":
+        if args.train_mode == "supervised" and len(args.miss_modalities) > 0:
             args.augmenter = "SeparateAugmenter"
     else:
-        if args.inference_mode == "separate":
+        if args.train_mode == "supervised" and len(args.miss_modalities) > 0:
             args.augmenter = "SeparateAugmenter"
         else:
             args.augmenter = "NoAugmenter"
