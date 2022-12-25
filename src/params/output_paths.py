@@ -1,4 +1,5 @@
 import os
+from datetime import date
 import json
 
 
@@ -14,7 +15,7 @@ def check_paths(path_list):
 
 
 def set_model_weight_folder(args):
-    """Automatically get the model path.
+    """ Automatically get the model path.
 
     Args:
         args (_type_): _description_
@@ -113,7 +114,11 @@ def set_output_paths(args):
         args (_type_): _description_
     """
     # results path
-    log_root_path = f"/home/{args.username}/AutoCuration/result/log"
+    log_root_path = f"/home/{args.username}/FoundationSense/result/log"
+
+
+    today = date.today()
+    d1 = today.strftime("%m%d%Y")
     args.log_path = os.path.join(log_root_path, f"{args.dataset}_{args.model}_{args.train_mode}")
     check_paths([args.log_path])
 

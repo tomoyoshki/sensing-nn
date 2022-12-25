@@ -60,7 +60,7 @@ def supervised_train_classifier(
     for epoch in range(classifier_config["train_epochs"]):
         # set model to train mode
         classifier.train()
-        augmenter.train()
+        # augmenter.train()
         args.epoch = epoch
 
         # training loop
@@ -68,7 +68,9 @@ def supervised_train_classifier(
         for i, (data, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
             # send data label to device (data is sent in the model)
             labels = labels.to(args.device)
-            logits = classifier(data, augmenter)
+
+            # labels = [label.to(args.device) for label in labels]
+            logits = classifier(data, None)
             loss = classifier_loss_func(logits, labels)
 
             # back propagation
@@ -99,7 +101,7 @@ def supervised_train_classifier(
         torch.save(classifier.state_dict(), latest_weight)
 
         # Save the best model according to validation result
-        if args.elastic_mod:
+        if False and args.elastic_mod:
             if epoch > augmenter.miss_handler.start_miss_epoch and val_acc > best_val_acc:
                 best_val_acc = val_acc
                 torch.save(classifier.state_dict(), best_weight)

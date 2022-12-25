@@ -8,7 +8,7 @@ from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 
 
 def eval_given_model(args, classifier, miss_simulator, dataloader, loss_func):
-    """Evaluate the performance on the given dataloader.
+    """ Evaluate the performance on the given dataloader.
 
     Args:
         model (_type_): _description_
@@ -19,13 +19,13 @@ def eval_given_model(args, classifier, miss_simulator, dataloader, loss_func):
     miss_simulator.eval()
 
     # set the noise mode if needed
-    if args.miss_generator == "NoisyGenerator":
-        miss_simulator.miss_generator.set_noise_mode(args.noise_mode)
+
+    # if args.miss_generator == "NoisyGenerator":
+        # miss_simulator.miss_generator.set_noise_mode(args.noise_mode)
 
     # iterate over all batches
     num_batches = len(dataloader)
     classifier_loss_list = []
-    handler_loss_list = []
     all_predictions = []
     all_labels = []
     with torch.no_grad():
@@ -33,11 +33,10 @@ def eval_given_model(args, classifier, miss_simulator, dataloader, loss_func):
             labels = labels.to(args.device)
             args.labels = labels
 
-            logits, handler_loss = classifier(data, miss_simulator)
-            if args.miss_handler == "AdAutoencoder":
-                g_loss, d_loss = handler_loss
-                handler_loss = g_loss
-            handler_loss_list.append(handler_loss.item())
+            logits = classifier(data, miss_simulator)
+            # if args.miss_handler == "AdAutoencoder":
+            #     g_loss, d_loss = handler_loss
+            #     handler_loss = g_loss
             classifier_loss_list.append(loss_func(logits, labels).item())
 
             if args.multi_class:
@@ -55,7 +54,6 @@ def eval_given_model(args, classifier, miss_simulator, dataloader, loss_func):
 
     # calculate mean loss
     mean_classifier_loss = np.mean(classifier_loss_list)
-    mean_handler_loss = np.mean(handler_loss_list)
     all_predictions = np.concatenate(all_predictions, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
     acc_scores = []
@@ -79,7 +77,7 @@ def eval_given_model(args, classifier, miss_simulator, dataloader, loss_func):
         mean_f1 = f1_score(all_labels, all_predictions, average="macro", zero_division=1)
         conf_matrix = confusion_matrix(all_labels, all_predictions)
 
-    return mean_classifier_loss, mean_handler_loss, mean_f1, mean_acc, conf_matrix
+    return mean_classifier_loss, -1, mean_f1, mean_acc, conf_matrix
 
 
 def val_and_logging(
@@ -95,7 +93,7 @@ def val_and_logging(
     tensorboard_logging=True,
     eval_detector=False,
 ):
-    """Validation and logging function.
+    """ Validation and logging function.
 
     Args:
         tb_writer (_type_): _description_
@@ -133,12 +131,12 @@ def val_and_logging(
 
     logging.info("-" * 40 + f"Epoch {epoch + 1}" + "-" * 40)
 
-    # print resilient handler parameters
-    if "ResilientHandler" in args.miss_handler:
-        print("----------------------Resilient Handler Parameters----------------------")
-        for name, param in miss_simulator.miss_handler.named_parameters():
-            print(f"{name} \n", param.data.cpu().numpy())
-        print("------------------------------------------------------------------------")
+    # # print resilient handler parameters
+    # if "ResilientHandler" in args.miss_handler:
+    #     print("----------------------Resilient Handler Parameters----------------------")
+    #     for name, param in miss_simulator.miss_handler.named_parameters():
+    #         print(f"{name} \n", param.data.cpu().numpy())
+    #     print("------------------------------------------------------------------------")
 
     # write tensorboard train log
     if tensorboard_logging:

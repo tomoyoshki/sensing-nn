@@ -164,7 +164,7 @@ class TransformerV3(nn.Module):
         )
 
     def forward(self, org_time_x, augmenter):
-        """The forward function of DeepSense.
+        """ The forward function of DeepSense.
         Args:
             time_x (_type_): time_x is a dictionary consisting of the Tensor input of each input modality.
                         For each modality, the data is in (b, c (2 * 3 or 1), i (intervals), s (spectrum)) format.
@@ -173,11 +173,13 @@ class TransformerV3(nn.Module):
 
         # Step 0: Move data to target device
         for loc in org_time_x:
+            # print(org_time_x)
             for mod in org_time_x[loc]:
                 org_time_x[loc][mod] = org_time_x[loc][mod].to(args.device)
 
         # Step 1 Optional data augmentation
-        augmented_time_x = augmenter.augment_forward(org_time_x)
+        # augmented_time_x = augmenter.augment_forward(org_time_x)
+        augmented_time_x = org_time_x
 
         # Step 3: FFT on the time domain data
         freq_x = fft_preprocess(augmented_time_x, args)

@@ -213,6 +213,37 @@ TransformerV2:
         scheduler_gamma: 0.2
         start_lr: 0.00005
 
+# Transformer config
+TransformerV3:
+        dropout_ratio: 0.2
+        # loc mod freq feature
+        loc_mod_in_stride:
+                audio: 80
+                seismic: 1
+        freq_out_channels: 256
+        freq_head_num: 4
+        freq_block_num: 4
+        # single modality
+        loc_mod_out_channels: 256
+        loc_mod_head_num: 4
+        loc_mod_block_num: 2
+        # single location
+        loc_out_channels: 256
+        loc_head_num: 4
+        loc_block_num: 2
+        # sample
+        interval_out_channels: 256
+        interval_head_num: 4
+        interval_block_num: 2
+        # FC layer
+        fc_dim: 512
+        # Training config
+        train_epochs: 1500
+        scheduler_step: 200
+        scheduler_gamma: 0.2
+        start_lr: 0.00003
+
+
 # Missing Modality Generator
 MissModalityGenerator:
         sensors: 4

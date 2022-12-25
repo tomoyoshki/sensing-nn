@@ -105,7 +105,7 @@ class NoiseAugmenter(nn.Module):
             return noisy_loc_input, gt_miss_ids
 
     def add_noise_by_mask(self, input, gt_miss_masks, loc=None, mod=None):
-        """Automatically add noise according to the given gt_miss_masks.
+        """ Automatically add noise according to the given gt_miss_masks.
            All positions marked by **0** will be added noise.
         Args:
             x (_type_): [b, c, i, s]

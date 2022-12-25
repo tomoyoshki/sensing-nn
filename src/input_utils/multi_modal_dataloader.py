@@ -6,30 +6,28 @@ from input_utils.yaml_utils import load_yaml
 
 
 def create_dataloader(option, args, batch_size=64, workers=5):
-    """create the dataloader for the given data path.
+    """ create the dataloader for the given data path.
 
     Args:
         data_path (_type_): _description_
         workers (_type_): _description_
     """
     # select the index file
+
     if option == "train":
         index_file = args.dataset_config["train_index_file"]
     elif option == "val":
         index_file = args.dataset_config["val_index_file"]
-    elif "Parkland" in args.dataset and args.test_noisy_parkland:
-        index_file = args.dataset_config["noisy_test_index_file"]
-    elif "Parkland" in args.dataset and args.test_wind_parkland:
-        index_file = args.dataset_config["wind_test_index_file"]
     else:
         index_file = args.dataset_config["test_index_file"]
 
     # init the datase
     if (
+        False and
         option == "train"  # training dataset
         and args.option == "train"  # the current task is to train the model
         and args.train_mode != "pretrain_classifier"
-        and args.miss_handler in {"GateHandler"}
+        # and args.miss_handler in {"GateHandler"}
     ):
         print("Create triplet dataset!")
         triplet_flag = True

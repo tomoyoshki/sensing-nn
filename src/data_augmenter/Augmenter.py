@@ -11,7 +11,7 @@ from data_augmenter.SeparateAugmenter import SeparateAugmenter
 
 class Augmenter:
     def __init__(self, args) -> None:
-        """This function is used to setup the data augmenter.
+        """ This function is used to setup the data augmenter.
 
         Args:
             model (_type_): _description_
@@ -20,10 +20,12 @@ class Augmenter:
         self.mode = self.args.train_mode if self.args.option == "train" else self.args.inference_mode
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
-        print(f"[Option]: {args.option}, mode: {self.mode}, stage: {args.stage}")
+        print(f"=\t[Option]: {args.option}, mode: {self.mode}, stage: {args.stage}")
         
         if args.augmenter == "NoiseAugmenter":
             print(f"[Data augmenter config]: {args.miss_generator}-{args.noise_mode}")
+        elif args.augmenter == "NoAugmenter":
+            print(f"=\t{args.augmenter}")
         else:
             print(f"[Miss augmenter config]: {args.miss_generator}")
 
