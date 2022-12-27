@@ -70,7 +70,9 @@ def supervised_train_classifier(
             labels = labels.to(args.device)
 
             # labels = [label.to(args.device) for label in labels]
-            logits = classifier(data, None)
+            logits = classifier(data, augmenter)
+            # logits = classifier(data, None)
+            
             loss = classifier_loss_func(logits, labels)
 
             # back propagation

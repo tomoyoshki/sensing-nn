@@ -17,6 +17,7 @@ from models.DeepSense import DeepSense
 from models.Transformer import Transformer
 from models.TransformerV2 import TransformerV2
 from models.TransformerV3 import TransformerV3
+from models.TransformerV4 import TransformerV4
 
 # train utils
 from train_utils.supervised_train import supervised_train_classifier
@@ -58,6 +59,8 @@ def train(args):
         classifier = TransformerV2(args)
     elif args.model == "TransformerV3":
         classifier = TransformerV3(args)
+    elif args.model == "TransformerV4":
+        classifier = TransformerV4(args)
     elif args.model == "ResNet":
         classifier = ResNet(args)
     else:

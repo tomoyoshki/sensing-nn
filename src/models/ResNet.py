@@ -94,7 +94,8 @@ class ResNet(nn.Module):
                 org_time_x[loc][mod] = org_time_x[loc][mod].to(args.device)
 
         # Step 1: Add noise to the time-domain data
-        augmented_time_x = augmenter.augment_forward(org_time_x)
+        # augmented_time_x = augmenter.augment_forward(org_time_x)
+        augmented_time_x = org_time_x
 
         # Step 2: FFT on the time domain data
         freq_x = fft_preprocess(augmented_time_x, args)
@@ -105,6 +106,8 @@ class ResNet(nn.Module):
             loc_mod_features[loc] = []
             for mod in self.modalities:
                 loc_mod_features[loc].append(self.loc_mod_extractors[loc][mod](freq_x[loc][mod]))
+            for i in loc_mod_features[loc]:
+                print(i.shape)
             loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=3)
 
         # Step 4: Feature fusion for different mods in the same location

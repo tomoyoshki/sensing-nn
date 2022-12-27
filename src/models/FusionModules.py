@@ -6,13 +6,13 @@ from general_utils.tensor_utils import select_with_rescale_factors_bcis, select_
 
 class MeanFusionBlock(nn.Module):
     def __init__(self) -> None:
-        """The initialization of the mean fusion block.
+        '''The initialization of the mean fusion block.
         Stureture:
-        """
+        '''
         super().__init__()
 
     def forward(self, input_feature, rescale_factors=None):
-        """The forward function of the MeanFusionBlock.
+        '''The forward function of the MeanFusionBlock.
 
         Args:
             input_feature (_type_): list of [b, c, intervals, sensors]
@@ -20,7 +20,7 @@ class MeanFusionBlock(nn.Module):
         Return:
             [b, 1, i, c]
         NOTE: The batch dimension should be 1, or the samples must have the same # of missing sensors.
-        """
+        '''
         # mean out
         if rescale_factors is None:
             # if True:
@@ -37,7 +37,7 @@ class MeanFusionBlock(nn.Module):
             # calculate the merged features sequentially for each sample
             batch_mean_out = []
             for idx in range(b):
-                """feature: [1, c , i, s], rescale_factors: [1, s]"""
+                '''feature: [1, c , i, s], rescale_factors: [1, s]'''
                 selected_rescale_factors = select_with_rescale_factors_bcis(
                     split_expand_scale_factors[idx],
                     split_rescale_factors[idx],
@@ -61,22 +61,22 @@ class MeanFusionBlock(nn.Module):
 
 class SelfAttentionFusionBlock(nn.Module):
     def __init__(self, embed_dim, num_heads, dropout=0, bias=True) -> None:
-        """The initialization of the self-attention fusion block.
+        '''The initialization of the self-attention fusion block.
         Structure:
-        """
+        '''
         super().__init__()
 
         # define the self attention head
         self.attention = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, bias=bias, batch_first=True)
 
     def forward(self, x):
-        """The forward function of the SelfAttentionBlock.
+        '''The forward function of the SelfAttentionBlock.
 
         Args:
             x (_type_): list of [b, c, intervals, sensors]
         Output:
             [b, c, i] or [b, 1, i, c]
-        """
+        '''
         # concat and exchange dimension: [b, c, i, s] --> [b, i, s, c] --> [b * i, s, c]
         x = x.permute(0, 2, 3, 1)
         b, i, s, c = x.shape
@@ -101,20 +101,20 @@ class SelfAttentionFusionBlock(nn.Module):
 
 class TransformerFusionBlock(nn.Module):
     def __init__(self, embed_dim, num_heads, dropout_rate, attention_dropout_rate):
-        """Normalization + Attention + Dropout
+        ''' Normalization + Attention + Dropout
 
         Args:
             embed_dim (_type_): _description_
             num_heads (_type_): _description_
             dropout_rate (_type_): _description_
             attention_dropout_rate (_type_): _description_
-        """
+        '''
         super().__init__()
         self.norm1 = nn.LayerNorm(embed_dim)
         self.mha = nn.MultiheadAttention(embed_dim, num_heads, dropout=attention_dropout_rate, batch_first=True)
 
     def forward(self, input_feature, rescale_factors=None):
-        """Sensor fusion by attention
+        '''Sensor fusion by attention
 
         Args:
             inputs (_type_): [batch_size, time_interval, mod_num/loc_num/interval, feature_channels]
@@ -123,7 +123,7 @@ class TransformerFusionBlock(nn.Module):
         Returns:
             _type_: [batch_size, time_interval, feature_channels]
         NOTE: The batch dimension should be 1, or the samples must have the same # of missing sensors.
-        """
+        '''
         if rescale_factors is not None:
             # hard selection on modality
             b, i, s, c = input_feature.shape

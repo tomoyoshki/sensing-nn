@@ -1,3 +1,4 @@
+# python3 train.py -gpu=0 -dataset=Parkland -stage=pretrain_classifier -model="TransformerV4"
 import os
 import time
 import math
@@ -7,6 +8,9 @@ import torch.nn as nn
 from torch.nn import TransformerEncoderLayer
 from input_utils.fft_utils import fft_preprocess
 from models.FusionModules import TransformerFusionBlock
+
+from models.SwinModules import BasicLayer, PatchEmbed, PatchMerging, SwinTransformerBlock
+from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 
 
 class PositionalEncoding(nn.Module):
@@ -57,11 +61,29 @@ class TransformerV4(nn.Module):
 
         super().__init__()
         self.args = args
-        self.config = args.dataset_config["TransformerV2"]
+        self.config = args.dataset_config["TransformerV4"]
         self.device = args.device
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
         self.num_segments = args.dataset_config["num_segments"]
+        self.spectrum_length = args.dataset_config["loc_mod_spectrum_len"]["shake"]
+        
+        # Setting up SWIN Transformer modules
+        self.depths = self.config["depths"]
+        self.num_layers = len(self.depths)
+        self.num_heads= self.config["num_heads"]
+        self.ape = self.config["APE"]
+        self.patch_norm = self.config["patch_norm"]
+        
+        self.embed_dim_ = 2
+        self.num_features = int(self.embed_dim_ * 2 ** (self.num_layers - 1))
+        self.norm_layer = nn.LayerNorm
+        self.norm = self.norm_layer(self.num_features)
+        self.mlp_ratio = self.config["mlp_ratio"]
+        self.avgpool = nn.AdaptiveAvgPool1d(1)
+        self.pos_drop = nn.Dropout(p=self.config["dropout_ratio"])
+
+        dpr = [x.item() for x in torch.linspace(0, 0.1, sum(self.depths))]  # stochastic depth decay rule
 
         # decide max seq len
         max_len = 0
@@ -70,11 +92,43 @@ class TransformerV4(nn.Module):
                 stride = self.config["in_stride"][mod]
                 max_len = max(max_len, int(args.dataset_config["loc_mod_spectrum_len"][loc][mod] / stride))
 
+        # stochastic depth
+
         # Single mod,  [b * i, s/stride, c * stride]
         self.freq_context_layers = nn.ModuleDict()
         self.freq_fusion_layers = nn.ModuleDict()
         self.interval_context_layers = nn.ModuleDict()
         self.interval_fusion_layers = nn.ModuleDict()
+        self.norms = nn.ModuleDict()
+        self.patch_embed = nn.ModuleDict()
+        self.transition_fc_layers = nn.ModuleDict()
+        self.num_patches = dict()
+        self.patches_resolution = dict()
+        self.embed_dim = dict()
+
+        for loc in self.locations:
+            self.patch_embed[loc] = nn.ModuleDict()
+            self.norms[loc] = nn.ModuleDict()
+            self.transition_fc_layers[loc] = nn.ModuleDict()
+            self.num_patches[loc] = dict()
+            self.patches_resolution[loc] = dict()
+            self.embed_dim[loc] = dict()
+            for mod in self.modalities:
+                stride = self.config["in_stride"][mod]
+                input_channels = args.dataset_config["loc_mod_in_freq_channels"][loc][mod]
+                spectrum_len = args.dataset_config["loc_mod_spectrum_len"][loc][mod]
+                image_size = (10, 20)
+                self.embed_dim[loc][mod] = self.config["embed_dim"][mod]
+                self.norms[loc][mod] = self.norm_layer(int(self.embed_dim[loc][mod] * 2 ** (self.num_layers - 1)))
+                print("Mod: ", mod, " has ", int(self.embed_dim[loc][mod] * 2 ** (self.num_layers - 1)))
+                self.transition_fc_layers[loc][mod] = nn.Linear(int(self.embed_dim[loc][mod] * 2 ** (self.num_layers - 1)), self.config["fc_dim"])
+                self.patch_embed[loc][mod] = PatchEmbed(img_size=image_size,
+                                                patch_size=self.config["patch_embed"][mod]["patch_size"],
+                                                in_chans=input_channels,
+                                                embed_dim=self.embed_dim[loc][mod],
+                                                norm_layer=self.norm_layer if self.patch_norm else None)
+                self.num_patches[loc][mod] = self.patch_embed[loc][mod].num_patches
+                self.patches_resolution[loc][mod] = self.patch_embed[loc][mod].patches_resolution
 
         for loc in self.locations:
             self.freq_context_layers[loc] = nn.ModuleDict()
@@ -85,101 +139,30 @@ class TransformerV4(nn.Module):
             for mod in self.modalities:
                 stride = self.config["in_stride"][mod]
                 input_channels = args.dataset_config["loc_mod_in_freq_channels"][loc][mod]
-
-                """Single (loc, mod, freq) feature extraction layer"""
+                patch_resolutions = self.patches_resolution[loc][mod]
                 module_list = [
-                    nn.Linear(int(stride * input_channels), self.config["freq_out_channels"]),
-                    # PositionalEncoding(self.config["freq_out_channels"], 0.1, max_len),
-                ] + [
-                    TransformerEncoderLayer(
-                        d_model=self.config["freq_out_channels"],
-                        nhead=self.config["freq_head_num"],
-                        dim_feedforward=self.config["freq_out_channels"],
-                        dropout=self.config["dropout_ratio"],
-                        batch_first=True,
-                    )
-                    for _ in range(self.config["freq_block_num"])
-                ]
+                        BasicLayer(dim=int(self.embed_dim[loc][mod] * 2 ** i_layer),
+                                    input_resolution=(
+                                        patch_resolutions[0] // (2 ** i_layer),
+                                        patch_resolutions[1] // (2 ** i_layer)
+                                    ),
+                                    depth=self.depths[i_layer],
+                                    num_heads=self.num_heads[i_layer],
+                                    window_size=self.config["window_size"][mod],
+                                    mlp_ratio=self.mlp_ratio,
+                                    qkv_bias=self.config["qkv_bias"], qk_scale=None,
+                                    drop=self.config["dropout_ratio"], attn_drop=self.config["dropout_ratio"],
+                                    drop_path=dpr[sum(self.depths[:i_layer]):sum(self.depths[:i_layer + 1])],
+                                    norm_layer=self.norm_layer,
+                                    downsample=PatchMerging if (i_layer < self.num_layers - 1) else None
+                                    )
+                        for i_layer in range(self.num_layers)
+                    ]
                 self.freq_context_layers[loc][mod] = nn.Sequential(*module_list)
-
-                """Freq fusion layer for each (loc, mod)"""
-                self.freq_fusion_layers[loc][mod] = TransformerFusionBlock(
-                    self.config["freq_out_channels"],
-                    self.config["freq_head_num"],
-                    self.config["dropout_ratio"],
-                    self.config["dropout_ratio"],
-                )
-
-                module_list = [
-                    nn.Linear(self.config["freq_out_channels"], self.config["interval_out_channels"]),
-                    # PositionalEncoding(self.config["interval_out_channels"], 0.1, max_len),
-                ] + [
-                    TransformerEncoderLayer(
-                        d_model=self.config["interval_out_channels"],
-                        nhead=self.config["interval_head_num"],
-                        dim_feedforward=self.config["interval_out_channels"],
-                        dropout=self.config["dropout_ratio"],
-                        batch_first=True,
-                    )
-                    for _ in range(self.config["interval_block_num"])
-                ]
-                self.interval_context_layers[loc][mod] = nn.Sequential(*module_list)
-                self.interval_fusion_layers[loc][mod] = TransformerFusionBlock(
-                    self.config["interval_out_channels"],
-                    self.config["interval_head_num"],
-                    self.config["dropout_ratio"],
-                    self.config["dropout_ratio"],
-                )
-
-        # Single loc, [b, i, c]
-        self.mod_context_layers = nn.ModuleDict()
-        self.mod_fusion_layer = nn.ModuleDict()
-        for loc in self.locations:
-            """Single (loc, mod) feature extraction"""
-            module_list = [nn.Linear(self.config["interval_out_channels"], self.config["loc_mod_out_channels"])] + [
-                TransformerEncoderLayer(
-                    d_model=self.config["loc_mod_out_channels"],
-                    nhead=self.config["loc_mod_head_num"],
-                    dim_feedforward=self.config["loc_mod_out_channels"],
-                    dropout=self.config["dropout_ratio"],
-                    batch_first=True,
-                )
-                for _ in range(self.config["loc_mod_block_num"])
-            ]
-            self.mod_context_layers[loc] = nn.Sequential(*module_list)
-
-            """Mod fusion layer for each loc"""
-            self.mod_fusion_layer[loc] = TransformerFusionBlock(
-                self.config["loc_mod_out_channels"],
-                self.config["loc_mod_head_num"],
-                self.config["dropout_ratio"],
-                self.config["dropout_ratio"],
-            )
-
-        # Single sample
-        module_list = [nn.Linear(self.config["loc_mod_out_channels"], self.config["loc_out_channels"])] + [
-            TransformerEncoderLayer(
-                d_model=self.config["loc_out_channels"],
-                nhead=self.config["loc_head_num"],
-                dim_feedforward=self.config["loc_out_channels"],
-                dropout=self.config["dropout_ratio"],
-                batch_first=True,
-            )
-            for _ in range(self.config["loc_block_num"])
-        ]
-        self.loc_context_layer = nn.Sequential(*module_list)
-        self.loc_fusion_layer = TransformerFusionBlock(
-            self.config["loc_out_channels"],
-            self.config["loc_head_num"],
-            self.config["dropout_ratio"],
-            self.config["dropout_ratio"],
-        )
-
         # Classification
         self.class_layer = nn.Sequential(
-            nn.Linear(self.config["loc_out_channels"], self.config["fc_dim"]),
             nn.GELU(),
-            nn.Linear(self.config["fc_dim"], args.dataset_config["num_classes"]),
+            nn.Linear(self.config["fc_dim"] * 2, args.dataset_config["num_classes"]),
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
@@ -198,66 +181,38 @@ class TransformerV4(nn.Module):
                 org_time_x[loc][mod] = org_time_x[loc][mod].to(args.device)
 
         # Step 1 Optional data augmentation
-        augmented_time_x = augmenter.augment_forward(org_time_x)
-
+        # augmented_time_x = augmenter.augment_forward(org_time_x)
+        augmented_time_x = org_time_x
+        
         # Step 3: FFT on the time domain data
         freq_x = fft_preprocess(augmented_time_x, args)
-
+    
         # Step 5: Single (loc, mod, freq) feature extraction, [b * i, int(s / stride), stride * c]
-        loc_mod_features = dict()
         for loc in self.locations:
-            loc_mod_features[loc] = []
+            result = []
             for mod in self.modalities:
                 """freq feature extraction"""
-                # [b, c, i, spectrum] -- > [b, i, spectrum, c]
-                freq_input = torch.permute(freq_x[loc][mod], [0, 2, 3, 1])
-                b, i, s, c = freq_input.shape
+                freq_input = freq_x[loc][mod]
+                b, c, i, s = freq_input.shape
                 stride = self.config["in_stride"][mod]
-                freq_input = torch.reshape(freq_input, (b * i, -1, stride * c))
+                freq_input = torch.reshape(freq_input, (b * stride, c, i, s // stride))
+                
+                # print(freq_input.shape)
+                freq_input = self.patch_embed[loc][mod](freq_input)
+                freq_input = self.pos_drop(freq_input)
+                # print(freq_input.shape)
                 freq_context_feature = self.freq_context_layers[loc][mod](freq_input)
-                freq_context_feature = freq_context_feature.reshape(
-                    [b, i, int(s / stride), self.config["freq_out_channels"]]
-                )
-
-                """freq feature fusion, [b, i, c]"""
-                interval_input = self.freq_fusion_layers[loc][mod](freq_context_feature)
-
-                """interval feature extraction, [b, 1, i, c]"""
-                interval_context_feature = self.interval_context_layers[loc][mod](interval_input)
-                interval_context_feature = interval_context_feature.unsqueeze(1)
-
-                """interval feature fusion, [b, 1, c]"""
-                loc_mod_input = self.interval_fusion_layers[loc][mod](interval_context_feature)
-                loc_mod_features[loc].append(loc_mod_input)
-
-            # [b, 1, sensor, c]
-            loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=2)
-
-        # Step 2: Loc mod feature extraction, [b, i, location, c]
-        loc_features = []
-        for loc in loc_mod_features:
-            """Extract mod feature with peer-feature context"""
-            b, i, mods, c = loc_mod_features[loc].shape
-            loc_mod_input = loc_mod_features[loc].reshape([b * i, mods, c])
-            loc_mod_context_feature = self.mod_context_layers[loc](loc_mod_input)
-            loc_mod_context_feature = loc_mod_context_feature.reshape([b, i, mods, c])
-
-            """Mod feature fusion, [b, 1, 1, c]"""
-            loc_feature = self.mod_fusion_layer[loc](loc_mod_context_feature)
-            loc_features.append(loc_feature)
-        loc_features = torch.stack(loc_features, dim=2)
-
-        # Step 3: Location-level fusion, [b, 1, l, c]
-        if len(self.locations) > 1:
-            b, i, l, c = loc_features.shape
-            loc_input = loc_features.reshape([b * i, l, c])
-            loc_context_feature = self.loc_context_layer(loc_input)
-            loc_context_feature = loc_context_feature.reshape([b, i, l, c])
-            sample_features = self.loc_fusion_layer(loc_context_feature)
-        else:
-            sample_features = loc_features.squeeze(dim=2)
-
-        # Step 5: Classification
-        logits = self.class_layer(sample_features.flatten(start_dim=1))
-
-        return logits
+                pB, pS, pC = freq_context_feature.shape
+                freq_context_feature = torch.reshape(freq_context_feature, (pB // stride, pS * stride, pC))
+                # print(freq_context_feature.shape)
+                freq_context_feature = self.norms[loc][mod](freq_context_feature)  # B L C
+                freq_context_feature = self.avgpool(freq_context_feature.transpose(1, 2))  # B C 1
+                freq_context_feature = torch.flatten(freq_context_feature, 1)
+                freq_context_feature = self.transition_fc_layers[loc][mod](freq_context_feature)
+                # print(freq_context_feature.shape)
+                result.append(freq_context_feature)
+            res = torch.stack(result, dim=2)
+            sample_features = res.squeeze(dim=2)
+            sample_features = sample_features.flatten(start_dim=1)
+            logit = self.class_layer(sample_features)
+            return logit

@@ -43,7 +43,6 @@ def create_dataloader(option, args, batch_size=64, workers=5):
         )
     batch_size = min(batch_size, len(dataset))
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=(option == "train"), num_workers=workers)
-
     return dataloader, triplet_flag
 
 

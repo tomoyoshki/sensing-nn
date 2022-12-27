@@ -190,12 +190,16 @@ class TransformerV3(nn.Module):
             loc_mod_features[loc] = []
             for mod in self.modalities:
                 """freq feature extraction"""
-                # [b, c, i, spectrum] -- > [b, i, spectrum, c]
+                # [b, c, i, spectrum] -- > [b * stride, i, spectrum, c / stride]
                 freq_input = torch.permute(freq_x[loc][mod], [0, 2, 3, 1])
                 b, i, s, c = freq_input.shape
                 stride = self.config["in_stride"][mod]
                 freq_input = torch.reshape(freq_input, (b * i, -1, stride * c))
+                
+                print("Input has shape: ", freq_input.shape)
                 freq_context_feature = self.freq_context_layers[loc][mod](freq_input)
+                print("\n\nOutput has size: ", freq_context_feature.shape, "\n\n")
+
                 freq_context_feature = freq_context_feature.reshape(
                     [b, i, int(s / stride), self.config["freq_out_channels"]]
                 )
@@ -212,6 +216,8 @@ class TransformerV3(nn.Module):
                 loc_mod_features[loc].append(loc_mod_input)
 
             # [b, 1, sensor, c]
+            for i in loc_mod_features[loc]:
+                print("Each has shape: ", i.shape)
             loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=2)
 
         # Step 2: Loc mod feature extraction, [b, i, location, c]
