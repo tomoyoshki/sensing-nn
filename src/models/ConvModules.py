@@ -17,14 +17,16 @@ class ConvLayer2D(nn.Module):
         dropout_ratio,
         activation="GELU",
     ) -> None:
-        """The initialization of the 2D convolution layer.
+        ''' The initialization of the 2D convolution layer.
         Structure: conv2d + batch_norm + relu + dropout
         Input shape:
         Single sensor: (b, c (2 * 3 or 1), intervals, spectral samples)
         Merge conv: (b, c (1), intervals, spectral samples)
         Activation: GELU > SILU ～ ELU > ReLU = Leaky RelU = PReLU
-        """
+        '''
         super().__init__()
+        self.inc = in_channels
+        self.out = out_channels
         self.conv = nn.Conv2d(
             in_channels,
             out_channels,
@@ -34,29 +36,37 @@ class ConvLayer2D(nn.Module):
             padding_mode=padding_mode,
             bias=bias,
         )
-        self.batch_norm = nn.BatchNorm2d(out_channels, eps=1e-5, momentum=0.1, track_running_stats=True)
+        self.batch_norm = nn.BatchNorm2d(
+            out_channels, eps=1e-5, momentum=0.1, track_running_stats=True
+        )
         if activation == "GELU":
             self.activation = nn.GELU()
         else:
             self.activation = nn.Identity()
 
-        """p: Probability of an element to be zero-ed
+        ''' p: Probability of an element to be zero-ed
            - Input: (N, C, H, W) or (C, H, W)
            - Output: (N, C, H, W) or (C, H, W)
-        """
+        '''
         self.dropout = nn.Dropout2d(p=dropout_ratio)
 
     def forward(self, x):
-        """The forward function of the ConvLayer.
+        '''The forward function of the ConvLayer.
 
         InputShape: [b, c (1), INTERVAL, 2 * 3 * SPECTRAL_SAMPlES]
         OutputShape: [b, c_out, interval, spectral_samples]
 
         Args:
             x (_type_): _description_
-        """
+        '''
+        
+        print("in c: ", self.inc)
+        print("Out c: ", self.out)
+        print("Before conv: ", x.shape)
         conv_out = self.conv(x)
+        print("After conv: ", x.shape)
         conv_out = self.batch_norm(conv_out)
+        print("After norm: ", x.shape)
         conv_out = self.activation(conv_out)
         conv_out = self.dropout(conv_out)
 
@@ -77,18 +87,20 @@ class DeConvLayer2D(nn.Module):
         output_padding=None,
         activation="GELU",
     ) -> None:
-        """The initialization of the 2D de-convolution layer.
+        '''The initialization of the 2D de-convolution layer.
         Structure: conv2d + batch_norm + relu + dropout
         Input shape:
         Single sensor: (b, c (2 * 3 or 1), intervals, spectral samples)
         We guarantee o_dim = i_dim * stride, according to o_dim = (i_dim - 1) * stride + kernel - 2 * pad + out_pad,
         we have: *** out_pad = 2 * pad - kernel + stride ***
-        """
+        '''
         super().__init__()
 
         # set the output padding
         if output_padding is None:
-            output_padding = 2 * np.array(padding) - np.array(kernel_size) + np.array(stride)
+            output_padding = (
+                2 * np.array(padding) - np.array(kernel_size) + np.array(stride)
+            )
 
         self.deconv = nn.ConvTranspose2d(
             in_channels,
@@ -100,27 +112,29 @@ class DeConvLayer2D(nn.Module):
             output_padding=output_padding,
             bias=bias,
         )
-        self.batch_norm = nn.BatchNorm2d(out_channels, eps=1e-5, momentum=0.1, track_running_stats=True)
+        self.batch_norm = nn.BatchNorm2d(
+            out_channels, eps=1e-5, momentum=0.1, track_running_stats=True
+        )
         if activation == "GELU":
             self.activation = nn.GELU()
         else:
             self.activation = nn.Identity()
 
-        """p: Probability of an element to be zero-ed
+        '''p: Probability of an element to be zero-ed
            - Input: (N, C, H, W) or (C, H, W)
            - Output: (N, C, H, W) or (C, H, W)
-        """
+        '''
         self.dropout = nn.Dropout2d(p=dropout_ratio)
 
     def forward(self, x):
-        """The forward function of the ConvLayer.
+        '''The forward function of the ConvLayer.
 
         InputShape: [b, c (1), INTERVAL, 2 * 3 * SPECTRAL_SAMPlES]
         OutputShape: [b, c_out, interval, spectral_samples]
 
         Args:
             x (_type_): _description_
-        """
+        '''
         conv_out = self.deconv(x)
         conv_out = self.batch_norm(conv_out)
         conv_out = self.activation(conv_out)
@@ -141,11 +155,11 @@ class ConvBlock(nn.Module):
         num_inter_layers=2,
         in_stride=1,
     ) -> None:
-        """The initialization of the sensor convolution block.
+        '''The initialization of the sensor convolution block.
         Structure: 3 * ConvLayer
         conv_lens gives the length of convolution kernel at each conv layer.
         At the input conv layer, necessary dimension unifying might be performed between acoustic and other sensors.
-        """
+        '''
         super().__init__()
         self.conv_lens = conv_lens
         self.num_inter_layers = num_inter_layers
@@ -181,16 +195,22 @@ class ConvBlock(nn.Module):
         # define output conv layer
         if self.fuse_time_flag:
             if in_stride == 1:
-                last_in_channels = int(out_channels / 2 * in_spectrum_len * interval_num)
+                last_in_channels = int(
+                    out_channels / 2 * in_spectrum_len * interval_num
+                )
             else:
-                last_in_channels = int(out_channels / 2 * in_spectrum_len * interval_num / in_stride[1])
+                last_in_channels = int(
+                    out_channels / 2 * in_spectrum_len * interval_num / in_stride[1]
+                )
         else:
             if in_stride == 1:
                 last_in_channels = int(out_channels / 2 * in_spectrum_len)
             else:
-                last_in_channels = int(out_channels / 2 * in_spectrum_len / in_stride[1])
+                last_in_channels = int(
+                    out_channels / 2 * in_spectrum_len / in_stride[1]
+                )
 
-        """No activation at the out conv layer."""
+        '''No activation at the out conv layer.'''
         self.conv_layer_out = nn.Conv1d(
             last_in_channels,
             out_channels,
@@ -202,13 +222,13 @@ class ConvBlock(nn.Module):
         )
 
     def forward(self, x):
-        """The forward function of the SensorConvBlock.
+        '''The forward function of the SensorConvBlock.
 
         Args:
             x (_type_): (b, c (2 * 3 or 1), i (intervals), s (spectrum))
         Output:
             [b, c, i]
-        """
+        '''
         # input conv layer
         conv_out = self.conv_layer_in(x)
 

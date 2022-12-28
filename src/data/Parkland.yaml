@@ -186,8 +186,15 @@ TransformerV4:
                 audio: 80
                 seismic: 1
         freq_out_channels: 256
+        embed_dim: 96
         freq_head_num: 4
         freq_block_num: 4
+        loc_mod_conv_lens: 
+                audio: [[1, 80], [4, 5], [4, 5]]
+                seismic: [[3, 3], [3, 3], [3, 3]]
+        loc_mod_in_conv_stride:
+                audio: [1, 80]
+                seismic: [1, 1]
         # single modality
         loc_mod_out_channels: 256
         loc_mod_head_num: 4
@@ -208,26 +215,29 @@ TransformerV4:
         scheduler_gamma: 0.2
         start_lr: 0.00003
         # Transformer Config
-        embed_dim:
-                audio: 160
-                seismic: 2
-
-        depths: [2, 2]
-        num_heads: [2, 4]
-        window_size:
-                audio: 10
-                seismic: 10
+        depths: [2]
+        num_heads: [4]
+        window_size: 7
         mlp_ratio: 4.
         qkv_bias: True
         APE: False
         patch_norm: True
+        patch_size:
+                freq:
+                        shake:
+                                audio: 2
+                                seismic: 2
+                mod:
+                        shake:
+                                audio: 2
+                                seismic: 2
         patch_embed:
                 audio:
                         image_size: [10, 20]
-                        patch_size: 5
+                        patch_size: 1
                 seismic:
                         image_size: [10, 20]
-                        patch_size: 5
+                        patch_size: 1
 
 
 # Missing Modality Generator

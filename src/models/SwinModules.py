@@ -1,3 +1,12 @@
+'''
+@ref: https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
+@inproceedings{liu2021Swin,
+  title={Swin Transformer: Hierarchical Vision Transformer using Shifted Windows},
+  author={Liu, Ze and Lin, Yutong and Cao, Yue and Hu, Han and Wei, Yixuan and Zhang, Zheng and Lin, Stephen and Guo, Baining},
+  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)},
+  year={2021}
+}
+'''
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
@@ -423,7 +432,7 @@ class PatchEmbed(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer. Default: None
     '''
 
-    def __init__(self, img_size=(224, 224), patch_size=4, in_chans=3, embed_dim=96, norm_layer=None):
+    def __init__(self, img_size=(224, 224), patch_size=4, in_chans=3, embed_dim=96, norm_layer=None, stride=1):
         super().__init__()
         # img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -447,7 +456,10 @@ class PatchEmbed(nn.Module):
         # FIXME look at relaxing size constraints
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
-        x = self.proj(x).flatten(2).transpose(1, 2)  # B Ph*Pw C
+
+        x = self.proj(x)  # B Ph*Pw C
+        x = x.flatten(2).transpose(1, 2)
+        # print("After flatten", x.shape)
         if self.norm is not None:
             x = self.norm(x)
         return x

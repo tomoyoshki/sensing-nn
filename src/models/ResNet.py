@@ -106,8 +106,6 @@ class ResNet(nn.Module):
             loc_mod_features[loc] = []
             for mod in self.modalities:
                 loc_mod_features[loc].append(self.loc_mod_extractors[loc][mod](freq_x[loc][mod]))
-            for i in loc_mod_features[loc]:
-                print(i.shape)
             loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=3)
 
         # Step 4: Feature fusion for different mods in the same location
