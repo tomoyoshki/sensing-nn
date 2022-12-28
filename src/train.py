@@ -7,15 +7,17 @@ import torch.nn as nn
 import numpy as np
 
 from tqdm import tqdm
-from test import eval_given_model
+# from test import eval_given_model
+from train_utils.eval_functions import eval_given_model
 
 # import models
-from data_augmenter import Augmenter
+from data_augmenter.Augmenter import Augmenter
 from models.ResNet import ResNet
 from models.DeepSense import DeepSense
 from models.Transformer import Transformer
 from models.TransformerV2 import TransformerV2
 from models.TransformerV3 import TransformerV3
+from models.TransformerV4 import TransformerV4
 
 # train utils
 from train_utils.supervised_train import supervised_train_classifier
@@ -35,6 +37,14 @@ def train(args):
     test_dataloader, _ = create_dataloader("test", args, batch_size=args.batch_size, workers=args.workers)
     num_batches = len(train_dataloader)
 
+
+    print(f"{'='*30}Dataloaders loaded{'='*30}")
+    print(f"=\tTrain: {len(train_dataloader)}")
+    print(f"=\tVal: {len(val_dataloader)}")
+    print(f"=\tTest: {len(test_dataloader)}")
+    print(f"{'='*70}")
+
+
     # Init the miss modality simulator
     augmenter = Augmenter(args)
     augmenter.to(args.device)
@@ -49,6 +59,8 @@ def train(args):
         classifier = TransformerV2(args)
     elif args.model == "TransformerV3":
         classifier = TransformerV3(args)
+    elif args.model == "TransformerV4":
+        classifier = TransformerV4(args)
     elif args.model == "ResNet":
         classifier = ResNet(args)
     else:
@@ -56,14 +68,22 @@ def train(args):
     classifier = classifier.to(args.device)
     args.classifier = classifier
 
+
+    print(f"=\tClassifier model loaded")
     # Init the Tensorboard summary writer
     tb_writer = SummaryWriter(args.tensorboard_log)
 
+    print(f"=\tTensorboard loaded")
+
+    
     # define the loss function
     if args.multi_class:
         classifier_loss_func = nn.BCELoss()
     else:
         classifier_loss_func = nn.CrossEntropyLoss()
+
+
+    print("=\tLoss function defined")
 
     if args.train_mode == "supervised":
         supervised_train_classifier(

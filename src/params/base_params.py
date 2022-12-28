@@ -102,6 +102,9 @@ def parse_base_args(option="train"):
     )
 
     # evaluation configurationslp="Whether to evaluate the noise detector",
+
+    '''
+    # Comment out the following for pretrain
     parser.add_argument(
         "-test_noisy_parkland",
         type=str,
@@ -114,6 +117,7 @@ def parse_base_args(option="train"):
         default="false",
         help="Whether to test on the nosiy data of parkland dataset.",
     )
+    '''
 
     args = parser.parse_args()
 

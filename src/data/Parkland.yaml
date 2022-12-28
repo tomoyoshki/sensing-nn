@@ -179,6 +179,67 @@ TransformerV3:
         scheduler_gamma: 0.2
         start_lr: 0.00003
 
+TransformerV4:
+        dropout_ratio: 0.2
+        # loc mod freq feature
+        in_stride:
+                audio: 80
+                seismic: 1
+        freq_out_channels: 256
+        embed_dim: 96
+        freq_head_num: 4
+        freq_block_num: 4
+        loc_mod_conv_lens: 
+                audio: [[1, 80], [4, 5], [4, 5]]
+                seismic: [[3, 3], [3, 3], [3, 3]]
+        loc_mod_in_conv_stride:
+                audio: [1, 80]
+                seismic: [1, 1]
+        # single modality
+        loc_mod_out_channels: 256
+        loc_mod_head_num: 4
+        loc_mod_block_num: 2
+        # single location
+        loc_out_channels: 256
+        loc_head_num: 4
+        loc_block_num: 2
+        # sample
+        interval_out_channels: 256
+        interval_head_num: 4
+        interval_block_num: 2
+        # FC layer
+        fc_dim: 512
+        # Training config
+        train_epochs: 1500
+        scheduler_step: 200
+        scheduler_gamma: 0.2
+        start_lr: 0.00003
+        # Transformer Config
+        depths: [2]
+        num_heads: [4]
+        window_size: 7
+        mlp_ratio: 4.
+        qkv_bias: True
+        APE: False
+        patch_norm: True
+        patch_size:
+                freq:
+                        shake:
+                                audio: 2
+                                seismic: 2
+                mod:
+                        shake:
+                                audio: 2
+                                seismic: 2
+        patch_embed:
+                audio:
+                        image_size: [10, 20]
+                        patch_size: 1
+                seismic:
+                        image_size: [10, 20]
+                        patch_size: 1
+
+
 # Missing Modality Generator
 MissModalityGenerator:
         sensors: 2

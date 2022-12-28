@@ -94,7 +94,8 @@ class ResNet(nn.Module):
                 org_time_x[loc][mod] = org_time_x[loc][mod].to(args.device)
 
         # Step 1: Add noise to the time-domain data
-        augmented_time_x = augmenter.augment_forward(org_time_x)
+        # augmented_time_x = augmenter.augment_forward(org_time_x)
+        augmented_time_x = org_time_x
 
         # Step 2: FFT on the time domain data
         freq_x = fft_preprocess(augmented_time_x, args)

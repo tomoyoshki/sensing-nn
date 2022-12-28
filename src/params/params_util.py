@@ -91,10 +91,12 @@ def set_auto_params(args):
 
     # verbose
     args.verbose = str_to_bool(args.verbose)
-    args.save_emb = str_to_bool(args.save_emb)
-    args.elastic_mod = str_to_bool(args.elastic_mod)
-    args.test_noisy_parkland = str_to_bool(args.test_noisy_parkland)
-    args.test_wind_parkland = str_to_bool(args.test_wind_parkland)
+
+    # TODO: no attribtue save_emb, elastic_mod
+    # args.save_emb = str_to_bool(args.save_emb)
+    # args.elastic_mod = str_to_bool(args.elastic_mod)
+    # args.test_noisy_parkland = str_to_bool(args.test_noisy_parkland)
+    # args.test_wind_parkland = str_to_bool(args.test_wind_parkland)
 
     # threshold
     args.threshold = 0.5

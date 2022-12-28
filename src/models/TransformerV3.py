@@ -177,8 +177,7 @@ class TransformerV3(nn.Module):
                 org_time_x[loc][mod] = org_time_x[loc][mod].to(args.device)
 
         # Step 1 Optional data augmentation
-        augmented_time_x = augmenter.augment_forward(org_time_x)
-
+        augmented_time_x = org_time_x
         # Step 3: FFT on the time domain data
         freq_x = fft_preprocess(augmented_time_x, args)
 
@@ -193,6 +192,7 @@ class TransformerV3(nn.Module):
                 b, i, s, c = freq_input.shape
                 stride = self.config["in_stride"][mod]
                 freq_input = torch.reshape(freq_input, (b * i, -1, stride * c))
+                
                 freq_context_feature = self.freq_context_layers[loc][mod](freq_input)
                 freq_context_feature = freq_context_feature.reshape(
                     [b, i, int(s / stride), self.config["freq_out_channels"]]
@@ -203,10 +203,11 @@ class TransformerV3(nn.Module):
 
                 """interval feature extraction, [b, 1, i, c]"""
                 interval_context_feature = self.interval_context_layers[loc][mod](interval_input)
+                # [64, 10, 256] -> [B, 1, 10, 256]
                 interval_context_feature = interval_context_feature.unsqueeze(1)
-
-                """interval feature fusion, [b, 1, c]"""
-                loc_mod_input = self.interval_fusion_layers[loc][mod](interval_context_feature)
+                # [B, 1, 10, 256] -> [b, 1, c]
+                loc_mod_input = self.interval_fusion_layers[loc][mod](interval_context_feature)                
+                # appending [b, 1, c]
                 loc_mod_features[loc].append(loc_mod_input)
 
             # [b, 1, sensor, c]
