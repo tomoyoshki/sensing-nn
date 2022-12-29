@@ -1,8 +1,4 @@
-import os 
-import torch
-
-import numpy as np 
-
+import numpy as np
 from data_augmenter.NoAugmenter import NoAugmenter
 from data_augmenter.MissAugmenter import MissAugmenter
 from data_augmenter.NoiseAugmenter import NoiseAugmenter
@@ -11,7 +7,7 @@ from data_augmenter.SeparateAugmenter import SeparateAugmenter
 
 class Augmenter:
     def __init__(self, args) -> None:
-        """ This function is used to setup the data augmenter.
+        """This function is used to setup the data augmenter.
 
         Args:
             model (_type_): _description_
@@ -21,7 +17,7 @@ class Augmenter:
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
         print(f"=\t[Option]: {args.option}, mode: {self.mode}, stage: {args.stage}")
-        
+
         if args.augmenter == "NoiseAugmenter":
             print(f"[Data augmenter config]: {args.miss_generator}-{args.noise_mode}")
         elif args.augmenter == "NoAugmenter":
@@ -40,7 +36,7 @@ class Augmenter:
             self.augmenter = NoAugmenter(args)
         else:
             raise Exception(f"Invalid **augmenter** provided: {args.augmenter}")
-        
+
     def augment_forward(self, org_loc_inputs):
         """
         Add noise to the input_dict depending on the noise position.
@@ -55,7 +51,11 @@ class Augmenter:
             gt_loc_augmented_ids[loc] = gt_miss_ids
 
         return augmented_loc_inputs, gt_loc_augmented_ids
-    
+
+    def train(self):
+        """Set all components to train mode"""
+        self.augmenter.train()
+
     def eval(self):
         """Set all components to eval mode"""
         self.augmenter.eval()

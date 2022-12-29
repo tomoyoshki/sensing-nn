@@ -6,9 +6,8 @@ from torch.utils.data import Dataset
 
 
 class MultiModalDataset(Dataset):
-    def __init__(self, index_file, base_sample_path):
-        '''_summary_
-
+    def __init__(self, index_file, batch_path):
+        """
         Args:
             modalities (_type_): The list of modalities
             classes (_type_): The list of classes
@@ -25,15 +24,15 @@ class MultiModalDataset(Dataset):
                 -phone
                     - audio: Tensor
                     - acc: Tensor
-        '''
-        self.sample_files = list(np.loadtxt(os.path.join(base_sample_path, index_file), dtype=str))
-        self.base_sample_path = base_sample_path
+        """
+        self.sample_files = list(np.loadtxt(os.path.join(batch_path, index_file), dtype=str))
+        self.base_path = batch_path
 
     def __len__(self):
         return len(self.sample_files)
 
     def __getitem__(self, idx):
-        sample_file = os.path.join(self.base_sample_path, self.sample_files[idx])
+        sample_file = os.path.join(self.base_path, self.sample_files[idx])
         sample = torch.load(sample_file)
         label = sample["label"]
         data = sample["data"]
@@ -42,8 +41,9 @@ class MultiModalDataset(Dataset):
 
 
 class TripletMultiModalDataset(Dataset):
-    def __init__(self, index_file, base_sample_path):
-        '''Reference:
+    def __init__(self, index_file, base_path):
+        """
+        Reference:
             https://github.com/adambielski/siamese-triplet/blob/0c719f9e8f59fa386e8c59d10b2ddde9fac46276/datasets.py#L79
 
         Args:
@@ -65,14 +65,14 @@ class TripletMultiModalDataset(Dataset):
 
         Function:
             Generate a triplet of samples (anchor, pos, neg) within each batch
-        '''
-        self.sample_files = list(np.loadtxt(os.path.join(base_sample_path, index_file), dtype=str))
-        self.base_sample_path = base_sample_path
+        """
+        self.sample_files = list(np.loadtxt(os.path.join(base_path, index_file), dtype=str))
+        self.base_path = base_path
 
         # extract the label to id mapping
         self.label_to_ids = dict()
         for i, sample_file in enumerate(self.sample_files):
-            sample_file = os.path.join(self.base_sample_path, self.sample_files[i])
+            sample_file = os.path.join(self.base_path, self.sample_files[i])
             label = torch.load(sample_file)["label"].item()
             if label not in self.label_to_ids:
                 self.label_to_ids[label] = [i]
@@ -105,15 +105,15 @@ class TripletMultiModalDataset(Dataset):
         )
 
     def read_one_sample(self, idx):
-        '''Read the sample at the given id.
+        """
+        Read the sample at the given id.
 
         Args:
             idx (_type_): _description_
-        '''
-        sample_file = os.path.join(self.base_sample_path, self.sample_files[idx])
+        """
+        sample_file = os.path.join(self.base_path, self.sample_files[idx])
         sample = torch.load(sample_file)
         label = sample["label"]
-        # flag = sample["flag"]
         data = sample["data"]
 
         return data, label

@@ -15,7 +15,7 @@ def check_paths(path_list):
 
 
 def set_model_weight_folder(args):
-    """ Automatically get the model path.
+    """Automatically get the model path.
 
     Args:
         args (_type_): _description_
@@ -40,15 +40,15 @@ def set_model_weight_folder(args):
     existing_weights = os.listdir(dataset_model_path)
     for weight in existing_weights:
         # only check qualified weight with the required suffix
-        weight_miss_suffix = weight.split("_", 1)[-1]
-        if suffix != weight_miss_suffix:
+        weight_suffix = weight.split("_", 1)[-1]
+        if suffix != weight_suffix:
             continue
         else:
             weight_id = int(weight.split("_")[0][3:])
             if weight_id > newest_id:
                 newest_id = weight_id
                 newest_weight = weight
-                
+
     # set the weight path to avoid redundancy
     if args.option == "train":
         weight_folder = os.path.join(dataset_model_path, f"exp{newest_id + 1}") + f"_{suffix}"
@@ -116,9 +116,8 @@ def set_output_paths(args):
     # results path
     log_root_path = f"/home/{args.username}/FoundationSense/result/log"
 
-
-    today = date.today()
-    d1 = today.strftime("%m%d%Y")
+    # today = date.today()
+    # d1 = today.strftime("%m%d%Y")
     args.log_path = os.path.join(log_root_path, f"{args.dataset}_{args.model}_{args.train_mode}")
     check_paths([args.log_path])
 

@@ -81,7 +81,7 @@ def parse_base_args(option="train"):
     parser.add_argument(
         "-gpu",
         type=int,
-        default=None,
+        default=1,
         help="Specify which GPU to use.",
     )
 
@@ -100,24 +100,6 @@ def parse_base_args(option="train"):
         default=None,
         help="Specify the learning rate to try.",
     )
-
-    # evaluation configurationslp="Whether to evaluate the noise detector",
-
-    '''
-    # Comment out the following for pretrain
-    parser.add_argument(
-        "-test_noisy_parkland",
-        type=str,
-        default="false",
-        help="Whether to test on the nosiy data of parkland dataset.",
-    )
-    parser.add_argument(
-        "-test_wind_parkland",
-        type=str,
-        default="false",
-        help="Whether to test on the nosiy data of parkland dataset.",
-    )
-    '''
 
     args = parser.parse_args()
 
