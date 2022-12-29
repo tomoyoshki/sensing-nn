@@ -50,7 +50,7 @@ class Augmenter:
             augmented_loc_inputs[loc] = loc_augmented_input
             gt_loc_augmented_ids[loc] = gt_miss_ids
 
-        return augmented_loc_inputs, gt_loc_augmented_ids
+        return augmented_loc_inputs
 
     def train(self):
         """Set all components to train mode"""
