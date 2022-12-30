@@ -189,7 +189,7 @@ TransformerV4:
         # single modality
         time_freq_out_channels: 64
         time_freq_head_num: 4
-        time_freq_block_num: [4, 4, 4]
+        time_freq_block_num: [4, 4]
         # single modality
         mod_out_channels: 256
         mod_head_num: 4
@@ -199,7 +199,7 @@ TransformerV4:
         loc_head_num: 4
         loc_block_num: 2
         # SwinTransformer configs
-        window_size: 5 # TODO: Support more flexible window size
+        window_size: [5, 5] # TODO: Support more flexible window size
         mlp_ratio: 4.
         qkv_bias: True
         APE: False

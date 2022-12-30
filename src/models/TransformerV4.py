@@ -45,7 +45,7 @@ class TransformerV4(nn.Module):
         self.num_segments = args.dataset_config["num_segments"]
 
         # Transformer Variables
-        self.window_size = self.config["window_size"]
+        self.window_size = self.config["window_size"]  # window size (w_height, w_width)
         self.drop_rate = self.config["dropout_ratio"]
         self.norm_layer = nn.LayerNorm
         self.avgpool = nn.AdaptiveAvgPool1d(1)
@@ -65,6 +65,8 @@ class TransformerV4(nn.Module):
                 # TODO: Set the padded image size
                 stride = self.config["in_stride"][mod]
                 spectrum_len = args.dataset_config["loc_mod_spectrum_len"][loc][mod]
+                
+                # (10, 20) -> (12, 24) according to image size
                 img_size = (self.num_segments, spectrum_len // stride)
 
                 # Patch embedding and Linear embedding (H, W, in_channel) -> (H / p_size, W / p_size, C)
