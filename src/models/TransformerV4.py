@@ -62,12 +62,14 @@ class TransformerV4(nn.Module):
 
             for mod in self.modalities:
                 # Decide the spatial size for "image"
+                # TODO: Set the padded image size
                 stride = self.config["in_stride"][mod]
                 spectrum_len = args.dataset_config["loc_mod_spectrum_len"][loc][mod]
+                img_size = (self.num_segments, spectrum_len // stride)
 
                 # Patch embedding and Linear embedding (H, W, in_channel) -> (H / p_size, W / p_size, C)
                 self.patch_embed[loc][mod] = PatchEmbed(
-                    img_size=(self.num_segments, spectrum_len // stride),
+                    img_size=img_size,
                     patch_size=self.config["patch_size"]["freq"][mod],
                     in_chans=args.dataset_config["loc_mod_in_freq_channels"][loc][mod] * stride,
                     embed_dim=self.config["time_freq_out_channels"],
@@ -91,9 +93,7 @@ class TransformerV4(nn.Module):
                         depth=block_num,
                         drop=self.drop_rate,
                         norm_layer=self.norm_layer,
-                        downsample=PatchMerging
-                        if (i_layer < len(self.config["time_freq_block_num"]) - 1)
-                        else None,  # Patch merging before transformer blocks
+                        downsample=PatchMerging if (i_layer < len(self.config["time_freq_block_num"]) - 1) else None,
                     )
                     self.freq_interval_layers[loc][mod].append(layer)
 
@@ -176,7 +176,7 @@ class TransformerV4(nn.Module):
             for mod in self.modalities:
                 stride = self.config["in_stride"][mod]
 
-                # Frequency spectrum feature extraction
+                # TODO: Add a padding function to support more levels in SWIN hierarchy, e.g., 3 levels --> multiples of 4
                 freq_input = freq_x[loc][mod]
 
                 # [b, c, i, spectrum] -- > [b, i, spectrum, c]
