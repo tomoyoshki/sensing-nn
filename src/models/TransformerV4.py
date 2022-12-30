@@ -62,7 +62,7 @@ class TransformerV4(nn.Module):
 
             for mod in self.modalities:
                 # Decide the spatial size for "image"
-                # TODO: Set the padded image size
+                # TODO: Set the padded image size, 10 * 20 --> 16 * 24
                 stride = self.config["in_stride"][mod]
                 spectrum_len = args.dataset_config["loc_mod_spectrum_len"][loc][mod]
                 img_size = (self.num_segments, spectrum_len // stride)

@@ -185,11 +185,10 @@ TransformerV4:
         in_stride:
                 audio: 80
                 seismic: 1
-        embed_dim: 128
         # single modality
-        time_freq_out_channels: 64
+        time_freq_out_channels: 128
         time_freq_head_num: 4
-        time_freq_block_num: [4, 4, 4]
+        time_freq_block_num: [4, 4]
         # single modality
         mod_out_channels: 256
         mod_head_num: 4
