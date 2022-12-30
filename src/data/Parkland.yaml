@@ -152,13 +152,17 @@ TransformerV2:
 # Transformer config
 TransformerV3:
         dropout_ratio: 0.2
-        # loc mod freq feature
+        # single freq
         in_stride:
                 audio: 80
                 seismic: 1
         freq_out_channels: 256
         freq_head_num: 4
         freq_block_num: 4
+        # single interval 
+        interval_out_channels: 256
+        interval_head_num: 4
+        interval_block_num: 2
         # single modality
         loc_mod_out_channels: 256
         loc_mod_head_num: 4
@@ -167,10 +171,6 @@ TransformerV3:
         loc_out_channels: 256
         loc_head_num: 4
         loc_block_num: 2
-        # sample
-        interval_out_channels: 256
-        interval_head_num: 4
-        interval_block_num: 2
         # FC layer
         fc_dim: 512
         # Training config
@@ -185,24 +185,32 @@ TransformerV4:
         in_stride:
                 audio: 80
                 seismic: 1
-        embed_dim: 96
-        # Transformer Config
-        depths: [4]
-        num_heads: [4]
-        window_size: 7
+        embed_dim: 128
+        # single modality
+        time_freq_out_channels: 128
+        time_freq_head_num: 4
+        time_freq_block_num: [4, 4]
+        # single modality
+        mod_out_channels: 256
+        mod_head_num: 4
+        mod_block_num: 2
+        # single location
+        loc_out_channels: 256 # loc_out_channels == mod_out_channels
+        loc_head_num: 4
+        loc_block_num: 2
+        # SwinTransformer configs
+        window_size: 5
         mlp_ratio: 4.
         qkv_bias: True
         APE: False
         patch_norm: True
         patch_size:
                 freq:
-                        shake:
-                                audio: 2
-                                seismic: 2
+                        audio: 1
+                        seismic: 1
                 mod:
-                        shake:
-                                audio: 2
-                                seismic: 2
+                        audio: 1
+                        seismic: 1
         patch_embed:
                 audio:
                         image_size: [10, 20]
