@@ -189,7 +189,7 @@ TransformerV4:
         # single modality
         time_freq_out_channels: 64
         time_freq_head_num: 4
-        time_freq_block_num: [4, 4]
+        time_freq_block_num: [4, 4, 4]
         # single modality
         mod_out_channels: 256
         mod_head_num: 4
@@ -211,13 +211,6 @@ TransformerV4:
                 mod:
                         audio: 1
                         seismic: 1
-        patch_embed:
-                audio:
-                        image_size: [10, 20]
-                        patch_size: 1
-                seismic:
-                        image_size: [10, 20]
-                        patch_size: 1
         # FC layer
         fc_dim: 512
         # Training config

@@ -174,9 +174,10 @@ class SwinTransformerBlock(nn.Module):
         dim (int): Number of input channels.
         input_resolution (tuple[int]): Input resulotion.
         num_heads (int): Number of attention heads.
-        window_size (int): Window size.
+        --old: window_size (int): Window size.
+        --new: window_size [int, int] Window size in both directions
         --old: shift_size (int): Shift size for SW-MSA.
-        --new: shift_size (int, int) Shift size for SW-MSA in both directions
+        --new: shift_size [int, int] Shift size for SW-MSA in both directions 
         mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
         qkv_bias (bool, optional): If True, add a learnable bias to query, key, value. Default: True
         qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set.
@@ -209,11 +210,12 @@ class SwinTransformerBlock(nn.Module):
         self.dim = dim
         self.input_resolution = input_resolution
         self.num_heads = num_heads
-        self.window_size = window_size
-        self.window_height = window_size[0]
-        self.window_width = window_size[1]
-        self.shift_size = shift_size
+        self.shift_size = shift_size.copy()
+        self.window_size = window_size.copy()
         self.mlp_ratio = mlp_ratio
+
+        self.window_height = self.window_size[0]
+        self.window_width = self.window_size[1]
                 
         # window size condition in vertical (height) axis
         if self.input_resolution[0] <= self.window_height:
@@ -458,7 +460,7 @@ class BasicLayer(nn.Module):
                     dim=dim,
                     input_resolution=input_resolution,
                     num_heads=num_heads,
-                    window_size=window_size,
+                    window_size=window_size.copy(),
                     shift_size=[0, 0] if (i % 2 == 0) else [window_size[0]//2, window_size[1]//2], # TODO: not sure
                     mlp_ratio=mlp_ratio,
                     qkv_bias=qkv_bias,
