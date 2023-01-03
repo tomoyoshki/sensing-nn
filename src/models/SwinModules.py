@@ -36,14 +36,17 @@ def window_partition(x, window_size):
     """
     Args:
         x: (B, H, W, C)
-        window_size (int): window size
+        -- old window_size (int): Window size
+        -- new window_size (tuple): Window height and window width
     Returns:
         windows: (num_windows*B, window_size, window_size, C)
     """
+    window_height, window_width = window_size
+    
     B, H, W, C = x.shape
 
-    x = x.view(B, H // window_size, window_size, W // window_size, window_size, C)
-    windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
+    x = x.view(B, H // window_height, window_height, W // window_width, window_width, C)
+    windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_height, window_width, C)
     return windows
 
 
@@ -51,14 +54,16 @@ def window_reverse(windows, window_size, H, W):
     """
     Args:
         windows: (num_windows*B, window_size, window_size, C)
-        window_size (int): Window size
+        -- old window_size (int): Window size
+        -- new window_size (tuple): Window height and window width
         H (int): Height of image
         W (int): Width of image
     Returns:
         x: (B, H, W, C)
     """
-    B = int(windows.shape[0] / (H * W / window_size / window_size))
-    x = windows.view(B, H // window_size, W // window_size, window_size, window_size, -1)
+    window_height, window_width = window_size
+    B = int(windows.shape[0] / (H * W /  window_height / window_width))
+    x = windows.view(B, H // window_height, W // window_width, window_height, window_width, -1)
     x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, H, W, -1)
     return x
 
@@ -169,8 +174,10 @@ class SwinTransformerBlock(nn.Module):
         dim (int): Number of input channels.
         input_resolution (tuple[int]): Input resulotion.
         num_heads (int): Number of attention heads.
-        window_size (int): Window size.
-        shift_size (int): Shift size for SW-MSA.
+        --old: window_size (int): Window size.
+        --new: window_size [int, int] Window size in both directions
+        --old: shift_size (int): Shift size for SW-MSA.
+        --new: shift_size [int, int] Shift size for SW-MSA in both directions 
         mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
         qkv_bias (bool, optional): If True, add a learnable bias to query, key, value. Default: True
         qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set.
@@ -187,8 +194,8 @@ class SwinTransformerBlock(nn.Module):
         dim,
         input_resolution,
         num_heads,
-        window_size=7,
-        shift_size=0,
+        window_size=[5, 5],
+        shift_size=[0, 0],
         mlp_ratio=4.0,
         qkv_bias=True,
         qk_scale=None,
@@ -203,21 +210,40 @@ class SwinTransformerBlock(nn.Module):
         self.dim = dim
         self.input_resolution = input_resolution
         self.num_heads = num_heads
-        self.window_size = window_size
-        self.shift_size = shift_size
+        self.shift_size = shift_size.copy()
+        self.window_size = window_size.copy()
         self.mlp_ratio = mlp_ratio
-        if min(self.input_resolution) <= self.window_size:
-            # if window size is larger than input resolution, we don't partition windows
-            self.shift_size = 0
-            self.window_size = min(self.input_resolution)
+
+        self.window_height = self.window_size[0]
+        self.window_width = self.window_size[1]
+                
+        # window size condition in vertical (height) axis
+        if self.input_resolution[0] <= self.window_height:
+            # if window size is larger than input resolution in y axis, we don't partition windows vertically
+            self.shift_size[0] = 0
+            self.window_height = self.input_resolution[0]
+            self.window_size[0] = self.window_height
+
+        # window size condition in vertical (height) axis
+        if self.input_resolution[1] <= self.window_height:
+            # if window size is larger than input resolution in y axis, we don't partition windows vertically
+            self.shift_size[1] = 0
+            self.window_height = self.input_resolution[1]
+            self.window_size[1] = self.window_height
+                
+
         assert (
-            0 <= self.shift_size < self.window_size
-        ), f"shift_size must in 0-window_size: {self.shift_size} - {self.window_size}"
+            0 <= self.shift_size[0] < self.window_height
+        ), f"shift_size must in 0-window_height: {self.shift_size[0]} - {self.window_height}"
+        
+        assert (
+            0 <= self.shift_size[1] < self.window_width
+        ), f"shift_size must in 0-window_width: {self.shift_size[1]} - {self.window_width}"
 
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention(
             dim,
-            window_size=to_2tuple(self.window_size),
+            window_size=[self.window_height, self.window_width],
             num_heads=num_heads,
             qkv_bias=qkv_bias,
             qk_scale=qk_scale,
@@ -230,19 +256,19 @@ class SwinTransformerBlock(nn.Module):
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
-        if self.shift_size > 0:
+        if min(self.shift_size) > 0:
             # calculate attention mask for SW-MSA
             H, W = self.input_resolution
             img_mask = torch.zeros((1, H, W, 1))  # 1 H W 1
             h_slices = (
-                slice(0, -self.window_size),
-                slice(-self.window_size, -self.shift_size),
-                slice(-self.shift_size, None),
+                slice(0, -self.window_height),
+                slice(-self.window_height, -self.shift_size[0]),
+                slice(-self.shift_size[0], None),
             )
             w_slices = (
-                slice(0, -self.window_size),
-                slice(-self.window_size, -self.shift_size),
-                slice(-self.shift_size, None),
+                slice(0, -self.window_width),
+                slice(-self.window_width, -self.shift_size[1]),
+                slice(-self.shift_size[1], None),
             )
             cnt = 0
             for h in h_slices:
@@ -250,8 +276,8 @@ class SwinTransformerBlock(nn.Module):
                     img_mask[:, h, w, :] = cnt
                     cnt += 1
 
-            mask_windows = window_partition(img_mask, self.window_size)  # nW, window_size, window_size, 1
-            mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
+            mask_windows = window_partition(img_mask, (self.window_height, self.window_width))  # nW, window_size, window_size, 1
+            mask_windows = mask_windows.view(-1, self.window_height * self.window_width)
             attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
             attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
         else:
@@ -271,9 +297,9 @@ class SwinTransformerBlock(nn.Module):
         x = x.view(B, H, W, C)
 
         # cyclic shift
-        if self.shift_size > 0:
+        if min(self.shift_size) > 0:
             if not self.fused_window_process:
-                shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+                shifted_x = torch.roll(x, shifts=(-self.shift_size[0], -self.shift_size[1]), dims=(1, 2))
                 # partition windows
                 x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
             else:
@@ -284,19 +310,19 @@ class SwinTransformerBlock(nn.Module):
             # partition windows
             x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
 
-        x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
+        x_windows = x_windows.view(-1, self.window_height * self.window_width, C)  # nW*B, window_size*window_size, C
 
         # W-MSA/SW-MSA
         attn_windows = self.attn(x_windows, mask=self.attn_mask)  # nW*B, window_size*window_size, C
 
         # merge windows
-        attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
+        attn_windows = attn_windows.view(-1, self.window_height, self.window_width, C)
 
         # reverse cyclic shift
-        if self.shift_size > 0:
+        if min(self.shift_size) > 0:
             if not self.fused_window_process:
                 shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
-                x = torch.roll(shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
+                x = torch.roll(shifted_x, shifts=(self.shift_size[0], self.shift_size[1]), dims=(1, 2))
             else:
                 # x = WindowProcessReverse.apply(attn_windows, B, H, W, C, self.shift_size, self.window_size)
                 print("Window process reversed")
@@ -323,8 +349,8 @@ class SwinTransformerBlock(nn.Module):
         # norm1
         flops += self.dim * H * W
         # W-MSA/SW-MSA
-        nW = H * W / self.window_size / self.window_size
-        flops += nW * self.attn.flops(self.window_size * self.window_size)
+        nW = H * W / self.window_height / self.window_width
+        flops += nW * self.attn.flops(self.window_height * self.window_width)
         # mlp
         flops += 2 * H * W * self.dim * self.dim * self.mlp_ratio
         # norm2
@@ -388,7 +414,8 @@ class BasicLayer(nn.Module):
         input_resolution (tuple[int]): Input resolution.
         depth (int): Number of blocks.
         num_heads (int): Number of attention heads.
-        window_size (int): Local window size.
+        --old: window_size (int): Local window size.
+        --nwq: window_size [int, int]: Local window size (height, width)
         mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
         qkv_bias (bool, optional): If True, add a learnable bias to query, key, value. Default: True
         qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set.
@@ -433,8 +460,8 @@ class BasicLayer(nn.Module):
                     dim=dim,
                     input_resolution=input_resolution,
                     num_heads=num_heads,
-                    window_size=window_size,
-                    shift_size=0 if (i % 2 == 0) else window_size // 2,
+                    window_size=window_size.copy(),
+                    shift_size=[0, 0] if (i % 2 == 0) else [window_size[0]//2, window_size[1]//2], # TODO: not sure
                     mlp_ratio=mlp_ratio,
                     qkv_bias=qkv_bias,
                     qk_scale=qk_scale,
