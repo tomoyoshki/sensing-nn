@@ -224,12 +224,12 @@ class SwinTransformerBlock(nn.Module):
             self.window_height = self.input_resolution[0]
             self.window_size[0] = self.window_height
 
-        # window size condition in vertical (height) axis
-        if self.input_resolution[1] <= self.window_height:
+        # window size condition in horizontal (horizontal) axis
+        if self.input_resolution[1] <= self.window_width:
             # if window size is larger than input resolution in y axis, we don't partition windows vertically
             self.shift_size[1] = 0
-            self.window_height = self.input_resolution[1]
-            self.window_size[1] = self.window_height
+            self.window_width = self.input_resolution[1]
+            self.window_size[1] = self.window_width
                 
 
         assert (
