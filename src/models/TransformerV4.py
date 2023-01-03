@@ -247,7 +247,10 @@ class TransformerV4(nn.Module):
                 # Repermute back to [b, c, i, spectrum], (b, c, h, w) required in PatchEmbed
                 freq_input = torch.permute(freq_input, [0, 3, 1, 2])
                 
+
                 # Pad [i, spectrum] to the required padding size
+                
+                # Pad both front and back
                 # freq_input = F.pad(input=freq_input, pad=(padded_width_prev, padded_width_next, padded_height_prev, padded_height_next), mode='constant', value=0)
                 
                 # test different padding

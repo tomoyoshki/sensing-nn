@@ -186,9 +186,9 @@ TransformerV4:
                 audio: 80
                 seismic: 1
         # single modality
-        time_freq_out_channels: 128
+        time_freq_out_channels: 64
         time_freq_head_num: 4
-        time_freq_block_num: [4, 4]
+        time_freq_block_num: [4, 4, 4]
         # single modality
         mod_out_channels: 256
         mod_head_num: 4
@@ -216,7 +216,7 @@ TransformerV4:
         train_epochs: 1500
         scheduler_step: 200
         scheduler_gamma: 0.2
-        start_lr: 0.0001
+        start_lr: 0.00001
 
 
 
