@@ -5,48 +5,16 @@ import torch.nn.functional as F
 
 from torch.nn import TransformerEncoderLayer
 from input_utils.fft_utils import fft_preprocess
+from input_utils.padding_utils import get_padded_size
 from models.FusionModules import TransformerFusionBlock
 
 import logging
-
-import math
 
 from models.SwinModules import (
     BasicLayer,
     PatchEmbed,
     PatchMerging,
 )
-
-def PadImages(img_size, window_size, block_nums):
-    r"""Calculate the padded image size based on the block number, window size, and image size
-    Args:
-        img_size [int, int]: Image size
-        window_size [int, int]: Window size
-        block_nums (int): Length of SwinTransformer blocks
-    """
-    
-    # get the number of downsampling in the layer
-    scale_factor = 2 ** (block_nums - 1)
-    
-    # find the minimum height and width that satisfies the downsampling
-    scaled_height = window_size[0] * scale_factor
-    scaled_width = window_size[1] * scale_factor
-
-    padded_img_size = [
-        max(scaled_height, img_size[0]),
-        max(scaled_width, img_size[1])
-    ]
-       
-    for i in range(2):
-        if padded_img_size[i] % (window_size[i] * scale_factor) != 0:
-            # find a size greater than img_size divisible by window_size and ([2 ** len(blocks))
-            # window_size * 2 ** x > img_size
-            # x = ceil(log(img_size / window_size, 2))
-            max_depth_len = math.ceil(math.log((padded_img_size[i] / window_size[i]), 2))
-            # new_img_size = window_size * 2 ** x
-            padded_img_size[i] = window_size[i] * 2 ** (max_depth_len)
-
-    return padded_img_size
 
 
 class TransformerV4(nn.Module):
@@ -82,7 +50,6 @@ class TransformerV4(nn.Module):
 
         # Transformer Variables
         self.window_size = self.config["window_size"]  # window size (w_height, w_width)
-        
         self.drop_rate = self.config["dropout_ratio"]
         self.norm_layer = nn.LayerNorm
         self.avgpool = nn.AdaptiveAvgPool1d(1)
@@ -104,12 +71,11 @@ class TransformerV4(nn.Module):
                 stride = self.config["in_stride"][mod]
                 spectrum_len = args.dataset_config["loc_mod_spectrum_len"][loc][mod]
                 img_size = (self.num_segments, spectrum_len // stride)
-                
+
                 # get the padded image size
-                padded_img_size = PadImages(img_size, self.window_size, len(self.config["time_freq_block_num"]))
-                
-                logging.info(f"=\tPadded image size: {padded_img_size}",)
-                
+                padded_img_size = get_padded_size(img_size, self.window_size, len(self.config["time_freq_block_num"]))
+                logging.info(f"=\tPadded image size: {padded_img_size}")
+
                 # Patch embedding and Linear embedding (H, W, in_channel) -> (H / p_size, W / p_size, C)
                 self.patch_embed[loc][mod] = PatchEmbed(
                     img_size=padded_img_size,
@@ -220,22 +186,7 @@ class TransformerV4(nn.Module):
                 stride = self.config["in_stride"][mod]
                 spectrum_len = args.dataset_config["loc_mod_spectrum_len"][loc][mod]
                 img_size = (self.num_segments, spectrum_len // stride)
-
-                # TODO: Add a padding function to support more levels in SWIN hierarchy, e.g., 3 levels --> multiples of 4
                 freq_input = freq_x[loc][mod]
-
-                padded_img_size = self.patch_embed[loc][mod].img_size
-                padded_height = padded_img_size[0] - img_size[0]
-                padded_height_prev = padded_height // 2
-                padded_height_next = padded_height_prev
-                if padded_height % 2 != 0:
-                    padded_height_next += 1
-                    
-                padded_width = padded_img_size[1] - img_size[1]
-                padded_width_prev = padded_width // 2
-                padded_width_next = padded_width_prev
-                if padded_width % 2 != 0:
-                    padded_width_next += 1
 
                 # [b, c, i, spectrum] -- > [b, i, spectrum, c]
                 freq_input = torch.permute(freq_input, [0, 2, 3, 1])
@@ -246,12 +197,20 @@ class TransformerV4(nn.Module):
 
                 # Repermute back to [b, c, i, spectrum], (b, c, h, w) required in PatchEmbed
                 freq_input = torch.permute(freq_input, [0, 3, 1, 2])
-                
+
                 # Pad [i, spectrum] to the required padding size
+                padded_img_size = self.patch_embed[loc][mod].img_size
+                padded_height = padded_img_size[0] - img_size[0]
+                # padded_height_prev = padded_height // 2
+                # padded_height_next = padded_height - padded_height_prev
+
+                padded_width = padded_img_size[1] - img_size[1]
+                # padded_width_prev = padded_width // 2
+                # padded_width_next = padded_width - padded_height_prev
                 # freq_input = F.pad(input=freq_input, pad=(padded_width_prev, padded_width_next, padded_height_prev, padded_height_next), mode='constant', value=0)
-                
+
                 # test different padding
-                freq_input = F.pad(input=freq_input, pad=(0, padded_width, 0, padded_height), mode='constant', value=0)
+                freq_input = F.pad(input=freq_input, pad=(0, padded_width, 0, padded_height), mode="constant", value=0)
 
                 # Patch Partition and Linear Embedding
                 embeded_input = self.patch_embed[loc][mod](freq_input)

@@ -42,7 +42,7 @@ def window_partition(x, window_size):
         windows: (num_windows*B, window_size, window_size, C)
     """
     window_height, window_width = window_size
-    
+
     B, H, W, C = x.shape
 
     x = x.view(B, H // window_height, window_height, W // window_width, window_width, C)
@@ -62,7 +62,7 @@ def window_reverse(windows, window_size, H, W):
         x: (B, H, W, C)
     """
     window_height, window_width = window_size
-    B = int(windows.shape[0] / (H * W /  window_height / window_width))
+    B = int(windows.shape[0] / (H * W / window_height / window_width))
     x = windows.view(B, H // window_height, W // window_width, window_height, window_width, -1)
     x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, H, W, -1)
     return x
@@ -177,7 +177,7 @@ class SwinTransformerBlock(nn.Module):
         --old: window_size (int): Window size.
         --new: window_size [int, int] Window size in both directions
         --old: shift_size (int): Shift size for SW-MSA.
-        --new: shift_size [int, int] Shift size for SW-MSA in both directions 
+        --new: shift_size [int, int] Shift size for SW-MSA in both directions
         mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
         qkv_bias (bool, optional): If True, add a learnable bias to query, key, value. Default: True
         qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set.
@@ -216,7 +216,7 @@ class SwinTransformerBlock(nn.Module):
 
         self.window_height = self.window_size[0]
         self.window_width = self.window_size[1]
-                
+
         # window size condition in vertical (height) axis
         if self.input_resolution[0] <= self.window_height:
             # if window size is larger than input resolution in y axis, we don't partition windows vertically
@@ -224,18 +224,17 @@ class SwinTransformerBlock(nn.Module):
             self.window_height = self.input_resolution[0]
             self.window_size[0] = self.window_height
 
-        # window size condition in vertical (height) axis
+        # window size condition in horizontal (width) axis
         if self.input_resolution[1] <= self.window_height:
-            # if window size is larger than input resolution in y axis, we don't partition windows vertically
+            # if window size is larger than input resolution in y axis, we don't partition windows horizontally
             self.shift_size[1] = 0
-            self.window_height = self.input_resolution[1]
-            self.window_size[1] = self.window_height
-                
+            self.window_width = self.input_resolution[1]
+            self.window_size[1] = self.window_width
 
         assert (
             0 <= self.shift_size[0] < self.window_height
         ), f"shift_size must in 0-window_height: {self.shift_size[0]} - {self.window_height}"
-        
+
         assert (
             0 <= self.shift_size[1] < self.window_width
         ), f"shift_size must in 0-window_width: {self.shift_size[1]} - {self.window_width}"
@@ -276,7 +275,9 @@ class SwinTransformerBlock(nn.Module):
                     img_mask[:, h, w, :] = cnt
                     cnt += 1
 
-            mask_windows = window_partition(img_mask, (self.window_height, self.window_width))  # nW, window_size, window_size, 1
+            mask_windows = window_partition(
+                img_mask, (self.window_height, self.window_width)
+            )  # nW, window_size, window_size, 1
             mask_windows = mask_windows.view(-1, self.window_height * self.window_width)
             attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
             attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
@@ -461,7 +462,7 @@ class BasicLayer(nn.Module):
                     input_resolution=input_resolution,
                     num_heads=num_heads,
                     window_size=window_size.copy(),
-                    shift_size=[0, 0] if (i % 2 == 0) else [window_size[0]//2, window_size[1]//2], # TODO: not sure
+                    shift_size=[0, 0] if (i % 2 == 0) else [window_size[0] // 2, window_size[1] // 2],  # TODO: not sure
                     mlp_ratio=mlp_ratio,
                     qkv_bias=qkv_bias,
                     qk_scale=qk_scale,

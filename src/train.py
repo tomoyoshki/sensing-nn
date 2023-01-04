@@ -1,3 +1,7 @@
+import warnings
+
+warnings.simplefilter("ignore", UserWarning)
+
 import os
 import time
 import torch
