@@ -508,16 +508,16 @@ class PatchEmbed(nn.Module):
     """Image to Patch Embedding
     Args:
         img_size (int): Image size.  Default: 224.
-        patch_size (int): Patch token size. Default: 4.
+        patch_size (int):
+        --old: Patch token size. Default: 4.
+        --new: Patch token size. Default: [4, 4].
         in_chans (int): Number of input image channels. Default: 3.
         embed_dim (int): Number of linear projection output channels. Default: 96.
         norm_layer (nn.Module, optional): Normalization layer. Default: None
     """
 
-    def __init__(self, img_size=(224, 224), patch_size=4, in_chans=3, embed_dim=96, norm_layer=None, stride=1):
+    def __init__(self, img_size=(224, 224), patch_size=[4, 4], in_chans=3, embed_dim=96, norm_layer=None, stride=1):
         super().__init__()
-        # img_size = to_2tuple(img_size)
-        patch_size = to_2tuple(patch_size)
         patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
         self.img_size = img_size
         self.patch_size = patch_size
@@ -542,7 +542,6 @@ class PatchEmbed(nn.Module):
 
         x = self.proj(x)  # B Ph*Pw C
         x = x.flatten(2).transpose(1, 2)
-        # print("After flatten", x.shape)
         if self.norm is not None:
             x = self.norm(x)
         return x

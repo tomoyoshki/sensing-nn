@@ -74,7 +74,7 @@ class TransformerV4(nn.Module):
 
                 # get the padded image size
                 padded_img_size = get_padded_size(img_size, self.window_size, len(self.config["time_freq_block_num"]))
-                logging.info(f"=\tPadded image size: {padded_img_size}")
+                logging.info(f"=\tPadded image size for {mod}: {padded_img_size}")
 
                 # Patch embedding and Linear embedding (H, W, in_channel) -> (H / p_size, W / p_size, C)
                 self.patch_embed[loc][mod] = PatchEmbed(
@@ -85,6 +85,7 @@ class TransformerV4(nn.Module):
                     norm_layer=self.norm_layer,
                 )
                 patches_resolution = self.patch_embed[loc][mod].patches_resolution
+                logging.info(f"=\tPatch resolution for {mod}: {patches_resolution}")
 
                 # Swin Transformer Block
                 self.freq_interval_layers[loc][mod] = nn.ModuleList()
@@ -106,6 +107,7 @@ class TransformerV4(nn.Module):
                         downsample=PatchMerging if (i_layer < len(self.config["time_freq_block_num"]) - 1) else None,
                     )
                     self.freq_interval_layers[loc][mod].append(layer)
+
                 # Unify the input channels for each modality
                 self.mod_in_layers[loc][mod] = nn.Linear(
                     (patches_resolution[0] // down_ratio) * (patches_resolution[1] // down_ratio) * layer_dim,

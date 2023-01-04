@@ -183,7 +183,7 @@ TransformerV4:
         dropout_ratio: 0.2
         # loc mod freq feature
         in_stride:
-                audio: 80
+                audio: 1
                 seismic: 1
         # single modality
         time_freq_out_channels: 128
@@ -198,18 +198,15 @@ TransformerV4:
         loc_head_num: 4
         loc_block_num: 2
         # SwinTransformer configs
-        window_size: [3, 5] # TODO: Support more flexible window size
+        window_size: [5, 5] 
         mlp_ratio: 4.
         qkv_bias: True
         APE: False
         patch_norm: True
         patch_size:
                 freq:
-                        audio: 1
-                        seismic: 1
-                mod:
-                        audio: 1
-                        seismic: 1
+                        audio: [1, 40]
+                        seismic: [1, 1]
         # FC layer
         fc_dim: 512
         # Training config
