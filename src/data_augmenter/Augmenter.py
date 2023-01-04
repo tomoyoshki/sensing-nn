@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 from data_augmenter.NoAugmenter import NoAugmenter
 from data_augmenter.MissAugmenter import MissAugmenter
@@ -16,14 +17,14 @@ class Augmenter:
         self.mode = self.args.train_mode if self.args.option == "train" else self.args.inference_mode
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
-        print(f"=\t[Option]: {args.option}, mode: {self.mode}, stage: {args.stage}")
+        logging.info(f"=\t[Option]: {args.option}, mode: {self.mode}, stage: {args.stage}")
 
         if args.augmenter == "NoiseAugmenter":
-            print(f"[Data augmenter config]: {args.miss_generator}-{args.noise_mode}")
+            logging.info(f"[Data augmenter config]: {args.miss_generator}-{args.noise_mode}")
         elif args.augmenter == "NoAugmenter":
-            print(f"=\t{args.augmenter}")
+            logging.info(f"=\t{args.augmenter}")
         else:
-            print(f"[Miss augmenter config]: {args.miss_generator}")
+            logging.info(f"[Miss augmenter config]: {args.miss_generator}")
 
         # Step 1: Init the missing modality generator
         if args.augmenter == "SeparateAugmenter":
