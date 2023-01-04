@@ -55,7 +55,7 @@ def window_reverse(windows, window_size, H, W):
     Args:
         windows: (num_windows*B, window_size, window_size, C)
         -- old window_size (int): Window size
-        -- new window_size (tuple): Window height and window width
+        -- new window_size [int, int]: Window height and window width
         H (int): Height of image
         W (int): Width of image
     Returns:
@@ -224,10 +224,14 @@ class SwinTransformerBlock(nn.Module):
             self.window_height = self.input_resolution[0]
             self.window_size[0] = self.window_height
 
-        # window size condition in horizontal (width) axis
-        if self.input_resolution[1] <= self.window_height:
-            # if window size is larger than input resolution in y axis, we don't partition windows horizontally
+        # window size condition in horizontal (horizontal) axis
+        if self.input_resolution[1] <= self.window_width:
+            # if window size is larger than input resolution in y axis, we don't partition windows vertically
             self.shift_size[1] = 0
+            self.window_width = self.input_resolution[1]
+            self.window_size[1] = self.window_width
+                
+
             self.window_width = self.input_resolution[1]
             self.window_size[1] = self.window_width
 
