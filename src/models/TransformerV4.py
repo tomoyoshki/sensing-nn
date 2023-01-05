@@ -49,7 +49,6 @@ class TransformerV4(nn.Module):
         self.num_segments = args.dataset_config["num_segments"]
 
         # Transformer Variables
-        self.window_size = self.config["window_size"]  # window size (w_height, w_width)
         self.drop_rate = self.config["dropout_ratio"]
         self.norm_layer = nn.LayerNorm
         self.avgpool = nn.AdaptiveAvgPool1d(1)
@@ -73,7 +72,11 @@ class TransformerV4(nn.Module):
                 img_size = (self.num_segments, spectrum_len // stride)
 
                 # get the padded image size
-                padded_img_size = get_padded_size(img_size, self.window_size, len(self.config["time_freq_block_num"]))
+                padded_img_size = get_padded_size(
+                    img_size,
+                    self.config["window_size"][mod],
+                    len(self.config["time_freq_block_num"][mod]),
+                )
                 logging.info(f"=\tPadded image size for {mod}: {padded_img_size}")
 
                 # Patch embedding and Linear embedding (H, W, in_channel) -> (H / p_size, W / p_size, C)
@@ -90,7 +93,9 @@ class TransformerV4(nn.Module):
                 # Swin Transformer Block
                 self.freq_interval_layers[loc][mod] = nn.ModuleList()
 
-                for i_layer, block_num in enumerate(self.config["time_freq_block_num"]):  # different downsample ratios
+                for i_layer, block_num in enumerate(
+                    self.config["time_freq_block_num"][mod]
+                ):  # different downsample ratios
                     down_ratio = 2**i_layer
                     layer_dim = int(self.config["time_freq_out_channels"] * down_ratio)
                     layer = BasicLayer(
@@ -100,11 +105,13 @@ class TransformerV4(nn.Module):
                             patches_resolution[1] // down_ratio,
                         ),
                         num_heads=self.config["time_freq_head_num"],
-                        window_size=self.window_size.copy(),
+                        window_size=self.config["window_size"][mod].copy(),
                         depth=block_num,
                         drop=self.drop_rate,
                         norm_layer=self.norm_layer,
-                        downsample=PatchMerging if (i_layer < len(self.config["time_freq_block_num"]) - 1) else None,
+                        downsample=PatchMerging
+                        if (i_layer < len(self.config["time_freq_block_num"][mod]) - 1)
+                        else None,
                     )
                     self.freq_interval_layers[loc][mod].append(layer)
 

@@ -186,19 +186,23 @@ TransformerV4:
                 audio: 1
                 seismic: 1
         # single modality
-        time_freq_out_channels: 64
+        time_freq_out_channels: 128
         time_freq_head_num: 4
-        time_freq_block_num: [4, 4, 4]
-        # single modality
+        time_freq_block_num: 
+                audio: [4, 4]
+                seismic: [4, 4]
+        # modality fusion
         mod_out_channels: 256
         mod_head_num: 4
         mod_block_num: 2
-        # single location
+        # location fusion
         loc_out_channels: 256 # loc_out_channels == mod_out_channels
         loc_head_num: 4
         loc_block_num: 2
         # SwinTransformer configs
-        window_size: [5, 5] 
+        window_size: 
+                audio: [5, 5] 
+                seismic: [5, 5] 
         mlp_ratio: 4.
         qkv_bias: True
         APE: False
@@ -213,7 +217,7 @@ TransformerV4:
         train_epochs: 1500
         scheduler_step: 200
         scheduler_gamma: 0.2
-        start_lr: 0.00001
+        start_lr: 0.0001
 
 
 
