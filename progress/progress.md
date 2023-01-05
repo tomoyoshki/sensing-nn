@@ -3,12 +3,34 @@
 Tommy Kimura (tkimura4@illinois.edu)
 
 ## Table of Contents  
+[01/05/2023 - Added Drop Path Rate and Absolute Positional Embedding](#january-5th-2023)
 [01/03/2023 - Added Padding and Flexible Image size](#january-3rd-2023)  
 [12/27/2022 - Initialized TransformerV4](#december-27th-2022) 
 
+## January 5th 2023
+
+### Major changes
+
+```bash
+src
+├── data
+│   └── Parkland.yaml # changed a few parameters
+├── src
+│   └── models
+│       └── TransformerV4.py # added paddings
+```
+
+- `TransformerV4`
+    - Added Drop path rate to `BasicLayer` initialization
+    - Added optional Absolute Positional Embedding in `init` and `forward`
+- `Parkland.yaml`
+    - Audio window size `[5, 5]` -> `[5, 2]`
+    - Seismic patch size `[1, 1]` -> `[1, 2]`
+
+
 ## January 3rd 2023
 
-### Major modificaations
+### Major changes
 
 ```bash
 src
@@ -65,7 +87,7 @@ src
 
 ## December 27th 2022
 
-### Major modifications
+### Major changes
 
 ```bash
 src
