@@ -8,6 +8,8 @@ from input_utils.fft_utils import fft_preprocess
 from input_utils.padding_utils import get_padded_size
 from models.FusionModules import TransformerFusionBlock
 
+from timm.models.layers import trunc_normal_
+
 import logging
 
 from models.SwinModules import (
@@ -56,12 +58,14 @@ class TransformerV4(nn.Module):
         # Single sensor
         self.freq_interval_layers = nn.ModuleDict()  # Frequency & Interval layers
         self.patch_embed = nn.ModuleDict()
+        self.absolute_pos_embed = nn.ModuleDict()
         self.mod_patch_embed = nn.ModuleDict()
         self.mod_in_layers = nn.ModuleDict()
-
+        
         for loc in self.locations:
             self.freq_interval_layers[loc] = nn.ModuleDict()
             self.patch_embed[loc] = nn.ModuleDict()
+            self.absolute_pos_embed[loc] = nn.ParameterDict()
             self.mod_in_layers[loc] = nn.ModuleDict()
 
             for mod in self.modalities:
@@ -90,8 +94,15 @@ class TransformerV4(nn.Module):
                 patches_resolution = self.patch_embed[loc][mod].patches_resolution
                 logging.info(f"=\tPatch resolution for {mod}: {patches_resolution}")
 
+                # Absolute positional embedding (optional)
+                self.absolute_pos_embed[loc][mod] = nn.Parameter(torch.zeros(1, self.patch_embed[loc][mod].num_patches, self.config["time_freq_out_channels"]))
+                trunc_normal_(self.absolute_pos_embed[loc][mod], std=.02)
+
                 # Swin Transformer Block
                 self.freq_interval_layers[loc][mod] = nn.ModuleList()
+                
+                # Drop path rate
+                dpr = [x.item() for x in torch.linspace(0, self.config["drop_path_rate"], sum(self.config["time_freq_block_num"][mod]))]  # stochastic depth decay rule
 
                 for i_layer, block_num in enumerate(
                     self.config["time_freq_block_num"][mod]
@@ -108,6 +119,7 @@ class TransformerV4(nn.Module):
                         window_size=self.config["window_size"][mod].copy(),
                         depth=block_num,
                         drop=self.drop_rate,
+                        drop_path=dpr[sum(self.config["time_freq_block_num"][mod][:i_layer]):sum(self.config["time_freq_block_num"][mod][:i_layer + 1])],
                         norm_layer=self.norm_layer,
                         downsample=PatchMerging
                         if (i_layer < len(self.config["time_freq_block_num"][mod]) - 1)
@@ -210,19 +222,17 @@ class TransformerV4(nn.Module):
                 # Pad [i, spectrum] to the required padding size
                 padded_img_size = self.patch_embed[loc][mod].img_size
                 padded_height = padded_img_size[0] - img_size[0]
-                # padded_height_prev = padded_height // 2
-                # padded_height_next = padded_height - padded_height_prev
-
                 padded_width = padded_img_size[1] - img_size[1]
-                # padded_width_prev = padded_width // 2
-                # padded_width_next = padded_width - padded_height_prev
-                # freq_input = F.pad(input=freq_input, pad=(padded_width_prev, padded_width_next, padded_height_prev, padded_height_next), mode='constant', value=0)
 
                 # test different padding
                 freq_input = F.pad(input=freq_input, pad=(0, padded_width, 0, padded_height), mode="constant", value=0)
 
                 # Patch Partition and Linear Embedding
                 embeded_input = self.patch_embed[loc][mod](freq_input)
+                
+                # Absolute positional embedding
+                if self.config["APE"]:
+                    embeded_input = embeded_input + self.absolute_pos_embed[loc][mod]
 
                 # SwinTransformer Layer block
                 for layer in self.freq_interval_layers[loc][mod]:
