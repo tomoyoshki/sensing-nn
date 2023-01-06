@@ -79,6 +79,7 @@ class TransformerV4(nn.Module):
                 padded_img_size = get_padded_size(
                     img_size,
                     self.config["window_size"][mod],
+                    self.config["patch_size"]["freq"][mod],
                     len(self.config["time_freq_block_num"][mod]),
                 )
                 logging.info(f"=\tPadded image size for {mod}: {padded_img_size}")
