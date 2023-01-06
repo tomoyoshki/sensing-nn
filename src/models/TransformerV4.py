@@ -61,7 +61,7 @@ class TransformerV4(nn.Module):
         self.absolute_pos_embed = nn.ModuleDict()
         self.mod_patch_embed = nn.ModuleDict()
         self.mod_in_layers = nn.ModuleDict()
-        
+
         for loc in self.locations:
             self.freq_interval_layers[loc] = nn.ModuleDict()
             self.patch_embed[loc] = nn.ModuleDict()
@@ -96,14 +96,21 @@ class TransformerV4(nn.Module):
                 logging.info(f"=\tPatch resolution for {mod}: {patches_resolution}")
 
                 # Absolute positional embedding (optional)
-                self.absolute_pos_embed[loc][mod] = nn.Parameter(torch.zeros(1, self.patch_embed[loc][mod].num_patches, self.config["time_freq_out_channels"]))
-                trunc_normal_(self.absolute_pos_embed[loc][mod], std=.02)
+                self.absolute_pos_embed[loc][mod] = nn.Parameter(
+                    torch.zeros(1, self.patch_embed[loc][mod].num_patches, self.config["time_freq_out_channels"])
+                )
+                trunc_normal_(self.absolute_pos_embed[loc][mod], std=0.02)
 
                 # Swin Transformer Block
                 self.freq_interval_layers[loc][mod] = nn.ModuleList()
-                
+
                 # Drop path rate
-                dpr = [x.item() for x in torch.linspace(0, self.config["drop_path_rate"], sum(self.config["time_freq_block_num"][mod]))]  # stochastic depth decay rule
+                dpr = [
+                    x.item()
+                    for x in torch.linspace(
+                        0, self.config["drop_path_rate"], sum(self.config["time_freq_block_num"][mod])
+                    )
+                ]  # stochastic depth decay rule
 
                 for i_layer, block_num in enumerate(
                     self.config["time_freq_block_num"][mod]
@@ -120,7 +127,12 @@ class TransformerV4(nn.Module):
                         window_size=self.config["window_size"][mod].copy(),
                         depth=block_num,
                         drop=self.drop_rate,
-                        drop_path=dpr[sum(self.config["time_freq_block_num"][mod][:i_layer]):sum(self.config["time_freq_block_num"][mod][:i_layer + 1])],
+                        attn_drop=self.config["attn_drop_rate"],
+                        drop_path=dpr[
+                            sum(self.config["time_freq_block_num"][mod][:i_layer]) : sum(
+                                self.config["time_freq_block_num"][mod][: i_layer + 1]
+                            )
+                        ],
                         norm_layer=self.norm_layer,
                         downsample=PatchMerging
                         if (i_layer < len(self.config["time_freq_block_num"][mod]) - 1)
@@ -230,7 +242,7 @@ class TransformerV4(nn.Module):
 
                 # Patch Partition and Linear Embedding
                 embeded_input = self.patch_embed[loc][mod](freq_input)
-                
+
                 # Absolute positional embedding
                 if self.config["APE"]:
                     embeded_input = embeded_input + self.absolute_pos_embed[loc][mod]

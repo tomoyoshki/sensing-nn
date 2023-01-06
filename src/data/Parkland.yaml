@@ -182,6 +182,7 @@ TransformerV3:
 TransformerV4:
         dropout_ratio: 0.2
         drop_path_rate: 0.1
+        attn_drop_rate: 0.2
         # loc mod freq feature
         in_stride:
                 audio: 1
@@ -202,8 +203,8 @@ TransformerV4:
         loc_block_num: 2
         # SwinTransformer configs
         window_size: 
-                audio: [5, 4] 
-                seismic: [5, 5] 
+                audio: [3, 3] 
+                seismic: [3, 3] 
         mlp_ratio: 4.
         qkv_bias: True
         APE: False

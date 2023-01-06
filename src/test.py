@@ -1,4 +1,7 @@
-from numpy import argsort
+import warnings
+
+warnings.simplefilter("ignore", UserWarning)
+
 import torch.nn as nn
 
 # import models
