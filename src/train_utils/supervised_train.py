@@ -8,6 +8,8 @@ from tqdm import tqdm
 
 # train utils
 from train_utils.eval_functions import val_and_logging
+from train_utils.optimizer import define_optimizer
+from train_utils.lr_scheduler import define_lr_scheduler
 
 # utils
 from general_utils.time_utils import time_sync
@@ -31,20 +33,13 @@ def supervised_train_classifier(
     # model config
     classifier_config = args.dataset_config[args.model]
 
-    # Init the optimizer
-    lr = args.lr if args.lr is not None else classifier_config["start_lr"]
-    optimizer = optim.Adam(classifier.parameters(), lr=lr)
+    # Define the optimizer and learning rate scheduler
+    optimizer = define_optimizer(args, classifier.parameters())
+    lr_scheduler = define_lr_scheduler(args, optimizer)
     if args.verbose:
         for name, param in classifier.named_parameters():
             if param.requires_grad:
                 logging.info(name)
-
-    # define learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer,
-        step_size=classifier_config["scheduler_step"],
-        gamma=classifier_config["scheduler_gamma"],
-    )
 
     # Training loop
     logging.info("---------------------------Start Pretraining Classifier-------------------------------")
@@ -57,7 +52,7 @@ def supervised_train_classifier(
         best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_best.pt")
         latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_latest.pt")
 
-    for epoch in range(classifier_config["train_epochs"]):
+    for epoch in range(classifier_config["lr_scheduler"]["train_epochs"]):
         # set model to train mode
         classifier.train()
         # augmenter.train()
@@ -74,6 +69,9 @@ def supervised_train_classifier(
             # back propagation
             optimizer.zero_grad()
             loss.backward()
+
+            # clip gradient and update
+            torch.nn.utils.clip_grad_norm(classifier.parameters(), classifier_config["optimizer"]["clip_grad"])
             optimizer.step()
             train_loss_list.append(loss.item())
 
@@ -104,7 +102,7 @@ def supervised_train_classifier(
             torch.save(classifier.state_dict(), best_weight)
 
         # Update the learning rate scheduler
-        scheduler.step()
+        lr_scheduler.step(epoch)
 
     # flush and close the TB writer
     tb_writer.flush()
