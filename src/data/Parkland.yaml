@@ -227,7 +227,7 @@ TransformerV4:
         lr_scheduler:
                 name: "step"
                 warmup_prefix: True
-                warmup_epochs: 20
+                warmup_epochs: 0
                 train_epochs: 1500
                 start_epoch: 0
                 decay_epochs: 200
