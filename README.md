@@ -10,7 +10,7 @@ python3 train.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=Transfor
 
 ### Testing 
 ```
-python3 test.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4
+python3 test.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised
 ```
 
 ### Model performance on Parkland dataset
