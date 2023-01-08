@@ -264,7 +264,7 @@ class Mixup:
     def __call__(self, x, target, args):
         index = None
         if self.mode == 'elem':
-            lam, index = self._mix_elem(x)
+            lam, index = self._mix_elem(x, args)
         elif self.mode == 'pair':
             lam, index = self._mix_pair(x, args)
         elif self.mode == 'random_batch':

@@ -223,11 +223,11 @@ TransformerV4:
 
         # Regularizationm config
         mixup_args:
-                mixup_alpha: 0.
+                mixup_alpha: 1.0
                 cutmix_alpha: 1.0
                 cutmix_minmax: null
                 prob: 1.0
-                switch_prob: 1.0
+                switch_prob: 0.75
                 mode: 'random_batch'
                 label_smoothing: 0
                 num_classes: 7
