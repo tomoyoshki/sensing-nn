@@ -74,7 +74,7 @@ def rand_bbox_minmax(img_shape, minmax, count=None):
     return yl, yu, xl, xu
 
 
-def cutmix_bbox_and_lam(img_shape, lam, ratio_minmax=None, correct_lam=True, count=None):
+def cutmix_bbox_and_lam(img_shape, lam, ratio_minmax=None, correct_lam=False, count=None):
     """ Generate bbox and apply lambda correction.
     """
     if ratio_minmax is not None:
@@ -102,7 +102,7 @@ class Mixup:
         num_classes (int): number of classes for target
     """
     def __init__(self, mixup_alpha=1., cutmix_alpha=0., cutmix_minmax=None, prob=1.0, switch_prob=0.5,
-                 mode='batch', correct_lam=True, label_smoothing=0.1, num_classes=1000):
+                 mode='batch', correct_lam=False, label_smoothing=0.1, num_classes=1000):
         self.mixup_alpha = mixup_alpha
         self.cutmix_alpha = cutmix_alpha
         self.cutmix_minmax = cutmix_minmax
@@ -203,7 +203,7 @@ class Mixup:
                 lam_batch = torch.tensor(lam_batch, device=x.device, dtype=x[loc][mod].dtype).unsqueeze(1)
                 lam_batches.append(lam_batch)
         lam_batch = torch.mean(lam_batches, axis=0)
-        return 
+        return lam_batch
 
     def _mix_batch(self, x, args):
         lam, use_cutmix = self._params_per_batch()
@@ -222,7 +222,7 @@ class Mixup:
                 for mod in args["modality_names"]:
                     x_flipped = x[loc][mod].flip(0).mul_(1. - lam)
                     x[loc][mod].mul_(lam).add_(x_flipped)
-        return lam if len(lams) == 0 else np.mean(lams)
+        return lam
 
     def __call__(self, x, target, args):
         if self.mode == 'elem':
@@ -233,3 +233,5 @@ class Mixup:
             lam = self._mix_batch(x, args)
         target = mixup_target(target, self.num_classes, lam, self.label_smoothing)
         return x, target
+
+

@@ -81,29 +81,6 @@ def supervised_train_classifier(
             # send data label to device (data is sent in the model)
             data, labels = mixup_func(data, labels, args.dataset_config)
             labels = labels.to(args.device)
-            # r = np.random.rand(1)
-            # if classifier_config["cutmix_regularization"] and cutmix_beta > 0 and r < classifier_config["cutmix_prob"]:
-            #     # generate mixed sample
-            #     lam = np.random.beta(cutmix_beta, cutmix_beta)
-            #     rand_index = None
-            #     for loc in args.dataset_config["location_names"]:
-            #         for mod in args.dataset_config["modality_names"]:
-            #             if rand_index is None:
-            #                 rand_index = torch.randperm(data[loc][mod].size()[0])
-            #             bbx1, bby1, bbx2, bby2 = rand_bbox(data[loc][mod].size(), lam)
-            #             data[loc][mod][:, :, bbx1:bbx2, bby1:bby2] = data[loc][mod][rand_index, :, bbx1:bbx2, bby1:bby2]
-
-            #     # adjust lambda to exactly match pixel ratio
-            #     # lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (data.size()[-1] * data.size()[-2]))
-                
-            #     labels_a = labels
-            #     labels_b = labels[rand_index.cuda()]
-
-            #     # compute output
-            #     logits = classifier(data, augmenter)
-            #     loss = classifier_loss_func(logits, labels_a) * lam + classifier_loss_func(logits, labels_b) * (1. - lam)
-            # else:
-            #     # compute output
             logits = classifier(data, augmenter)
             loss = classifier_loss_func(logits, labels)
 
