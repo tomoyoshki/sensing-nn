@@ -13,9 +13,7 @@ from train_utils.eval_functions import val_and_logging
 from general_utils.time_utils import time_sync
 
 # input regularization utils
-from input_utils.regularization_utils import rand_bbox
 from input_utils.mixup_utils import Mixup
-# from timm.data.mixup import Mixup
 
 
 
