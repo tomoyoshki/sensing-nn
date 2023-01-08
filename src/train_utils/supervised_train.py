@@ -58,7 +58,9 @@ def supervised_train_classifier(
     start = time_sync()
     best_val_acc = 0
     
+    # mixup functions
     mixup_func = Mixup(**classifier_config["mixup_args"])
+
     if args.train_mode == "supervised":
         best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_best.pt")
         latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_latest.pt")
@@ -76,10 +78,10 @@ def supervised_train_classifier(
         train_loss_list = []
         
         # regularization configuration
-        cutmix_beta = classifier_config["cutmix_beta"]
         for i, (data, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
-            # send data label to device (data is sent in the model)
+            # mixup and cutmix augmentation, does nothing if both has alpha 0
             data, labels = mixup_func(data, labels, args.dataset_config)
+            # send data label to device (data is sent in the model)
             labels = labels.to(args.device)
             logits = classifier(data, augmenter)
             loss = classifier_loss_func(logits, labels)

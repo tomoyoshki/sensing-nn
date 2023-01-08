@@ -19,11 +19,12 @@ def one_hot(x, num_classes, on_value=1., off_value=0., device='cpu'):
     return torch.full((x.size()[0], num_classes), off_value, device=device).scatter_(1, x, on_value)
 
 
-def mixup_target(target, num_classes, lam=1., smoothing=0.0, device='cpu'):
+def mixup_target(target, num_classes, lam=1., smoothing=0.0, device='cpu', index=None):
     off_value = smoothing / num_classes
     on_value = 1. - smoothing + off_value
     y1 = one_hot(target, num_classes, on_value=on_value, off_value=off_value, device=device)
-    y2 = one_hot(target.flip(0), num_classes, on_value=on_value, off_value=off_value, device=device)
+    target_sub = target.flip(0) if index is None else target[index]
+    y2 = one_hot(target_sub, num_classes, on_value=on_value, off_value=off_value, device=device)
     return y1 * lam + y2 * (1. - lam)
 
 
@@ -119,6 +120,8 @@ class Mixup:
         self.mixup_enabled = True  # set to false to disable mixing (intended tp be set by train loop)
 
     def _params_per_elem(self, batch_size):
+        '''Original timm implementation + location and modality integration
+        '''
         lam = np.ones(batch_size, dtype=np.float32)
         use_cutmix = np.zeros(batch_size, dtype=np.bool)
         if self.mixup_enabled:
@@ -139,6 +142,8 @@ class Mixup:
         return lam, use_cutmix
 
     def _params_per_batch(self):
+        '''Original timm implementation + location and modality integration
+        '''
         lam = 1.
         use_cutmix = False
         if self.mixup_enabled and np.random.rand() < self.mix_prob:
@@ -157,6 +162,8 @@ class Mixup:
         return lam, use_cutmix
 
     def _mix_elem(self, x, args):
+        '''Original timm implementation + location and modality integration
+        '''
         lam_batches = []
         for loc in args["location_names"]:
             for mod in args["modality_names"]:
@@ -177,9 +184,11 @@ class Mixup:
                 lam_batches.append(
                     torch.tensor(lam_batch, device=x.device, dtype=x[loc][mod].dtype).unsqueeze(1)
                 )
-        return torch.mean(lam_batches, axis=0)
+        return torch.mean(lam_batches, axis=0), None
 
     def _mix_pair(self, x, args):
+        '''Original timm implementation + location and modality integration
+        '''
         lam_batches = []
         for loc in args["location_names"]:
             for mod in args["modality_names"]:
@@ -202,10 +211,11 @@ class Mixup:
                 lam_batch = np.concatenate((lam_batch, lam_batch[::-1]))
                 lam_batch = torch.tensor(lam_batch, device=x.device, dtype=x[loc][mod].dtype).unsqueeze(1)
                 lam_batches.append(lam_batch)
-        lam_batch = torch.mean(lam_batches, axis=0)
-        return lam_batch
+        return torch.mean(lam_batches, axis=0), None
 
     def _mix_batch(self, x, args):
+        '''Original timm implementation + location and modality integration
+        '''
         lam, use_cutmix = self._params_per_batch()
         lams = []
         if lam == 1.:
@@ -222,16 +232,46 @@ class Mixup:
                 for mod in args["modality_names"]:
                     x_flipped = x[loc][mod].flip(0).mul_(1. - lam)
                     x[loc][mod].mul_(lam).add_(x_flipped)
-        return lam
+        return lam, None
+    
+    def _mix_batch_random(self, x, args):
+        lam, use_cutmix = self._params_per_batch()
+        if lam == 1:
+            return 1.
+        
+        rand_index = None
+        if use_cutmix:
+            # if we are using cutmix approach
+            for loc in args["location_names"]:
+                for mod in args["modality_names"]:
+                    # use random index
+                    if rand_index is None:
+                        rand_index = torch.randperm(x[loc][mod].size()[0])
+                    # get bounding box
+                    (yl, yh, xl, xh) = rand_bbox(x[loc][mod].size(), lam)
+                    x[loc][mod][:, :, yl:yh, xl:xh] = x[loc][mod][rand_index, :, yl:yh, xl:xh]
+        else:
+            # if we are using mixup
+            for loc in args["location_names"]:
+                for mod in args["modality_names"]:
+                    # use random index
+                    if rand_index is None:
+                        rand_index = torch.randperm(x[loc][mod].size()[0])
+                    x_flipped = x[loc][mod][rand_index].mul_(1. - lam)
+                    x[loc][mod].mul_(lam).add_(x_flipped)
+        return lam, rand_index
 
     def __call__(self, x, target, args):
+        index = None
         if self.mode == 'elem':
-            lam = self._mix_elem(x)
+            lam, index = self._mix_elem(x)
         elif self.mode == 'pair':
-            lam = self._mix_pair(x, args)
+            lam, index = self._mix_pair(x, args)
+        elif self.mode == 'random_batch':
+            lam, index = self._mix_batch_random(x, args)
         else:
-            lam = self._mix_batch(x, args)
-        target = mixup_target(target, self.num_classes, lam, self.label_smoothing)
+            lam, index = self._mix_batch(x, args)
+        target = mixup_target(target, self.num_classes, lam, self.label_smoothing, device=target.device, index=index)
         return x, target
 
 

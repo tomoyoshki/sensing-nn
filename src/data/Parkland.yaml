@@ -222,17 +222,13 @@ TransformerV4:
         start_lr: 0.0001
 
         # Regularizationm config
-        cutmix_regularization: True
-        cutmix_beta: 1.0
-        cutmix_prob: 0.2
-
         mixup_args:
-                mixup_alpha: 0.3
-                cutmix_alpha: 0.3
+                mixup_alpha: 0.
+                cutmix_alpha: 1.0
                 cutmix_minmax: null
                 prob: 1.0
-                switch_prob: 0.5
-                mode: 'elem'
+                switch_prob: 1.0
+                mode: 'random_batch'
                 label_smoothing: 0
                 num_classes: 7
 
