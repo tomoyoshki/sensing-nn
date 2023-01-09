@@ -14,6 +14,11 @@ from train_utils.lr_scheduler import define_lr_scheduler
 # utils
 from general_utils.time_utils import time_sync
 
+# input regularization utils
+from input_utils.mixup_utils import Mixup
+
+
+
 
 def supervised_train_classifier(
     args,
@@ -45,6 +50,10 @@ def supervised_train_classifier(
     logging.info("---------------------------Start Pretraining Classifier-------------------------------")
     start = time_sync()
     best_val_acc = 0
+    
+    # mixup functions
+    mixup_func = Mixup(**classifier_config["mixup_args"])
+
     if args.train_mode == "supervised":
         best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_best.pt")
         latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_latest.pt")
@@ -60,7 +69,11 @@ def supervised_train_classifier(
 
         # training loop
         train_loss_list = []
+        
+        # regularization configuration
         for i, (data, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
+            # mixup and cutmix augmentation, does nothing if both has alpha 0
+            data, labels = mixup_func(data, labels, args.dataset_config)
             # send data label to device (data is sent in the model)
             labels = labels.to(args.device)
             logits = classifier(data, augmenter)
