@@ -8,6 +8,8 @@ noisy_test_index_file: time_data_partition/test_index_1107_clean.txt
 # noisy_test_index_file: time_data_partition/test_index_1107_noisy.txt 
 wind_test_index_file: time_data_partition_with_wind/test_index.txt
 
+repetition: 3
+
 # Classes
 num_classes: 7  # number of classes
 class_names: ["Polaris", "Warhog", "Truck", "motor", "tesla", "mustang", "walk"]
