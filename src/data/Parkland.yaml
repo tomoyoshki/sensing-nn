@@ -217,12 +217,23 @@ TransformerV4:
                         seismic: [1, 2]
         # FC layer
         fc_dim: 512
-        # Training config
-        train_epochs: 1500
-        scheduler_step: 200
-        scheduler_gamma: 0.2
-        start_lr: 0.0001
-
+        # Optimizer config
+        optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        # LR scheduler
+        lr_scheduler:
+                name: "step"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 1500
+                start_epoch: 0
+                decay_epochs: 200
+                decay_rate: 0.2
         # Regularizationm config
         mixup_args:
                 mixup_alpha: 1.0
@@ -236,7 +247,7 @@ TransformerV4:
 
 
 
-
+                
 
 # Missing Modality Generator
 MissModalityGenerator:
