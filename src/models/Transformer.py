@@ -118,7 +118,7 @@ class Transformer(nn.Module):
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
-    def forward(self, org_time_x, augmenter):
+    def forward(self, freq_x):
         """The forward function of DeepSense.
         Args:
             time_x (_type_): time_x is a dictionary consisting of the Tensor input of each input modality.
@@ -126,18 +126,7 @@ class Transformer(nn.Module):
         """
         args = self.args
 
-        # Step 0: Move data to target device
-        for loc in org_time_x:
-            for mod in org_time_x[loc]:
-                org_time_x[loc][mod] = org_time_x[loc][mod].to(args.device)
-
-        # Step 1 Optional data augmentation
-        augmented_time_x = augmenter.augment_forward(org_time_x)
-
-        # Step 2: FFT on the time domain data
-        freq_x = fft_preprocess(augmented_time_x, args)
-
-        # Step 3: Single (loc, mod) feature extraction, [b, i, s, c]
+        # Step 1: Single (loc, mod) feature extraction, [b, i, s, c]
         loc_mod_features = dict()
         for loc in self.locations:
             loc_mod_features[loc] = []
@@ -149,28 +138,28 @@ class Transformer(nn.Module):
                 loc_mod_features[loc].append(self.loc_mod_feature_extraction_layers[loc][mod](loc_mod_input))
             loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=2)
 
-        # Step 4: Modality-level fusion
+        # Step 2: Modality-level fusion
         loc_fused_features = {}
         for loc in loc_mod_features:
             loc_fused_features[loc] = self.mod_fusion_layers[loc](loc_mod_features[loc])
 
-        # Step 5: Location feature extraction, [b, i, s, c]
+        # Step 3: Location feature extraction, [b, i, s, c]
         loc_features = []
         for loc in loc_mod_features:
             outputs = self.loc_feature_extraction_layers[loc](loc_fused_features[loc])
             loc_features.append(outputs)
         loc_features = torch.stack(loc_features, dim=2)
 
-        # Step 6: Location-level fusion, [b, i, c]
+        # Step 4: Location-level fusion, [b, i, c]
         interval_features = self.loc_fusion_layer(loc_features)
         interval_features = self.sample_feature_extraction_layer(interval_features)
         interval_features = torch.unsqueeze(interval_features, dim=1)
 
-        # Step 7: Time fusion
+        # Step 5: Time fusion
         sample_features = self.time_fusion_layer(interval_features)
         sample_features = torch.flatten(sample_features, start_dim=1)
 
-        # Step 8: Classification
+        # Step 6: Classification
         outputs = torch.flatten(sample_features, start_dim=1)
         logits = self.class_layer(outputs)
 

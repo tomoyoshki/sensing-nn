@@ -80,26 +80,12 @@ class ResNet(nn.Module):
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
-    def forward(self, org_time_x, augmenter):
+    def forward(self, freq_x):
         """The forward function of ResNet.
         Args:
             x (_type_): x is a dictionary consisting of the Tensor input of each input modality.
                         For each modality, the data is in (b, c (2 * 3 or 1), i (intervals), s (spectrum)) format.
         """
-        args = self.args
-
-        # Step 0: Move data to target device
-        for loc in org_time_x:
-            for mod in org_time_x[loc]:
-                org_time_x[loc][mod] = org_time_x[loc][mod].to(args.device)
-
-        # Step 1: Add noise to the time-domain data
-        # augmented_time_x = augmenter.augment_forward(org_time_x)
-        augmented_time_x = org_time_x
-
-        # Step 2: FFT on the time domain data
-        freq_x = fft_preprocess(augmented_time_x, args)
-
         # Step 4: Single (loc, mod) feature extraction
         loc_mod_features = dict()
         for loc in self.locations:

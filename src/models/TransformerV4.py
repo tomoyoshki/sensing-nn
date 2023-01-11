@@ -45,7 +45,6 @@ class TransformerV4(nn.Module):
         super().__init__()
         self.args = args
         self.config = args.dataset_config["TransformerV4"]
-        self.device = args.device
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
         self.num_segments = args.dataset_config["num_segments"]
@@ -198,21 +197,10 @@ class TransformerV4(nn.Module):
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
-    def forward(self, org_time_x, augmenter):
+    def forward(self, freq_x):
         args = self.args
 
-        # Step 0: Move data to target device
-        for loc in org_time_x:
-            for mod in org_time_x[loc]:
-                org_time_x[loc][mod] = org_time_x[loc][mod].to(self.device)
-
-        # Step 1 Optional data augmentation
-        augmented_time_x = augmenter.augment_forward(org_time_x)
-
-        # Step 2: FFT on the time domain data; c: 1 -> 2
-        freq_x = fft_preprocess(augmented_time_x, args)
-
-        # Step 3: Feature extractions on time interval (i) and spectrum (s) domains
+        # Step 1: Feature extractions on time interval (i) and spectrum (s) domains
         loc_mod_features = dict()
         for loc in self.locations:
             loc_mod_features[loc] = []
@@ -262,7 +250,7 @@ class TransformerV4(nn.Module):
             # Stack results from different modalities, [b, 1, s, c]
             loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=2)
 
-        # Step 4: Loc mod feature extraction, [b, i, location, c]
+        # Step 2: Loc mod feature extraction, [b, i, location, c]
         loc_features = []
         for loc in loc_mod_features:
             """Extract mod feature with peer-feature context"""
@@ -276,7 +264,7 @@ class TransformerV4(nn.Module):
             loc_features.append(loc_feature)
         loc_features = torch.stack(loc_features, dim=2)
 
-        # Step 5: Location-level fusion, [b, 1, l, c]
+        # Step 3: Location-level fusion, [b, 1, l, c]
         if len(self.locations) > 1:
             b, i, l, c = loc_features.shape
             loc_input = loc_features.reshape([b * i, l, c])
@@ -286,7 +274,7 @@ class TransformerV4(nn.Module):
         else:
             sample_features = loc_features.squeeze(dim=2)
 
-        # Step 6: Classification Layers
+        # Step 4: Classification Layers
         sample_features = sample_features.flatten(start_dim=1)
         logit = self.class_layer(sample_features)
 

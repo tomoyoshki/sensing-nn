@@ -163,7 +163,7 @@ class TransformerV3(nn.Module):
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
-    def forward(self, org_time_x, augmenter):
+    def forward(self, freq_x):
         """The forward function of DeepSense.
         Args:
             time_x (_type_): time_x is a dictionary consisting of the Tensor input of each input modality.
@@ -171,18 +171,7 @@ class TransformerV3(nn.Module):
         """
         args = self.args
 
-        # Step 0: Move data to target device
-        for loc in org_time_x:
-            for mod in org_time_x[loc]:
-                org_time_x[loc][mod] = org_time_x[loc][mod].to(args.device)
-
-        # Step 1 Optional data augmentation
-        augmented_time_x = augmenter.augment_forward(org_time_x)
-
-        # Step 3: FFT on the time domain data
-        freq_x = fft_preprocess(augmented_time_x, args)
-
-        # Step 5: Single (loc, mod, freq) feature extraction, [b * i, int(s / stride), stride * c]
+        # Step 1: Single (loc, mod, freq) feature extraction, [b * i, int(s / stride), stride * c]
         loc_mod_features = dict()
         for loc in self.locations:
             loc_mod_features[loc] = []
@@ -235,7 +224,7 @@ class TransformerV3(nn.Module):
         else:
             sample_features = loc_features.squeeze(dim=2)
 
-        # Step 5: Classification
+        # Step 4: Classification
         logits = self.class_layer(sample_features.flatten(start_dim=1))
 
         return logits

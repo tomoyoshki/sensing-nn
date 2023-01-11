@@ -28,12 +28,6 @@ def parse_base_args(option="train"):
         default="TransformerV3",
         help="The backbone classification model to use.",
     )
-    parser.add_argument(
-        "-optimizer",
-        type=str,
-        default="AdamW",
-        help="The backbone classification model to use.",
-    )
 
     # training and inference mode
     parser.add_argument(
@@ -47,12 +41,6 @@ def parse_base_args(option="train"):
         type=str,
         default="original",
         help="The used mode for model inference (original).",
-    )
-    parser.add_argument(
-        "-augmenter",
-        type=str,
-        default="NoAugmenter",
-        help="The used data augmenter.",
     )
     parser.add_argument(
         "-stage",

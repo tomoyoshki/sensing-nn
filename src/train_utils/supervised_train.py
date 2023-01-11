@@ -18,8 +18,6 @@ from general_utils.time_utils import time_sync
 from input_utils.mixup_utils import Mixup
 
 
-
-
 def supervised_train_classifier(
     args,
     classifier,
@@ -41,6 +39,13 @@ def supervised_train_classifier(
     # Define the optimizer and learning rate scheduler
     optimizer = define_optimizer(args, classifier.parameters())
     lr_scheduler = define_lr_scheduler(args, optimizer)
+
+    # TODO: Freeze the patch embedding layer, from MOCOv3
+    # for name, param in classifier.named_parameters():
+    #     if "patch_embed" in name:
+    #         param.requires_grad = False
+
+    # Print the trainable parameters
     if args.verbose:
         for name, param in classifier.named_parameters():
             if param.requires_grad:
@@ -50,9 +55,6 @@ def supervised_train_classifier(
     logging.info("---------------------------Start Pretraining Classifier-------------------------------")
     start = time_sync()
     best_val_acc = 0
-    
-    # mixup functions
-    mixup_func = Mixup(**classifier_config["mixup_args"])
 
     if args.train_mode == "supervised":
         best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_best.pt")
@@ -64,19 +66,19 @@ def supervised_train_classifier(
     for epoch in range(classifier_config["lr_scheduler"]["train_epochs"]):
         # set model to train mode
         classifier.train()
-        # augmenter.train()
+        augmenter.train()
         args.epoch = epoch
 
         # training loop
         train_loss_list = []
-        
+
         # regularization configuration
-        for i, (data, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
-            # mixup and cutmix augmentation, does nothing if both has alpha 0
-            data, labels = mixup_func(data, labels, args.dataset_config)
-            # send data label to device (data is sent in the model)
-            labels = labels.to(args.device)
-            logits = classifier(data, augmenter)
+        for i, (time_loc_inputs, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
+            # move to target device, FFT, and augmentations
+            aug_freq_loc_inputs, labels = augmenter.forward(time_loc_inputs, labels)
+
+            # forward pass
+            logits = classifier(aug_freq_loc_inputs)
             loss = classifier_loss_func(logits, labels)
 
             # back propagation

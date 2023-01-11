@@ -101,26 +101,13 @@ class DeepSense(nn.Module):
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
-    def forward(self, org_time_x, augmenter):
+    def forward(self, freq_x):
         """The forward function of DeepSense.
         Args:
             time_x (_type_): time_x is a dictionary consisting of the Tensor input of each input modality.
                         For each modality, the data is in (b, c (2 * 3 or 1), i (intervals), s (spectrum)) format.
         """
-        args = self.args
-
-        # Step 0: Move data to target device
-        for loc in org_time_x:
-            for mod in org_time_x[loc]:
-                org_time_x[loc][mod] = org_time_x[loc][mod].to(args.device)
-
-        # Step 1 Optional data augmentation
-        augmented_time_x = augmenter.augment_forward(org_time_x)
-
-        # Step 2: FFT on the time domain data
-        freq_x = fft_preprocess(augmented_time_x, args)
-
-        # Step 3: Single (loc, mod) feature extraction, (b, c, i)
+        # Step 1: Single (loc, mod) feature extraction, (b, c, i)
         loc_mod_features = dict()
         for loc in self.locations:
             loc_mod_features[loc] = []
@@ -128,17 +115,17 @@ class DeepSense(nn.Module):
                 loc_mod_features[loc].append(self.loc_mod_extractors[loc][mod](freq_x[loc][mod]))
             loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=3)
 
-        # Step 4: Feature fusion for different mods in the same location
+        # Step 2: Feature fusion for different mods in the same location
         fused_loc_features = dict()
         for loc in self.locations:
             fused_loc_features[loc] = self.mod_fusion_layers[loc](loc_mod_features[loc])
 
-        # Step 5: Feature extraction for each location
+        # Step 3: Feature extraction for each location
         extracted_loc_features = dict()
         for loc in self.locations:
             extracted_loc_features[loc] = self.loc_extractors[loc](fused_loc_features[loc])
 
-        # Step 6: Location fusion, (b, c, i)
+        # Step 4: Location fusion, (b, c, i)
         if not self.multi_location_flag:
             extracted_interval_feature = extracted_loc_features[self.locations[0]]
         else:
@@ -146,10 +133,10 @@ class DeepSense(nn.Module):
             fused_interval_feature = self.loc_fusion_layer(interval_fusion_input)
             extracted_interval_feature = self.interval_extractor(fused_interval_feature)
 
-        # Step 7: Time recurrent layer
+        # Step 5: Time recurrent layer
         recurrent_feature = self.recurrent_layer(extracted_interval_feature)
 
-        # Step 8: Classification
+        # Step 6: Classification
         logits = self.class_layer(recurrent_feature)
 
         return logits

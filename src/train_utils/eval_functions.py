@@ -14,7 +14,7 @@ def eval_given_model(args, classifier, augmenter, dataloader, loss_func):
         model (_type_): _description_
         dataloader (_type_): _description_
     """
-    # set both the classifier and the miss_simulator (detector + handler) to eval mode
+    # set both the classifier and augmenter to eval mode
     classifier.eval()
     augmenter.eval()
 
@@ -24,11 +24,12 @@ def eval_given_model(args, classifier, augmenter, dataloader, loss_func):
     all_predictions = []
     all_labels = []
     with torch.no_grad():
-        for i, (data, labels) in tqdm(enumerate(dataloader), total=num_batches):
-            labels = labels.to(args.device)
-            args.labels = labels
+        for i, (time_loc_inputs, labels) in tqdm(enumerate(dataloader), total=num_batches):
+            # move to target device, FFT, and augmentations
+            freq_loc_inputs, labels = augmenter.forward(time_loc_inputs, labels)
 
-            logits = classifier(data, augmenter)
+            # forward pass
+            logits = classifier(freq_loc_inputs)
             classifier_loss_list.append(loss_func(logits, labels).item())
 
             if args.multi_class:
