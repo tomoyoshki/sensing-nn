@@ -30,15 +30,25 @@ class Augmenter:
             "mixup": MixupAugmenter,
         }
 
-        # load the augmenters
-        self.augmenter_names = args.dataset_config[args.model]["augmenters"]
-        self.augmenters = []
-        for augmenter_name in self.augmenter_names:
-            if augmenter_name not in augmenter_pool:
-                raise Exception(f"Invalid augmenter provided: {augmenter_name}")
+        # load the time augmenters
+        self.time_aug_names = args.dataset_config[args.model]["time_augmenters"]
+        self.time_augmenters = []
+        for aug_name in self.time_aug_names:
+            if aug_name not in augmenter_pool:
+                raise Exception(f"Invalid augmenter provided: {aug_name}")
             else:
-                self.augmenters.append(augmenter_pool[augmenter_name](args))
-                logging.info(f"=\t[Loaded augmenter]: {augmenter_name}")
+                self.time_augmenters.append(augmenter_pool[aug_name](args))
+                logging.info(f"=\t[Loaded time augmenter]: {aug_name}")
+
+        # load the freq augmenters
+        self.freq_aug_names = args.dataset_config[args.model]["freq_augmenters"]
+        self.freq_augmenters = []
+        for aug_name in self.freq_aug_names:
+            if aug_name not in augmenter_pool:
+                raise Exception(f"Invalid augmenter provided: {aug_name}")
+            else:
+                self.freq_augmenters.append(augmenter_pool[aug_name](args))
+                logging.info(f"=\t[Loaded frequency augmenter]: {aug_name}")
 
     def forward(self, time_loc_inputs, labels):
         """
@@ -48,13 +58,19 @@ class Augmenter:
         # move to target device
         time_loc_inputs, labels = self.move_to_target_device(time_loc_inputs, labels)
 
-        # time --> freq domain with FFT
-        freq_loc_inputs = self.fft_preprocess(time_loc_inputs)
+        # time-domain augmentation
+        aug_time_loc_inputs, aug_labels = time_loc_inputs, labels
+        if self.train_flag:
+            for augmenter in self.time_augmenters:
+                aug_time_loc_inputs, aug_labels = augmenter(aug_time_loc_inputs, aug_labels)
 
-        # data augmentation
+        # time --> freq domain with FFT
+        freq_loc_inputs = self.fft_preprocess(aug_time_loc_inputs)
+
+        # freq-domain augmentation
         aug_freq_loc_inputs, aug_labels = freq_loc_inputs, labels
         if self.train_flag:
-            for augmenter in self.augmenters:
+            for augmenter in self.time_augmenters:
                 aug_freq_loc_inputs, aug_labels = augmenter(aug_freq_loc_inputs, aug_labels)
 
         return aug_freq_loc_inputs, aug_labels
@@ -93,16 +109,16 @@ class Augmenter:
     def train(self):
         """Set all components to train mode"""
         self.train_flag = True
-        for augmenter in self.augmenters:
-            augmenter.train()
+        # for augmenter in self.time_augmenters:
+        #     augmenter.train()
 
     def eval(self):
         """Set all components to eval mode"""
         self.train_flag = False
-        for augmenter in self.augmenters:
-            augmenter.eval()
+        # for augmenter in self.time_augmenters:
+        #     augmenter.eval()
 
     def to(self, device):
         """Move all components to the target device"""
-        for augmenter in self.augmenters:
+        for augmenter in self.time_augmenters:
             augmenter.to(device)
