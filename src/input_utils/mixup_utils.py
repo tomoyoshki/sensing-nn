@@ -237,7 +237,7 @@ class Mixup:
     def _mix_batch_random(self, x, args):
         lam, use_cutmix = self._params_per_batch()
         if lam == 1:
-            return 1.
+            return 1.0, None
         
         rand_index = None
         if use_cutmix:
