@@ -5,6 +5,7 @@ from tqdm import tqdm
 
 # utils
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
+from sklearn.neighbors import KNeighborsClassifier
 
 
 def eval_given_model(args, classifier, augmenter, dataloader, loss_func):
@@ -73,6 +74,27 @@ def eval_given_model(args, classifier, augmenter, dataloader, loss_func):
     return mean_classifier_loss, mean_f1, mean_acc, conf_matrix
 
 
+def eval_estimator(args, classifier, estimator, augmenter, data_loader):
+    time_loc_inputs_l = []
+    labels = []
+    with torch.no_grad():
+        for time_loc_inputs, label in tqdm(data_loader, total=len(data_loader)):
+            aug_freq_loc_inputs, label = augmenter.forward(time_loc_inputs, label)
+            time_loc_inputs_l.append(classifier(aug_freq_loc_inputs).detach().cpu().numpy())
+            labels.append(label.detach().cpu().numpy())
+
+    time_loc_inputs_l = np.concatenate(time_loc_inputs_l)
+    labels = np.concatenate(labels)
+    predictions = estimator.predict(time_loc_inputs_l)
+
+    # compute metrics
+    mean_acc = accuracy_score(labels, predictions)
+    mean_f1 = f1_score(labels, predictions, average="macro", zero_division=1)
+    conf_matrix = confusion_matrix(labels, predictions)
+
+    return -1.0, mean_f1, mean_acc, conf_matrix
+
+
 def val_and_logging(
     args,
     epoch,
@@ -84,6 +106,7 @@ def val_and_logging(
     classifier_loss_func,
     train_loss,
     tensorboard_logging=True,
+    estimator=None,
 ):
     """Validation and logging function.
 
@@ -97,20 +120,24 @@ def val_and_logging(
     """
     logging.info(f"Train classifier loss: {train_loss: .5f} \n")
 
-    val_classifier_loss, val_f1, val_acc, val_conf_matrix = eval_given_model(
-        args,
-        classifier,
-        augmenter,
-        val_dataloader,
-        classifier_loss_func,
-    )
+    if estimator is None:
+        val_classifier_loss, val_f1, val_acc, val_conf_matrix = eval_given_model(
+            args, classifier, augmenter, val_dataloader, classifier_loss_func
+        )
+
+        test_classifier_loss, test_f1, test_acc, test_conf_matrix = eval_given_model(
+            args, classifier, augmenter, test_dataloader, classifier_loss_func
+        )
+    else:
+        val_classifier_loss, val_f1, val_acc, val_conf_matrix = eval_estimator(
+            args, classifier, estimator, augmenter, val_dataloader
+        )
+        test_classifier_loss, test_f1, test_acc, test_conf_matrix = eval_estimator(
+            args, classifier, estimator, augmenter, test_dataloader
+        )
     logging.info(f"Val classifier loss: {val_classifier_loss: .5f}")
     logging.info(f"Val acc: {val_acc: .5f}, val f1: {val_f1: .5f}")
     logging.info(f"Val confusion matrix:\n {val_conf_matrix} \n")
-
-    test_classifier_loss, test_f1, test_acc, test_conf_matrix = eval_given_model(
-        args, classifier, augmenter, test_dataloader, classifier_loss_func
-    )
     logging.info(f"Test classifier loss: {test_classifier_loss: .5f}")
     logging.info(f"Test acc: {test_acc: .5f}, test f1: {test_f1: .5f}")
     logging.info(f"Test confusion matrix:\n {test_conf_matrix} \n")

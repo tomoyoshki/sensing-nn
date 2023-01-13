@@ -11,15 +11,18 @@ from tqdm import tqdm
 from train_utils.eval_functions import val_and_logging
 from train_utils.optimizer import define_optimizer
 from train_utils.lr_scheduler import define_lr_scheduler
+from train_utils.knn import compute_embedding, compute_knn
 
 # utils
 from general_utils.time_utils import time_sync
+
+# DINO utils
+from models.DINOModules import DINOWrapper, DINOHead
 
 
 def self_supervised_train_classifier(
     args,
     classifier,
-    classifier_avg,
     augmenter,
     train_dataloader,
     val_dataloader,
@@ -34,14 +37,21 @@ def self_supervised_train_classifier(
     """
     # model config
     classifier_config = args.dataset_config[args.model]
+    student = DINOWrapper(classifier, DINOHead(7, 100), args=args.dataset_config)
+    teacher = DINOWrapper(classifier, DINOHead(7, 100), args=args.dataset_config)
+    student, teacher = student.to(args.device), teacher.to(args.device)
+
+    teacher.load_state_dict(student.state_dict())
+    for p in teacher.parameters():
+        p.requires_grad = False
 
     # Define the optimizer and learning rate scheduler
-    optimizer = define_optimizer(args, classifier.parameters())
+    optimizer = define_optimizer(args, student.parameters())
     lr_scheduler = define_lr_scheduler(args, optimizer)
 
-    for name, param in classifier.named_parameters():
-        if "patch_embed" in name:
-            param.requires_grad = False
+    # for name, param in classifier.named_parameters():
+    #     if "patch_embed" in name:
+    #         param.requires_grad = False
 
     # Print the trainable parameters
     if args.verbose:
@@ -63,7 +73,7 @@ def self_supervised_train_classifier(
 
     for epoch in range(classifier_config["lr_scheduler"]["train_epochs"]):
         # set model to train mode
-        classifier.train()
+        student.train()
         augmenter.train()
 
         # training loop
@@ -72,17 +82,12 @@ def self_supervised_train_classifier(
         # regularization configuration
         for i, (time_loc_inputs, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
-            aug_freq_loc_inputs_view_1, labels = augmenter.forward(time_loc_inputs, labels)
-            aug_freq_loc_inputs_view_2, labels = augmenter.forward(time_loc_inputs, labels)
-
-            s1 = classifier(aug_freq_loc_inputs_view_1)
-            s2 = classifier(aug_freq_loc_inputs_view_2)
-
-            t1 = classifier_avg(aug_freq_loc_inputs_view_1)
-            t2 = classifier_avg(aug_freq_loc_inputs_view_2)
+            aug_freq_loc_inputs, labels = augmenter.forward(time_loc_inputs, labels)
+            teacher_output = teacher(aug_freq_loc_inputs, True)
+            student_output = student(aug_freq_loc_inputs)
 
             # forward pass
-            loss = classifier_loss_func(s1, s2, t1, t2)
+            loss = classifier_loss_func(student_output, teacher_output)
 
             # back propagation
             optimizer.zero_grad()
@@ -94,7 +99,7 @@ def self_supervised_train_classifier(
 
             # update the classifier average parameters
             with torch.no_grad():
-                for student_ps, teacher_ps in zip(classifier.parameters(), classifier_avg.parameters()):
+                for student_ps, teacher_ps in zip(student.parameters(), teacher.parameters()):
                     teacher_ps.data.mul_(0.996)
                     teacher_ps.data.add_((1 - 0.996) * student_ps.detach().data)
 
@@ -103,6 +108,17 @@ def self_supervised_train_classifier(
             # Write train log
             if i % 200 == 0:
                 tb_writer.add_scalar("Train/Train loss", loss.item(), epoch * num_batches + i)
+
+        # compute KNN estimator
+        embs, imgs, labels_ = compute_embedding(args, student.backbone, augmenter, val_dataloader)
+
+        tb_writer.add_embedding(
+            embs,
+            # label_img=imgs,
+            global_step=epoch,
+            tag="embeddings",
+        )
+        knn_estimator = compute_knn(args, student.backbone, augmenter, train_dataloader)
 
         # validation and logging
         train_loss = np.mean(train_loss_list)
@@ -116,6 +132,7 @@ def self_supervised_train_classifier(
             test_dataloader,
             nn.CrossEntropyLoss(),
             train_loss,
+            estimator=knn_estimator,
         )
 
         # Save the latest model

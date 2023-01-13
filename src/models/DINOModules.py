@@ -2,14 +2,15 @@ import torch
 import torch.nn as nn
 
 
-class DINOWrapper(nn.module):
-    def __init__(self, backbone, new_head):
+class DINOWrapper(nn.Module):
+    def __init__(self, backbone, new_head, args):
         super().__init__()
         backbone.head = nn.Identity()  # deactivate original head
         self.backbone = backbone
         self.new_head = new_head
+        self.args = args
 
-    def forward(self, x):
+    def forward(self, x, isTeacher=False):
         """Run the forward pass.
         TODO: need to implement
         Parameters
@@ -22,8 +23,13 @@ class DINOWrapper(nn.module):
             Tuple of `torch.Tensor` each of shape `(n_samples, out_dim)` where
             `output_dim` is determined by `Head`.
         """
-        cls_embedding = self.backbone(x)  # (n_samples * n_crops, in_dim)
-        logits = self.new_head(cls_embedding)  # (n_samples * n_crops, out_dim)
+        x_ = x.copy()
+        if isTeacher:
+            for loc in self.args["location_names"]:
+                for mod in self.args["modality_names"]:
+                    x_[loc][mod] = x_[loc][mod][:2]
+        cls_embedding = self.backbone(x_)
+        logits = self.new_head(cls_embedding)
 
         return logits
 

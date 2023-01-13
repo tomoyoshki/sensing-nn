@@ -110,15 +110,9 @@ def train(args):
             num_batches,
         )
     elif args.train_mode in {"contrastive"}:
-        # teacher model
-        classifier_avg = init_model(args).to(args.device)
-        classifier_avg.load_state_dict(classifier.state_dict())
-        for p in classifier_avg.parameters():
-            p.requires_grad = False
         self_supervised_train_classifier(
             args,
             classifier,
-            classifier_avg,
             augmenter,
             train_dataloader,
             val_dataloader,
