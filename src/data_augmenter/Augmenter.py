@@ -4,8 +4,8 @@ import numpy as np
 from data_augmenter.NoAugmenter import NoAugmenter
 from data_augmenter.MissAugmenter import MissAugmenter
 from data_augmenter.NoiseAugmenter import NoiseAugmenter
-from data_augmenter.SeparateAugmenter import SeparateAugmenter
 from data_augmenter.MixupAugmenter import MixupAugmenter
+from data_augmenter.JitterAugmenter import JitterAugmenter
 
 
 class Augmenter:
@@ -22,32 +22,34 @@ class Augmenter:
         self.locations = args.dataset_config["location_names"]
         logging.info(f"=\t[Option]: {args.option}, mode: {self.mode}, stage: {args.stage}")
 
-        # augmenter pool
-        augmenter_pool = {
+        # load the time augmenters
+        time_augmenter_pool = {
             "no": NoAugmenter,
             "miss": MissAugmenter,
             "noise": NoiseAugmenter,
             "mixup": MixupAugmenter,
+            "jitter": JitterAugmenter,
         }
-
-        # load the time augmenters
         self.time_aug_names = args.dataset_config[args.model]["time_augmenters"]
         self.time_augmenters = []
         for aug_name in self.time_aug_names:
-            if aug_name not in augmenter_pool:
+            if aug_name not in time_augmenter_pool:
                 raise Exception(f"Invalid augmenter provided: {aug_name}")
             else:
-                self.time_augmenters.append(augmenter_pool[aug_name](args))
+                self.time_augmenters.append(time_augmenter_pool[aug_name](args))
                 logging.info(f"=\t[Loaded time augmenter]: {aug_name}")
 
         # load the freq augmenters
+        freq_augmenter_pool = {
+            "no": NoAugmenter,
+        }
         self.freq_aug_names = args.dataset_config[args.model]["freq_augmenters"]
         self.freq_augmenters = []
         for aug_name in self.freq_aug_names:
-            if aug_name not in augmenter_pool:
+            if aug_name not in freq_augmenter_pool:
                 raise Exception(f"Invalid augmenter provided: {aug_name}")
             else:
-                self.freq_augmenters.append(augmenter_pool[aug_name](args))
+                self.freq_augmenters.append(time_augmenter_pool[aug_name](args))
                 logging.info(f"=\t[Loaded frequency augmenter]: {aug_name}")
 
     def forward(self, time_loc_inputs, labels):
@@ -109,14 +111,10 @@ class Augmenter:
     def train(self):
         """Set all components to train mode"""
         self.train_flag = True
-        # for augmenter in self.time_augmenters:
-        #     augmenter.train()
 
     def eval(self):
         """Set all components to eval mode"""
         self.train_flag = False
-        # for augmenter in self.time_augmenters:
-        #     augmenter.eval()
 
     def to(self, device):
         """Move all components to the target device"""
