@@ -14,9 +14,6 @@ from train_utils.lr_scheduler import define_lr_scheduler
 # utils
 from general_utils.time_utils import time_sync
 
-# input regularization utils
-from input_utils.mixup_utils import Mixup
-
 
 def supervised_train_classifier(
     args,
