@@ -5,7 +5,7 @@ import torch.nn as nn
 class DINOWrapper(nn.Module):
     def __init__(self, backbone, new_head, args):
         super().__init__()
-        backbone.head = nn.Identity()  # deactivate original head
+        backbone.class_layer = nn.Identity()  # deactivate original head
         self.backbone = backbone
         self.new_head = new_head
         self.args = args
@@ -66,10 +66,10 @@ class DINOHead(nn.Module):
         self,
         in_dim,
         out_dim,
-        hidden_dim=512,
+        hidden_dim=2048,
         bottleneck_dim=256,
         n_layers=3,
-        norm_last_layer=False,
+        norm_last_layer=True,
     ):
         super().__init__()
         if n_layers == 1:

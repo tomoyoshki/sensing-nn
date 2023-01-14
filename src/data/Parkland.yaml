@@ -235,7 +235,7 @@ TransformerV4:
                 decay_epochs: 200
                 decay_rate: 0.2
         # Data Augmenters:
-        time_augmenters: ["mixup"]
+        time_augmenters: ["jitter"]
         freq_augmenters: ["no"]
 
 # ------------------------------------------- Data Augmenter Configs ------------------------------------------

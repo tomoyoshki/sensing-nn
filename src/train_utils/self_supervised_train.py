@@ -37,8 +37,8 @@ def self_supervised_train_classifier(
     """
     # model config
     classifier_config = args.dataset_config[args.model]
-    student = DINOWrapper(classifier, DINOHead(7, 100), args=args.dataset_config)
-    teacher = DINOWrapper(classifier, DINOHead(7, 100), args=args.dataset_config)
+    student = DINOWrapper(classifier, DINOHead(classifier_config["loc_out_channels"], 1024), args=args.dataset_config)
+    teacher = DINOWrapper(classifier, DINOHead(classifier_config["loc_out_channels"], 1024), args=args.dataset_config)
     student, teacher = student.to(args.device), teacher.to(args.device)
 
     teacher.load_state_dict(student.state_dict())
@@ -82,12 +82,14 @@ def self_supervised_train_classifier(
         # regularization configuration
         for i, (time_loc_inputs, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
-            aug_freq_loc_inputs, labels = augmenter.forward(time_loc_inputs, labels)
-            teacher_output = teacher(aug_freq_loc_inputs, True)
-            student_output = student(aug_freq_loc_inputs)
+            aug_freq_loc_inputs, _ = augmenter.forward(time_loc_inputs, labels)
+            aug_freq_loc_inputs2, _ = augmenter.forward(time_loc_inputs, labels)
+
+            teacher_output_1, teacher_output_2 = teacher(aug_freq_loc_inputs), teacher(aug_freq_loc_inputs2)
+            student_output_1, student_output_2 = student(aug_freq_loc_inputs), student(aug_freq_loc_inputs2)
 
             # forward pass
-            loss = classifier_loss_func(student_output, teacher_output)
+            loss = classifier_loss_func((student_output_1, student_output_2), (teacher_output_1, teacher_output_2))
 
             # back propagation
             optimizer.zero_grad()
@@ -114,10 +116,12 @@ def self_supervised_train_classifier(
 
         tb_writer.add_embedding(
             embs,
-            # label_img=imgs,
+            metadata=labels_,
+            label_img=imgs,
             global_step=epoch,
             tag="embeddings",
         )
+
         knn_estimator = compute_knn(args, student.backbone, augmenter, train_dataloader)
 
         # validation and logging
