@@ -86,7 +86,7 @@ def supervised_train_classifier(
             loss.backward()
 
             # clip gradient and update
-            torch.nn.utils.clip_grad_norm(classifier.parameters(), classifier_config["optimizer"]["clip_grad"])
+            # torch.nn.utils.clip_grad_norm(classifier.parameters(), classifier_config["optimizer"]["clip_grad"])
             optimizer.step()
             train_loss_list.append(loss.item())
 
