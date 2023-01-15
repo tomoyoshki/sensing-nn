@@ -11,7 +11,7 @@ class MagWarpAugmenter(nn.Module):
     def __init__(self, args) -> None:
         super().__init__()
         self.args = args
-        self.config = args.dataset_config["time_warp"]
+        self.config = args.dataset_config["mag_warp"]
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
         self.warp_func = TSMagWarp(magnitude=self.config["magnitude"], order=self.config["order"])
@@ -36,5 +36,7 @@ class MagWarpAugmenter(nn.Module):
                     aug_loc_inputs[loc][mod] = self.warp_func(TSTensor(mod_input), split_idx=0).reshape(b, c, i, s).data
                 else:
                     aug_loc_inputs[loc][mod] = org_loc_inputs[loc][mod]
+
+                # print((aug_loc_inputs[loc][mod] == org_loc_inputs[loc][mod]).sum().item())
 
         return aug_loc_inputs, labels

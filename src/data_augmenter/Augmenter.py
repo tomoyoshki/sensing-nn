@@ -86,7 +86,7 @@ class Augmenter:
         # freq-domain augmentation
         aug_freq_loc_inputs, aug_labels = freq_loc_inputs, labels
         if self.train_flag:
-            for augmenter in self.time_augmenters:
+            for augmenter in self.freq_augmenters:
                 aug_freq_loc_inputs, aug_labels = augmenter(aug_freq_loc_inputs, aug_labels)
 
         return aug_freq_loc_inputs, aug_labels
