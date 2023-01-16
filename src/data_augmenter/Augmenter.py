@@ -11,8 +11,9 @@ from data_augmenter.ScalingAugmenter import ScalingAugmenter
 from data_augmenter.NegationAugmenter import NegationAugmenter
 from data_augmenter.HorizontalFlipAugmenter import HorizontalFlipAugmenter
 from data_augmenter.ChannelShuffleAugmenter import ChannelShuffleAugmenter
-from data_augmenter.TimeWarpAugmenter import TimeWarpAugmenter
-from data_augmenter.MagWarpAugmenter import MagWarpAugmenter
+
+# from data_augmenter.TimeWarpAugmenter import TimeWarpAugmenter
+# from data_augmenter.MagWarpAugmenter import MagWarpAugmenter
 
 
 class Augmenter:
@@ -36,13 +37,13 @@ class Augmenter:
             "noise": NoiseAugmenter,
             "mixup": MixupAugmenter,
             "jitter": JitterAugmenter,
-            "permute": PermutationAugmenter,
+            "permutation": PermutationAugmenter,
             "scaling": ScalingAugmenter,
             "negation": NegationAugmenter,
             "horizontal_flip": HorizontalFlipAugmenter,
             "channel_shuffle": ChannelShuffleAugmenter,
-            "time_warp": TimeWarpAugmenter,
-            "mag_warp": MagWarpAugmenter,
+            # "time_warp": TimeWarpAugmenter,
+            # "mag_warp": MagWarpAugmenter,
         }
         self.time_aug_names = args.dataset_config[args.model]["time_augmenters"]
         self.time_augmenters = []

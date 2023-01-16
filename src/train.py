@@ -30,7 +30,7 @@ from train_utils.self_supervised_train import self_supervised_train_classifier
 from train_utils.finetune import finetune
 
 # loss functions
-from models.loss import DINOLoss
+from models.loss import DINOLoss, SimCLRLoss
 
 # utils
 from torch.utils.tensorboard import SummaryWriter
@@ -94,7 +94,12 @@ def train(args):
             classifier_loss_func = nn.CrossEntropyLoss()
         else:
             # TODO: Setup argument in data yaml file
-            classifier_loss_func = DINOLoss().to(args.device)
+            if args.contrastive_learning_framework == "DINO":
+                classifier_loss_func = DINOLoss().to(args.device)
+            else:
+                classifier_loss_func = SimCLRLoss(args.batch_size, temperature=args.dataset_config["temperature"]).to(
+                    args.device
+                )
     logging.info("=\tLoss function defined")
 
     if args.train_mode == "supervised":

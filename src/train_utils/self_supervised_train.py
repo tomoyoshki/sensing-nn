@@ -39,8 +39,10 @@ def self_supervised_train_classifier(
     """
     # model config
     classifier_config = args.dataset_config[args.model]
+    contrastive_model = None
     if args.contrastive_learning_framework == "SimCLR":
         default_model = SimCLR(args, classifier)
+        default_model = default_model.to(args.device)
     elif args.contrastive_learning_framework == "DINO":
         default_model = DINOWrapper(
             classifier, DINOHead(classifier_config["loc_out_channels"], 1024), args=args.dataset_config
@@ -50,9 +52,9 @@ def self_supervised_train_classifier(
         )
         default_model, contrastive_model = default_model.to(args.device), contrastive_model.to(args.device)
 
-    contrastive_model.load_state_dict(default_model.state_dict())
-    for p in contrastive_model.parameters():
-        p.requires_grad = False
+        contrastive_model.load_state_dict(default_model.state_dict())
+        for p in contrastive_model.parameters():
+            p.requires_grad = False
 
     # Define the optimizer and learning rate scheduler
     optimizer = define_optimizer(args, default_model.parameters())
@@ -91,13 +93,13 @@ def self_supervised_train_classifier(
         # regularization configuration
         for i, (time_loc_inputs, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
-            aug_freq_loc_inputs, _ = augmenter.forward(time_loc_inputs, labels)
-            feature1, feature2 = default_model(aug_freq_loc_inputs)
+            optimizer.zero_grad()
+            aug_freq_loc_inputs_i, _ = augmenter.forward(time_loc_inputs, labels)
+            aug_freq_loc_inputs_j, _ = augmenter.forward(time_loc_inputs, labels)
+            feature1, feature2 = default_model(aug_freq_loc_inputs_i, aug_freq_loc_inputs_j)
             # forward pass
             loss = classifier_loss_func(feature1, feature2)
-
             # back propagation
-            optimizer.zero_grad()
             loss.backward()
 
             # clip gradient and update
