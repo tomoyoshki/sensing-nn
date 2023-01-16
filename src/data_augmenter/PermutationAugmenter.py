@@ -12,7 +12,7 @@ class PermutationAugmenter(nn.Module):
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
 
-    def forward(self, org_loc_inputs, labels):
+    def forward(self, org_loc_inputs, labels=None):
         """
         Fake forward function of the permutation augmenter.
         x: [b, c, i, s]

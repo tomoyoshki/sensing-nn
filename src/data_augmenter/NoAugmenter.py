@@ -10,7 +10,7 @@ class NoAugmenter(nn.Module):
         super().__init__()
         self.args = args
 
-    def forward(self, loc_inputs, labels):
+    def forward(self, loc_inputs, labels=None):
         """
         Fake forward function of the no miss modality generator.
         x: loc --> mod --> [b, c, i, s]

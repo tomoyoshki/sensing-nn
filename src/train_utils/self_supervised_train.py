@@ -60,9 +60,9 @@ def self_supervised_train_classifier(
     optimizer = define_optimizer(args, default_model.parameters())
     lr_scheduler = define_lr_scheduler(args, optimizer)
 
-    # for name, param in classifier.named_parameters():
-    #     if "patch_embed" in name:
-    # param.requires_grad = False
+    for name, param in default_model.backbone.named_parameters():
+        if "patch_embed" in name:
+            param.requires_grad = False
 
     # Print the trainable parameters
     if args.verbose:
@@ -94,8 +94,8 @@ def self_supervised_train_classifier(
         for i, (time_loc_inputs, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
             optimizer.zero_grad()
-            aug_freq_loc_inputs_i, _ = augmenter.forward(time_loc_inputs, labels)
-            aug_freq_loc_inputs_j, _ = augmenter.forward(time_loc_inputs, labels)
+            aug_freq_loc_inputs_i = augmenter.forward_random(time_loc_inputs)
+            aug_freq_loc_inputs_j = augmenter.forward_random(time_loc_inputs)
             feature1, feature2 = default_model(aug_freq_loc_inputs_i, aug_freq_loc_inputs_j)
             # forward pass
             loss = classifier_loss_func(feature1, feature2)

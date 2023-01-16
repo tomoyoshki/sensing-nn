@@ -235,7 +235,7 @@ TransformerV4:
                 decay_epochs: 200
                 decay_rate: 0.2
         # Data Augmenters:
-        time_augmenters: ["channel_shuffle", "permutation"]
+        time_augmenters: ["channel_shuffle", "permutation", "negation", "mag_warp", "time_warp"]
         freq_augmenters: ["no"]
 
         # Contrastive learning

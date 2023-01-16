@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -15,7 +16,7 @@ class RotationAugmenter(nn.Module):
         self.locations = args.dataset_config["location_names"]
         self.init_value_range()
 
-    def forward(self, org_loc_inputs, labels):
+    def forward(self, org_loc_inputs, labels=None):
         """
         Fake forward function of the no miss modality generator.
         x: [b, c, i, s]

@@ -1,6 +1,7 @@
 import logging
 import torch
 import numpy as np
+import random
 from data_augmenter.NoAugmenter import NoAugmenter
 from data_augmenter.MissAugmenter import MissAugmenter
 from data_augmenter.NoiseAugmenter import NoiseAugmenter
@@ -11,9 +12,8 @@ from data_augmenter.ScalingAugmenter import ScalingAugmenter
 from data_augmenter.NegationAugmenter import NegationAugmenter
 from data_augmenter.HorizontalFlipAugmenter import HorizontalFlipAugmenter
 from data_augmenter.ChannelShuffleAugmenter import ChannelShuffleAugmenter
-
-# from data_augmenter.TimeWarpAugmenter import TimeWarpAugmenter
-# from data_augmenter.MagWarpAugmenter import MagWarpAugmenter
+from data_augmenter.TimeWarpAugmenter import TimeWarpAugmenter
+from data_augmenter.MagWarpAugmenter import MagWarpAugmenter
 
 
 class Augmenter:
@@ -42,8 +42,8 @@ class Augmenter:
             "negation": NegationAugmenter,
             "horizontal_flip": HorizontalFlipAugmenter,
             "channel_shuffle": ChannelShuffleAugmenter,
-            # "time_warp": TimeWarpAugmenter,
-            # "mag_warp": MagWarpAugmenter,
+            "time_warp": TimeWarpAugmenter,
+            "mag_warp": MagWarpAugmenter,
         }
         self.time_aug_names = args.dataset_config[args.model]["time_augmenters"]
         self.time_augmenters = []
@@ -92,7 +92,32 @@ class Augmenter:
 
         return aug_freq_loc_inputs, aug_labels
 
-    def move_to_target_device(self, time_loc_inputs, labels):
+    def forward_random(self, time_loc_inputs):
+        """
+        randomly add augmentation to the input
+        """
+        # move to target device
+        time_loc_inputs, _ = self.move_to_target_device(time_loc_inputs)
+
+        # time-domain augmentation
+        aug_time_loc_inputs = time_loc_inputs
+        if self.train_flag:
+            # Random ly select augmenter
+            random_augmenter = random.choice(self.time_augmenters)
+            aug_time_loc_inputs, _ = random_augmenter(aug_time_loc_inputs)
+
+        # time --> freq domain with FFT
+        freq_loc_inputs = self.fft_preprocess(aug_time_loc_inputs)
+
+        # freq-domain augmentation
+        aug_freq_loc_inputs = freq_loc_inputs
+        if self.train_flag:
+            random_augmenter = random.choice(self.freq_augmenters)
+            aug_freq_loc_inputs, _ = random_augmenter(aug_freq_loc_inputs)
+
+        return aug_freq_loc_inputs
+
+    def move_to_target_device(self, time_loc_inputs, labels=None):
         """Move both the data and labels to the target device"""
         target_device = self.args.device
 
@@ -100,7 +125,8 @@ class Augmenter:
             for mod in time_loc_inputs[loc]:
                 time_loc_inputs[loc][mod] = time_loc_inputs[loc][mod].to(target_device)
 
-        labels = labels.to(target_device)
+        if not (labels is None):
+            labels = labels.to(target_device)
 
         return time_loc_inputs, labels
 

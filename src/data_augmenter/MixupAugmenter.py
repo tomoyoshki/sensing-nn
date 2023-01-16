@@ -11,12 +11,14 @@ class MixupAugmenter(nn.Module):
         self.args = args
         self.mixup_func = Mixup(**args.dataset_config["mixup"])
 
-    def forward(self, org_loc_inputs, labels):
+    def forward(self, org_loc_inputs, labels=None):
         """
         Fake forward function of the no miss modality generator.
         x: [b, c, i, s]
         Return: Same shape as x, 1 means available, 0 means missing.
         """
+
+        # TODO: Contrastive learning mixup, mixup function with no labels
         aug_loc_inputs, aug_labels = self.mixup_func(org_loc_inputs, labels, self.args.dataset_config)
 
         return aug_loc_inputs, aug_labels

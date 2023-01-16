@@ -16,7 +16,7 @@ class MagWarpAugmenter(nn.Module):
         self.locations = args.dataset_config["location_names"]
         self.warp_func = TSMagWarp(magnitude=self.config["magnitude"], order=self.config["order"])
 
-    def forward(self, org_loc_inputs, labels):
+    def forward(self, org_loc_inputs, labels=None):
         """
         Fake forward function of the scaling augmenter. Operate in the time domain.
         split_idx: 0 for training set and 1 for validation set.
