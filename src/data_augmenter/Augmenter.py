@@ -16,6 +16,7 @@ from data_augmenter.MagWarpAugmenter import MagWarpAugmenter
 from data_augmenter.TimeMaskAugmenter import TimeMaskAugmenter
 
 from data_augmenter.FreqMaskAugmenter import FreqMaskAugmenter
+from data_augmenter.PhaseShiftAugmenter import PhaseShiftAugmenter
 
 
 class Augmenter:
@@ -61,6 +62,7 @@ class Augmenter:
         freq_augmenter_pool = {
             "no": NoAugmenter,
             "freq_mask": FreqMaskAugmenter,
+            "phase_shift": PhaseShiftAugmenter,
         }
         self.freq_aug_names = args.dataset_config[args.model]["freq_augmenters"]
         self.freq_augmenters = []

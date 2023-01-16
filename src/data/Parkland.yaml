@@ -235,8 +235,8 @@ TransformerV4:
                 decay_epochs: 200
                 decay_rate: 0.2
         # Data Augmenters:
-        time_augmenters: ["time_mask"]
-        freq_augmenters: ["freq_mask"]
+        time_augmenters: ["no"]
+        freq_augmenters: ["phase_shift"]
 
 # ------------------------------------------- Data Augmenter Configs ------------------------------------------
 # Mixup config
@@ -287,3 +287,6 @@ freq_mask:
 time_mask:
         prob: 0.5
         mask_ratio: 0.3
+
+phase_shift:
+        prob: 0.5 
