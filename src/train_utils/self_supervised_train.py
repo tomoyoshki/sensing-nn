@@ -24,7 +24,7 @@ from models.SimCLRModules import SimCLR
 
 def self_supervised_train_classifier(
     args,
-    classifier,
+    backbone_model,
     augmenter,
     train_dataloader,
     val_dataloader,
@@ -41,20 +41,22 @@ def self_supervised_train_classifier(
     classifier_config = args.dataset_config[args.model]
     contrastive_model = None
     if args.contrastive_learning_framework == "SimCLR":
-        default_model = SimCLR(args, classifier)
+        default_model = SimCLR(args, backbone_model)
         default_model = default_model.to(args.device)
     elif args.contrastive_learning_framework == "DINO":
         default_model = DINOWrapper(
-            classifier, DINOHead(classifier_config["loc_out_channels"], 1024), args=args.dataset_config
+            backbone_model, DINOHead(classifier_config["loc_out_channels"], 1024), args=args.dataset_config
         )
         contrastive_model = DINOWrapper(
-            classifier, DINOHead(classifier_config["loc_out_channels"], 1024), args=args.dataset_config
+            backbone_model, DINOHead(classifier_config["loc_out_channels"], 1024), args=args.dataset_config
         )
         default_model, contrastive_model = default_model.to(args.device), contrastive_model.to(args.device)
 
         contrastive_model.load_state_dict(default_model.state_dict())
         for p in contrastive_model.parameters():
             p.requires_grad = False
+    else:
+        raise NotImplementedError
 
     # Define the optimizer and learning rate scheduler
     optimizer = define_optimizer(args, default_model.parameters())
@@ -66,7 +68,7 @@ def self_supervised_train_classifier(
 
     # Print the trainable parameters
     if args.verbose:
-        for name, param in classifier.named_parameters():
+        for name, param in default_model.backbone.named_parameters():
             if param.requires_grad:
                 logging.info(name)
 
@@ -91,19 +93,22 @@ def self_supervised_train_classifier(
         train_loss_list = []
 
         # regularization configuration
-        for i, (time_loc_inputs, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
+        for i, (time_loc_inputs, _) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
             optimizer.zero_grad()
             aug_freq_loc_inputs_i = augmenter.forward_random(time_loc_inputs)
             aug_freq_loc_inputs_j = augmenter.forward_random(time_loc_inputs)
             feature1, feature2 = default_model(aug_freq_loc_inputs_i, aug_freq_loc_inputs_j)
+
             # forward pass
             loss = classifier_loss_func(feature1, feature2)
+
             # back propagation
             loss.backward()
-
             # clip gradient and update
-            # torch.nn.utils.clip_grad_norm(classifier.parameters(), classifier_config["optimizer"]["clip_grad"])
+            torch.nn.utils.clip_grad_norm(
+                default_model.backbone.parameters(), classifier_config["optimizer"]["clip_grad"]
+            )
             optimizer.step()
 
             train_loss_list.append(loss.item())
@@ -112,17 +117,19 @@ def self_supervised_train_classifier(
             if i % 200 == 0:
                 tb_writer.add_scalar("Train/Train loss", loss.item(), epoch * num_batches + i)
 
-        # compute KNN estimator
-        embs, imgs, labels_ = compute_embedding(args, default_model.backbone, augmenter, val_dataloader)
+        if epoch % 10 == 0:
+            # compute embedding for the validation dataloader
+            embs, imgs, labels_ = compute_embedding(args, default_model.backbone, augmenter, val_dataloader)
 
-        tb_writer.add_embedding(
-            embs,
-            metadata=labels_,
-            label_img=imgs,
-            global_step=epoch,
-            tag="embeddings",
-        )
+            tb_writer.add_embedding(
+                embs,
+                metadata=labels_,
+                label_img=imgs,
+                global_step=epoch,
+                tag="embeddings",
+            )
 
+        # compute
         knn_estimator = compute_knn(args, default_model.backbone, augmenter, train_dataloader)
 
         # validation and logging
@@ -131,7 +138,7 @@ def self_supervised_train_classifier(
             args,
             epoch,
             tb_writer,
-            classifier,
+            default_model.backbone,
             augmenter,
             val_dataloader,
             test_dataloader,
@@ -141,12 +148,12 @@ def self_supervised_train_classifier(
         )
 
         # Save the latest model
-        torch.save(classifier.state_dict(), latest_weight)
+        torch.save(default_model.backbone.state_dict(), latest_weight)
 
         # Save the best model according to validation result
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            torch.save(classifier.state_dict(), best_weight)
+            torch.save(default_model.backbone.state_dict(), best_weight)
 
         # Update the learning rate scheduler
         lr_scheduler.step(epoch)
