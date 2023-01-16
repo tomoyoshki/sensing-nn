@@ -19,6 +19,8 @@ from general_utils.time_utils import time_sync
 # DINO utils
 from models.DINOModules import DINOWrapper, DINOHead
 
+from models.SimCLRModules import SimCLR
+
 
 def self_supervised_train_classifier(
     args,
@@ -37,21 +39,28 @@ def self_supervised_train_classifier(
     """
     # model config
     classifier_config = args.dataset_config[args.model]
-    student = DINOWrapper(classifier, DINOHead(classifier_config["loc_out_channels"], 1024), args=args.dataset_config)
-    teacher = DINOWrapper(classifier, DINOHead(classifier_config["loc_out_channels"], 1024), args=args.dataset_config)
-    student, teacher = student.to(args.device), teacher.to(args.device)
+    if args.contrastive_learning_framework == "SimCLR":
+        default_model = SimCLR(args, classifier)
+    elif args.contrastive_learning_framework == "DINO":
+        default_model = DINOWrapper(
+            classifier, DINOHead(classifier_config["loc_out_channels"], 1024), args=args.dataset_config
+        )
+        contrastive_model = DINOWrapper(
+            classifier, DINOHead(classifier_config["loc_out_channels"], 1024), args=args.dataset_config
+        )
+        default_model, contrastive_model = default_model.to(args.device), contrastive_model.to(args.device)
 
-    teacher.load_state_dict(student.state_dict())
-    for p in teacher.parameters():
+    contrastive_model.load_state_dict(default_model.state_dict())
+    for p in contrastive_model.parameters():
         p.requires_grad = False
 
     # Define the optimizer and learning rate scheduler
-    optimizer = define_optimizer(args, student.parameters())
+    optimizer = define_optimizer(args, default_model.parameters())
     lr_scheduler = define_lr_scheduler(args, optimizer)
 
     # for name, param in classifier.named_parameters():
     #     if "patch_embed" in name:
-    #         param.requires_grad = False
+    # param.requires_grad = False
 
     # Print the trainable parameters
     if args.verbose:
@@ -73,7 +82,7 @@ def self_supervised_train_classifier(
 
     for epoch in range(classifier_config["lr_scheduler"]["train_epochs"]):
         # set model to train mode
-        student.train()
+        default_model.train()
         augmenter.train()
 
         # training loop
@@ -83,27 +92,17 @@ def self_supervised_train_classifier(
         for i, (time_loc_inputs, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
             aug_freq_loc_inputs, _ = augmenter.forward(time_loc_inputs, labels)
-            aug_freq_loc_inputs2, _ = augmenter.forward(time_loc_inputs, labels)
-
-            teacher_output_1, teacher_output_2 = teacher(aug_freq_loc_inputs), teacher(aug_freq_loc_inputs2)
-            student_output_1, student_output_2 = student(aug_freq_loc_inputs), student(aug_freq_loc_inputs2)
-
+            feature1, feature2 = default_model(aug_freq_loc_inputs)
             # forward pass
-            loss = classifier_loss_func((student_output_1, student_output_2), (teacher_output_1, teacher_output_2))
+            loss = classifier_loss_func(feature1, feature2)
 
             # back propagation
             optimizer.zero_grad()
             loss.backward()
 
             # clip gradient and update
-            torch.nn.utils.clip_grad_norm(classifier.parameters(), classifier_config["optimizer"]["clip_grad"])
+            # torch.nn.utils.clip_grad_norm(classifier.parameters(), classifier_config["optimizer"]["clip_grad"])
             optimizer.step()
-
-            # update the classifier average parameters
-            with torch.no_grad():
-                for student_ps, teacher_ps in zip(student.parameters(), teacher.parameters()):
-                    teacher_ps.data.mul_(0.996)
-                    teacher_ps.data.add_((1 - 0.996) * student_ps.detach().data)
 
             train_loss_list.append(loss.item())
 
@@ -112,7 +111,7 @@ def self_supervised_train_classifier(
                 tb_writer.add_scalar("Train/Train loss", loss.item(), epoch * num_batches + i)
 
         # compute KNN estimator
-        embs, imgs, labels_ = compute_embedding(args, student.backbone, augmenter, val_dataloader)
+        embs, imgs, labels_ = compute_embedding(args, default_model.backbone, augmenter, val_dataloader)
 
         tb_writer.add_embedding(
             embs,
@@ -122,7 +121,7 @@ def self_supervised_train_classifier(
             tag="embeddings",
         )
 
-        knn_estimator = compute_knn(args, student.backbone, augmenter, train_dataloader)
+        knn_estimator = compute_knn(args, default_model.backbone, augmenter, train_dataloader)
 
         # validation and logging
         train_loss = np.mean(train_loss_list)
