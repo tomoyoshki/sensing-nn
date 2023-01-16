@@ -13,6 +13,7 @@ from data_augmenter.HorizontalFlipAugmenter import HorizontalFlipAugmenter
 from data_augmenter.ChannelShuffleAugmenter import ChannelShuffleAugmenter
 from data_augmenter.TimeWarpAugmenter import TimeWarpAugmenter
 from data_augmenter.MagWarpAugmenter import MagWarpAugmenter
+from data_augmenter.TimeMaskAugmenter import TimeMaskAugmenter
 
 from data_augmenter.FreqMaskAugmenter import FreqMaskAugmenter
 
@@ -45,6 +46,7 @@ class Augmenter:
             "channel_shuffle": ChannelShuffleAugmenter,
             "time_warp": TimeWarpAugmenter,
             "mag_warp": MagWarpAugmenter,
+            "time_mask": TimeMaskAugmenter,
         }
         self.time_aug_names = args.dataset_config[args.model]["time_augmenters"]
         self.time_augmenters = []
