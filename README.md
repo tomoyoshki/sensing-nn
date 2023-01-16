@@ -25,5 +25,5 @@ NVIDIA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=su
 |  Date       | Model | Augmenter   |  Accuracy  | Weight Checkpoint |
 | :---:       |    :----:    |    :----:   |      :---: |       :---: | 
 | 20230116    | TransformerV4 | PhaseShift         | 88.68%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp6_supervised |
-| 20230116    | TransformerV4 | FreqMask           | xx.xx%   | |
-| 20230116    | TransformerV4 | TimeMask           | xx.xx%   | |
+| 20230116    | TransformerV4 | FreqMask           | 85.53%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp9_supervised |
+| 20230116    | TransformerV4 | TimeMask           | 72.94%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp7_supervised |
