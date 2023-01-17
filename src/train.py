@@ -22,7 +22,7 @@ from models.TransformerV3 import TransformerV3
 from models.TransformerV4 import TransformerV4
 
 # train utils
-from train_utils.supervised_train import supervised_train_classifier
+from train_utils.supervised_train import supervised_train
 from train_utils.contrastive_train import contrastive_pretrain
 from train_utils.finetune import finetune
 
@@ -87,9 +87,10 @@ def train(args):
     if args.multi_class:
         loss_func = nn.BCELoss()
     else:
-        if args.train_mode == "supervised":
+        if args.train_mode == "supervised" or args.stage == "finetune":
             loss_func = nn.CrossEntropyLoss()
-        else:
+        elif args.train_mode == "contrastive":
+            """Contrastive pretraining only."""
             # TODO: Setup argument in data yaml file
             if args.contrastive_framework == "DINO":
                 loss_func = DINOLoss().to(args.device)
@@ -98,10 +99,12 @@ def train(args):
                     args.batch_size,
                     temperature=args.dataset_config["SimCLR"]["temperature"],
                 ).to(args.device)
+        else:
+            raise Exception(f"Invalid train mode provided: {args.train_mode}")
     logging.info("=\tLoss function defined")
 
     if args.train_mode == "supervised":
-        supervised_train_classifier(
+        supervised_train(
             args,
             classifier,
             augmenter,
@@ -113,20 +116,18 @@ def train(args):
             num_batches,
         )
     elif args.train_mode in {"contrastive"}:
-        contrastive_pretrain(
-            args,
-            classifier,
-            augmenter,
-            train_dataloader,
-            val_dataloader,
-            test_dataloader,
-            loss_func,
-            tb_writer,
-            num_batches,
-        )
-    else:
-        if args.stage == "pretrain_classifier":
-            pass
+        if args.stage == "pretrain":
+            contrastive_pretrain(
+                args,
+                classifier,
+                augmenter,
+                train_dataloader,
+                val_dataloader,
+                test_dataloader,
+                loss_func,
+                tb_writer,
+                num_batches,
+            )
         elif args.stage == "finetune":
             finetune(
                 args,
@@ -138,10 +139,11 @@ def train(args):
                 loss_func,
                 tb_writer,
                 num_batches,
-                triplet_flag,
             )
         else:
             raise Exception(f"Invalid stage provided: {args.stage}")
+    else:
+        pass
 
 
 def main_train():

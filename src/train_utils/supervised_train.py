@@ -15,7 +15,7 @@ from train_utils.lr_scheduler import define_lr_scheduler
 from general_utils.time_utils import time_sync
 
 
-def supervised_train_classifier(
+def supervised_train(
     args,
     classifier,
     augmenter,
@@ -72,7 +72,7 @@ def supervised_train_classifier(
         # regularization configuration
         for i, (time_loc_inputs, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
-            aug_freq_loc_inputs, labels = augmenter.forward_random(time_loc_inputs, labels)
+            aug_freq_loc_inputs, labels = augmenter.forward(time_loc_inputs, labels)
 
             # forward pass
             logits = classifier(aug_freq_loc_inputs)

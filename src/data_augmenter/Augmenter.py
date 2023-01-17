@@ -77,6 +77,19 @@ class Augmenter:
         self.augmenters = self.time_augmenters + self.freq_augmenters
 
     def forward(self, time_loc_inputs, labels):
+        """General interface for the forward function."""
+        args = self.args
+        if args.train_mode == "supervised":
+            return self.forward_fixed(time_loc_inputs, labels)
+        elif args.train_mode == "contrastive":
+            if args.stage == "pretrain":
+                return self.forward_random(time_loc_inputs, labels)
+            else:
+                return self.forward_noaug(time_loc_inputs, labels)
+        else:
+            raise Exception(f"Invalid train mode: {args.train_mode}")
+
+    def forward_fixed(self, time_loc_inputs, labels):
         """
         Add noise to the input_dict depending on the noise position.
         We only add noise to the time domeain, but not the feature level.
@@ -128,6 +141,19 @@ class Augmenter:
             return aug_freq_loc_inputs
         else:
             return aug_freq_loc_inputs, aug_labels
+
+    def forward_noaug(self, time_loc_inputs, labels):
+        """
+        Add noise to the input_dict depending on the noise position.
+        We only add noise to the time domeain, but not the feature level.
+        """
+        # move to target device
+        time_loc_inputs, labels = self.move_to_target_device(time_loc_inputs, labels)
+
+        # time --> freq domain with FFT
+        freq_loc_inputs = self.fft_preprocess(time_loc_inputs)
+
+        return freq_loc_inputs, labels
 
     def move_to_target_device(self, time_loc_inputs, labels):
         """Move both the data and labels to the target device"""
