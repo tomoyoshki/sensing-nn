@@ -11,10 +11,16 @@ Transformer-based foundation models for (multi-modal) time-series sensing data
 CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4
 ```
 
-#### Self supervised learning (contrastive)
+#### Self supervised pretraining (contrastive)
 
 ```
 CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=pretrain -model=TransformerV4
+```
+
+#### Self supervised finetuning (contrastive)
+
+```
+CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -model=TransformerV4
 ```
 
 ### Testing 
