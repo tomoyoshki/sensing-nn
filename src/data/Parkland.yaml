@@ -257,13 +257,13 @@ mixup:
 
 jitter:
         std_in_percent: 0.1
-        prob: 0.5
+        prob: 1.0
 
 rotation:
         angles: [90, 180, 270]
 
 permutation:
-        prob: 0.5 
+        prob: 1.0
 
 scaling:
         prob: 0.5

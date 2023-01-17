@@ -84,7 +84,7 @@ def eval_estimator(args, classifier, estimator, augmenter, data_loader):
     with torch.no_grad():
         # loop through datal oader
         for time_loc_inputs, label in tqdm(data_loader, total=len(data_loader)):
-            aug_freq_loc_inputs = augmenter.forward(time_loc_inputs)
+            aug_freq_loc_inputs = augmenter.forward_random(time_loc_inputs)
             time_loc_inputs_l.append(classifier(aug_freq_loc_inputs).detach().cpu().numpy())
             labels.append(label.detach().cpu().numpy())
 
