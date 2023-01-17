@@ -5,12 +5,12 @@ Transformer-based foundation models for (multi-modal) time-series sensing data
 
 ### Training 
 ```
-python3 train.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4
+CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4
 ```
 
 ### Testing 
 ```
-python3 test.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised
+CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised
 ```
 
 ### Model performance on Parkland dataset
@@ -25,5 +25,7 @@ python3 test.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=Transform
 |  Date       | Model | Augmenter   |  Accuracy  | Weight Checkpoint |
 | :---:       |    :----:    |    :----:   |      :---: |       :---: | 
 | 20230116    | TransformerV4 | PhaseShift         | 88.68%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp6_supervised |
-| 20230116    | TransformerV4 | FreqMask           | xx.xx%   | |
-| 20230116    | TransformerV4 | TimeMask           | xx.xx%   | |
+| 20230116    | TransformerV4 | FreqMask           | 85.53%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp9_supervised |
+| 20230116    | TransformerV4 | TimeMask           | 72.94%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp7_supervised |
+| 20230116    | TransformerV4 | HorizontalFlip     | 84.59%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised|
+| 20230116    | TransformerV4 | Jitter             | 84.46%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp11_supervised|
