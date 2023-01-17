@@ -73,14 +73,16 @@ class ResNet(nn.Module):
             )
 
         # Step 5: Classification layer
-        self.class_layer = nn.Sequential(
+        self.sample_embd_layer = nn.Sequential(
             nn.Linear(self.config["loc_out_channels"], self.config["fc_dim"]),
             nn.ReLU(),
+        )
+        self.class_layer = nn.Sequential(
             nn.Linear(self.config["fc_dim"], args.dataset_config["num_classes"]),
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
-    def forward(self, freq_x):
+    def forward(self, freq_x, class_head=True):
         """The forward function of ResNet.
         Args:
             x (_type_): x is a dictionary consisting of the Tensor input of each input modality.
@@ -114,6 +116,11 @@ class ResNet(nn.Module):
 
         # Step 7: Classification on features
         final_feature = torch.flatten(final_feature, start_dim=1)
-        logits = self.class_layer(final_feature)
+        sample_features = self.sample_embd_layer(final_feature)
 
-        return logits
+        if class_head:
+            logits = self.class_layer(sample_features)
+            return logits
+        else:
+            """Self-supervised pre-training"""
+            return sample_features

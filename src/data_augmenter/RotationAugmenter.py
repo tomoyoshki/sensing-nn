@@ -18,7 +18,7 @@ class RotationAugmenter(nn.Module):
 
     def forward(self, org_loc_inputs, labels=None):
         """
-        Fake forward function of the no miss modality generator.
+        TODO: Implement the rotation augmenter.
         x: [b, c, i, s]
         Return: Same shape as x, 1 means available, 0 means missing.
         """

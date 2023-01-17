@@ -156,14 +156,16 @@ class TransformerV2(nn.Module):
         )
 
         # Classification
-        self.class_layer = nn.Sequential(
+        self.sample_embd_layer = nn.Sequential(
             nn.Linear(self.config["interval_out_channels"], self.config["fc_dim"]),
             nn.GELU(),
+        )
+        self.class_layer = nn.Sequential(
             nn.Linear(self.config["fc_dim"], args.dataset_config["num_classes"]),
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
-    def forward(self, freq_x):
+    def forward(self, freq_x, class_head=True):
         """The forward function of DeepSense.
         Args:
             time_x (_type_): time_x is a dictionary consisting of the Tensor input of each input modality.
@@ -221,10 +223,14 @@ class TransformerV2(nn.Module):
         # Step 4: Time interval fusion, [b, c]
         interval_context_features = self.interval_context_layer(interval_features)
         interval_context_features = interval_context_features.unsqueeze(1)
-        sample_feature = self.interval_fusion_layer(interval_context_features)
-        sample_feature = sample_feature.squeeze(dim=1)
+        sample_features = self.interval_fusion_layer(interval_context_features)
+        sample_features = sample_features.squeeze(dim=1)
+        sample_features = self.sample_embd_layer(sample_features)
 
         # Step 7: Classification
-        logits = self.class_layer(sample_feature)
-
-        return logits
+        if class_head:
+            logits = self.class_layer(sample_features)
+            return logits
+        else:
+            """Self-supervised pre-training"""
+            return sample_features
