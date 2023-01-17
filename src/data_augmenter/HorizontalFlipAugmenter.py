@@ -14,7 +14,7 @@ class HorizontalFlipAugmenter(nn.Module):
 
     def forward(self, org_loc_inputs, labels):
         """
-        Fake forward function of the horizontal augmenter. Operate in the time domain.
+        Feed forward function of the horizontal augmenter. Operate in the time domain.
         x: [b, c, i, s]
         Return: Same shape as x. The input is flipped horizontally with probability self.config["prob"].
         """

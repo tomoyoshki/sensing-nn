@@ -34,7 +34,7 @@ class Augmenter:
         logging.info(f"=\t[Option]: {args.option}, mode: {self.mode}, stage: {args.stage}")
 
         # load the time augmenters
-        time_augmenter_pool = {
+        self.time_augmenter_pool = {
             "no": NoAugmenter,
             "miss": MissAugmenter,
             "noise": NoiseAugmenter,
@@ -52,14 +52,14 @@ class Augmenter:
         self.time_aug_names = args.dataset_config[args.model]["time_augmenters"]
         self.time_augmenters = []
         for aug_name in self.time_aug_names:
-            if aug_name not in time_augmenter_pool:
+            if aug_name not in self.time_augmenter_pool:
                 raise Exception(f"Invalid augmenter provided: {aug_name}")
             else:
-                self.time_augmenters.append(time_augmenter_pool[aug_name](args))
+                self.time_augmenters.append(self.time_augmenter_pool[aug_name](args))
                 logging.info(f"=\t[Loaded time augmenter]: {aug_name}")
 
         # load the freq augmenters
-        freq_augmenter_pool = {
+        self.freq_augmenter_pool = {
             "no": NoAugmenter,
             "freq_mask": FreqMaskAugmenter,
             "phase_shift": PhaseShiftAugmenter,
@@ -67,11 +67,15 @@ class Augmenter:
         self.freq_aug_names = args.dataset_config[args.model]["freq_augmenters"]
         self.freq_augmenters = []
         for aug_name in self.freq_aug_names:
-            if aug_name not in freq_augmenter_pool:
+            if aug_name not in self.freq_augmenter_pool:
                 raise Exception(f"Invalid augmenter provided: {aug_name}")
             else:
-                self.freq_augmenters.append(freq_augmenter_pool[aug_name](args))
+                self.freq_augmenters.append(self.freq_augmenter_pool[aug_name](args))
                 logging.info(f"=\t[Loaded frequency augmenter]: {aug_name}")
+
+        # random augmenter pool
+        self.aug_names = self.time_aug_names + self.freq_aug_names
+        self.augmenters = self.time_augmenters + self.freq_augmenters
 
     def forward(self, time_loc_inputs, labels):
         """
@@ -97,6 +101,34 @@ class Augmenter:
                 aug_freq_loc_inputs, aug_labels = augmenter(aug_freq_loc_inputs, aug_labels)
 
         return aug_freq_loc_inputs, aug_labels
+
+    def forward_random(self, time_loc_inputs, labels=None):
+        """Randomly select one augmenter from both (time, freq) augmenter pool and apply it to the input."""
+        # move to target device
+        time_loc_inputs, labels = self.move_to_target_device(time_loc_inputs, labels)
+
+        # select a random augmenter
+        rand_aug_id = np.random.randint(len(self.aug_names))
+        rand_aug_name = self.aug_names[rand_aug_id]
+        rand_augmenter = self.augmenters[rand_aug_id]
+
+        # time-domain augmentation
+        aug_time_loc_inputs, aug_labels = time_loc_inputs, labels
+        if self.train_flag and rand_aug_name in self.time_augmenter_pool:
+            aug_time_loc_inputs, aug_labels = rand_augmenter(aug_time_loc_inputs, aug_labels)
+
+        # time --> freq domain with FFT
+        freq_loc_inputs = self.fft_preprocess(aug_time_loc_inputs)
+
+        # freq-domain augmentation
+        aug_freq_loc_inputs, aug_labels = freq_loc_inputs, labels
+        if self.train_flag and rand_aug_name in self.freq_augmenter_pool:
+            aug_freq_loc_inputs, aug_labels = rand_augmenter(aug_freq_loc_inputs, aug_labels)
+
+        if labels is None:
+            return aug_freq_loc_inputs
+        else:
+            return aug_freq_loc_inputs, aug_labels
 
     def move_to_target_device(self, time_loc_inputs, labels):
         """Move both the data and labels to the target device"""

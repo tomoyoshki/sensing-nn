@@ -24,7 +24,7 @@ class ScalingAugmenter(nn.Module):
             for mod in self.modalities:
                 if random() < self.config["prob"]:
                     mod_input = org_loc_inputs[loc][mod]
-                    scale_factor = torch.normal(1, self.config["std"])
+                    scale_factor = torch.normal(1.0, self.config["std"], size=(1,)).to(self.args.device)
                     aug_loc_inputs[loc][mod] = mod_input * scale_factor
                 else:
                     aug_loc_inputs[loc][mod] = org_loc_inputs[loc][mod]
