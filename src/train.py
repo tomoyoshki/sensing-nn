@@ -23,7 +23,7 @@ from models.TransformerV4 import TransformerV4
 
 # train utils
 from train_utils.supervised_train import supervised_train_classifier
-from train_utils.self_supervised_train import self_supervised_train_classifier
+from train_utils.contrastive_train import contrastive_pretrain
 from train_utils.finetune import finetune
 
 # loss functions
@@ -113,7 +113,7 @@ def train(args):
             num_batches,
         )
     elif args.train_mode in {"contrastive"}:
-        self_supervised_train_classifier(
+        contrastive_pretrain(
             args,
             classifier,
             augmenter,

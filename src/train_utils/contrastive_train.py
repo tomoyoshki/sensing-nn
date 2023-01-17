@@ -18,11 +18,10 @@ from general_utils.time_utils import time_sync
 
 # DINO utils
 from models.DINOModules import DINOWrapper, DINOHead
-
 from models.SimCLRModules import SimCLR
 
 
-def self_supervised_train_classifier(
+def contrastive_pretrain(
     args,
     backbone_model,
     augmenter,
@@ -96,19 +95,20 @@ def self_supervised_train_classifier(
         for i, (time_loc_inputs, _) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
             optimizer.zero_grad()
-            aug_freq_loc_inputs_i = augmenter.forward_random(time_loc_inputs)
-            aug_freq_loc_inputs_j = augmenter.forward_random(time_loc_inputs)
-            feature1, feature2 = default_model(aug_freq_loc_inputs_i, aug_freq_loc_inputs_j)
+            aug_freq_loc_inputs_1 = augmenter.forward_random(time_loc_inputs)
+            aug_freq_loc_inputs_2 = augmenter.forward_random(time_loc_inputs)
+            feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
 
             # forward pass
             loss = loss_func(feature1, feature2)
 
             # back propagation
             loss.backward()
+
             # clip gradient and update
-            torch.nn.utils.clip_grad_norm(
-                default_model.backbone.parameters(), classifier_config["optimizer"]["clip_grad"]
-            )
+            # torch.nn.utils.clip_grad_norm(
+            #     default_model.backbone.parameters(), classifier_config["optimizer"]["clip_grad"]
+            # )
             optimizer.step()
 
             train_loss_list.append(loss.item())
