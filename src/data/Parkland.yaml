@@ -235,11 +235,7 @@ TransformerV4:
                 decay_epochs: 200
                 decay_rate: 0.2
         # Data Augmenters:
-<<<<<<< HEAD
-        time_augmenters: ["permutation", "time_mask", "mag_warp", "time_warp"]
-=======
         time_augmenters: ["scaling", "time_warp", "mag_warp"]
->>>>>>> 45a57453af60ef72310055fde20a112ec6c9a7ef
         freq_augmenters: ["phase_shift", "freq_mask"]
 
         # Contrastive learning
