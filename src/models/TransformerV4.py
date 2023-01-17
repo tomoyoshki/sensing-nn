@@ -190,14 +190,16 @@ class TransformerV4(nn.Module):
         )
 
         # Classification layer
-        self.class_layer = nn.Sequential(
+        self.sample_embd_layer = nn.Sequential(
             nn.Linear(self.config["loc_out_channels"], self.config["fc_dim"]),
             nn.GELU(),
+        )
+        self.class_layer = nn.Sequential(
             nn.Linear(self.config["fc_dim"], args.dataset_config["num_classes"]),
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
-    def forward(self, freq_x):
+    def forward(self, freq_x, class_head=True):
         args = self.args
 
         # Step 1: Feature extractions on time interval (i) and spectrum (s) domains
@@ -276,6 +278,11 @@ class TransformerV4(nn.Module):
 
         # Step 4: Classification Layers
         sample_features = sample_features.flatten(start_dim=1)
-        logit = self.class_layer(sample_features)
+        sample_features = self.sample_embd_layer(sample_features)
 
-        return logit
+        if class_head:
+            logits = self.class_layer(sample_features)
+            return logits
+        else:
+            """Self-supervised pre-training"""
+            return sample_features

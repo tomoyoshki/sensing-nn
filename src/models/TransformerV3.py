@@ -156,14 +156,16 @@ class TransformerV3(nn.Module):
         )
 
         # Classification
-        self.class_layer = nn.Sequential(
+        self.sample_emdb_layer = nn.Sequential(
             nn.Linear(self.config["loc_out_channels"], self.config["fc_dim"]),
             nn.GELU(),
+        )
+        self.class_layer = nn.Sequential(
             nn.Linear(self.config["fc_dim"], args.dataset_config["num_classes"]),
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
-    def forward(self, freq_x):
+    def forward(self, freq_x, class_head=True):
         """The forward function of DeepSense.
         Args:
             time_x (_type_): time_x is a dictionary consisting of the Tensor input of each input modality.
@@ -225,6 +227,10 @@ class TransformerV3(nn.Module):
             sample_features = loc_features.squeeze(dim=2)
 
         # Step 4: Classification
-        logits = self.class_layer(sample_features.flatten(start_dim=1))
-
-        return logits
+        sample_features = self.sample_emdb_layer(sample_features)
+        if class_head:
+            logits = self.class_layer(sample_features)
+            return logits
+        else:
+            """Self-supervised pre-training"""
+            return sample_features

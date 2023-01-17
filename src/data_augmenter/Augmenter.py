@@ -3,7 +3,6 @@ import torch
 import numpy as np
 from data_augmenter.NoAugmenter import NoAugmenter
 from data_augmenter.MissAugmenter import MissAugmenter
-from data_augmenter.NoiseAugmenter import NoiseAugmenter
 from data_augmenter.MixupAugmenter import MixupAugmenter
 from data_augmenter.JitterAugmenter import JitterAugmenter
 from data_augmenter.PermutationAugmenter import PermutationAugmenter
@@ -37,10 +36,9 @@ class Augmenter:
         self.time_augmenter_pool = {
             "no": NoAugmenter,
             "miss": MissAugmenter,
-            "noise": NoiseAugmenter,
             "mixup": MixupAugmenter,
             "jitter": JitterAugmenter,
-            "permute": PermutationAugmenter,
+            "permutation": PermutationAugmenter,
             "scaling": ScalingAugmenter,
             "negation": NegationAugmenter,
             "horizontal_flip": HorizontalFlipAugmenter,

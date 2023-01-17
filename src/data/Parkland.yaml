@@ -235,8 +235,8 @@ TransformerV4:
                 decay_epochs: 200
                 decay_rate: 0.2
         # Data Augmenters:
-        time_augmenters: ["scaling", "time_warp", "mag_warp"]
-        freq_augmenters: ["phase_shift", "freq_mask"]
+        time_augmenters: ["permutation"]
+        freq_augmenters: ["no"]
 
 # ------------------------------------------- Data Augmenter Configs ------------------------------------------
 # Mixup config

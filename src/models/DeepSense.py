@@ -94,14 +94,16 @@ class DeepSense(nn.Module):
         )
 
         # Step 6: Classification layer
-        self.class_layer = nn.Sequential(
+        self.sample_embd_layer = nn.Sequential(
             nn.Linear(self.config["recurrent_dim"] * 2, self.config["fc_dim"]),
             nn.ReLU(),
+        )
+        self.class_layer = nn.Sequential(
             nn.Linear(self.config["fc_dim"], args.dataset_config["num_classes"]),
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
-    def forward(self, freq_x):
+    def forward(self, freq_x, class_head=True):
         """The forward function of DeepSense.
         Args:
             time_x (_type_): time_x is a dictionary consisting of the Tensor input of each input modality.
@@ -135,8 +137,12 @@ class DeepSense(nn.Module):
 
         # Step 5: Time recurrent layer
         recurrent_feature = self.recurrent_layer(extracted_interval_feature)
+        sample_features = self.sample_embd_layer(recurrent_feature)
 
         # Step 6: Classification
-        logits = self.class_layer(recurrent_feature)
-
-        return logits
+        if class_head:
+            logits = self.class_layer(sample_features)
+            return logits
+        else:
+            """Self-supervised pre-training"""
+            return sample_features

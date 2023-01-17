@@ -111,14 +111,16 @@ class Transformer(nn.Module):
         )
 
         # Classification
-        self.class_layer = nn.Sequential(
+        self.sample_embd_layer = nn.Sequential(
             nn.Linear(self.config["sample_out_channels"], self.config["fc_dim"]),
             nn.GELU(),
+        )
+        self.class_layer = nn.Sequential(
             nn.Linear(self.config["fc_dim"], args.dataset_config["num_classes"]),
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
-    def forward(self, freq_x):
+    def forward(self, freq_x, class_head=True):
         """The forward function of DeepSense.
         Args:
             time_x (_type_): time_x is a dictionary consisting of the Tensor input of each input modality.
@@ -161,6 +163,11 @@ class Transformer(nn.Module):
 
         # Step 6: Classification
         outputs = torch.flatten(sample_features, start_dim=1)
-        logits = self.class_layer(outputs)
+        sample_features = self.sample_embd_layer(outputs)
 
-        return logits
+        if class_head:
+            logits = self.class_layer(sample_features)
+            return logits
+        else:
+            """Self-supervised pre-training"""
+            return sample_features
