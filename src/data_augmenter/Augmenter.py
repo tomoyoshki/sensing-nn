@@ -1,6 +1,7 @@
 import logging
 import torch
 import numpy as np
+import random
 from data_augmenter.NoAugmenter import NoAugmenter
 from data_augmenter.MissAugmenter import MissAugmenter
 from data_augmenter.MixupAugmenter import MixupAugmenter
@@ -76,6 +77,19 @@ class Augmenter:
         self.augmenters = self.time_augmenters + self.freq_augmenters
 
     def forward(self, time_loc_inputs, labels):
+        """General interface for the forward function."""
+        args = self.args
+        if args.train_mode == "supervised":
+            return self.forward_fixed(time_loc_inputs, labels)
+        elif args.train_mode == "contrastive":
+            if args.stage == "pretrain":
+                return self.forward_random(time_loc_inputs, labels)
+            else:
+                return self.forward_noaug(time_loc_inputs, labels)
+        else:
+            raise Exception(f"Invalid train mode: {args.train_mode}")
+
+    def forward_fixed(self, time_loc_inputs, labels):
         """
         Add noise to the input_dict depending on the noise position.
         We only add noise to the time domeain, but not the feature level.
@@ -128,6 +142,19 @@ class Augmenter:
         else:
             return aug_freq_loc_inputs, aug_labels
 
+    def forward_noaug(self, time_loc_inputs, labels):
+        """
+        Add noise to the input_dict depending on the noise position.
+        We only add noise to the time domeain, but not the feature level.
+        """
+        # move to target device
+        time_loc_inputs, labels = self.move_to_target_device(time_loc_inputs, labels)
+
+        # time --> freq domain with FFT
+        freq_loc_inputs = self.fft_preprocess(time_loc_inputs)
+
+        return freq_loc_inputs, labels
+
     def move_to_target_device(self, time_loc_inputs, labels):
         """Move both the data and labels to the target device"""
         target_device = self.args.device
@@ -136,7 +163,8 @@ class Augmenter:
             for mod in time_loc_inputs[loc]:
                 time_loc_inputs[loc][mod] = time_loc_inputs[loc][mod].to(target_device)
 
-        labels = labels.to(target_device)
+        if not (labels is None):
+            labels = labels.to(target_device)
 
         return time_loc_inputs, labels
 

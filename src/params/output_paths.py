@@ -50,13 +50,8 @@ def set_model_weight_folder(args):
                 newest_weight = weight
 
     # set the weight path to avoid redundancy
-    if args.option == "train":
-        weight_folder = os.path.join(dataset_model_path, f"exp{newest_id + 1}") + f"_{suffix}"
-        check_paths([weight_folder])
-        model_config = args.dataset_config[args.model]
-        with open(os.path.join(weight_folder, "model_config.json"), "w") as f:
-            f.write(json.dumps(model_config, indent=4))
-    else:
+    if args.option == "test" or args.stage == "finetune":
+        """Test or finetuning"""
         if args.model_weight is None:
             """Select the newest experiment in the given (dataset, model) config."""
             if newest_id == -1:
@@ -65,6 +60,13 @@ def set_model_weight_folder(args):
                 weight_folder = os.path.join(dataset_model_path, newest_weight)
         else:
             weight_folder = args.model_weight
+    else:
+        "Supervised training or self-supervised pretraining"
+        weight_folder = os.path.join(dataset_model_path, f"exp{newest_id + 1}") + f"_{suffix}"
+        check_paths([weight_folder])
+        model_config = args.dataset_config[args.model]
+        with open(os.path.join(weight_folder, "model_config.json"), "w") as f:
+            f.write(json.dumps(model_config, indent=4))
 
     # set log files
     if args.option == "train":

@@ -3,7 +3,14 @@ from torch import optim as optim
 
 def define_optimizer(args, parameters):
     """Define the optimizer."""
-    optimizer_config = args.dataset_config[args.model]["optimizer"]
+    if args.train_mode == "supervised":
+        optimizer_config = args.dataset_config[args.model]["optimizer"]
+    elif args.train_mode == "contrastive" and args.stage == "pretrain":
+        optimizer_config = args.dataset_config[args.contrastive_framework]["pretrain_optimizer"]
+    elif args.train_mode == "contrastive" and args.stage == "finetune":
+        optimizer_config = args.dataset_config[args.contrastive_framework]["finetune_optimizer"]
+    else:
+        raise Exception("Optimizer not defined.")
     optimizer_name = optimizer_config["name"]
 
     if optimizer_name == "Adam":

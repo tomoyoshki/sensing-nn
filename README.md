@@ -4,16 +4,33 @@ Transformer-based foundation models for (multi-modal) time-series sensing data
 
 
 ### Training 
+
+#### Supervised learning
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4
 ```
 
+#### Self supervised pretraining (contrastive)
+
+```
+CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=pretrain -model=TransformerV4
+```
+
+#### Self supervised finetuning (contrastive)
+
+```
+CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -model=TransformerV4
+```
+
 ### Testing 
+
 ```
 CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised
 ```
 
 ### Model performance on Parkland dataset
+
 |  Date       | Model | Branch:Commit   |  Accuracy  |
 | :---:       |    :----:    |    :----:   |      :---: |
 | 20221230    | TransformerV4 | main:c7f5b7c4d31c76ef42e57f5c62ed81d3d870435d           | 74.01%   |

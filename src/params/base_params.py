@@ -29,6 +29,13 @@ def parse_base_args(option="train"):
         help="The backbone classification model to use.",
     )
 
+    parser.add_argument(
+        "-contrastive_framework",
+        type=str,
+        default="SimCLR",
+        help="Contrastive learning framework to use",
+    )
+
     # training and inference mode
     parser.add_argument(
         "-train_mode",
@@ -69,7 +76,7 @@ def parse_base_args(option="train"):
     parser.add_argument(
         "-batch_size",
         type=int,
-        default=64,
+        default=256,
         help="Specify the batch size for training.",
     )
     parser.add_argument(

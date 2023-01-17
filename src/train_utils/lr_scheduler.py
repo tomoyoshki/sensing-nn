@@ -8,15 +8,24 @@ def define_lr_scheduler(args, optimizer):
     """
     Define the learning rate scheduler
     """
-    classifier_config = args.dataset_config[args.model]
-    optimizer_config = classifier_config["optimizer"]
-    scheduler_config = classifier_config["lr_scheduler"]
+    if args.train_mode == "supervised":
+        classifier_config = args.dataset_config[args.model]
+        optimizer_config = classifier_config["optimizer"]
+        scheduler_config = classifier_config["lr_scheduler"]
+    elif args.train_mode == "contrastive" and args.stage == "pretrain":
+        optimizer_config = args.dataset_config[args.contrastive_framework]["pretrain_optimizer"]
+        scheduler_config = args.dataset_config[args.contrastive_framework]["pretrain_lr_scheduler"]
+    elif args.train_mode == "contrastive" and args.stage == "finetune":
+        optimizer_config = args.dataset_config[args.contrastive_framework]["finetune_optimizer"]
+        scheduler_config = args.dataset_config[args.contrastive_framework]["finetune_lr_scheduler"]
+    else:
+        raise Exception(f"Mode: {args.mode} and stage: {args.stage} not defined.")
 
     if scheduler_config["name"] == "cosine":
         lr_scheduler = CosineLRScheduler(
             optimizer,
             t_initial=(scheduler_config["train_epochs"] - scheduler_config["warmup_epochs"])
-            if classifier_config["lr_scheduler"]["warmup_prefix"]
+            if scheduler_config["warmup_prefix"]
             else scheduler_config["train_epochs"],
             cycle_mul=1.0,
             lr_min=optimizer_config["min_lr"],

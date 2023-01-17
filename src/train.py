@@ -22,13 +22,35 @@ from models.TransformerV3 import TransformerV3
 from models.TransformerV4 import TransformerV4
 
 # train utils
-from train_utils.supervised_train import supervised_train_classifier
+from train_utils.supervised_train import supervised_train
+from train_utils.contrastive_train import contrastive_pretrain
 from train_utils.finetune import finetune
+
+# loss functions
+from models.loss import DINOLoss, SimCLRLoss
 
 # utils
 from torch.utils.tensorboard import SummaryWriter
 from params.train_params import parse_train_params
 from input_utils.multi_modal_dataloader import create_dataloader, preprocess_triplet_batch
+
+
+def init_model(args):
+    if args.model == "DeepSense":
+        classifier = DeepSense(args, self_attention=False)
+    elif args.model == "Transformer":
+        classifier = Transformer(args)
+    elif args.model == "TransformerV2":
+        classifier = TransformerV2(args)
+    elif args.model == "TransformerV3":
+        classifier = TransformerV3(args)
+    elif args.model == "TransformerV4":
+        classifier = TransformerV4(args)
+    elif args.model == "ResNet":
+        classifier = ResNet(args)
+    else:
+        raise Exception(f"Invalid model provided: {args.model}")
+    return classifier
 
 
 def train(args):
@@ -51,21 +73,9 @@ def train(args):
     args.augmenter = augmenter
 
     # Init the classifier model
-    if args.model == "DeepSense":
-        classifier = DeepSense(args, self_attention=False)
-    elif args.model == "Transformer":
-        classifier = Transformer(args)
-    elif args.model == "TransformerV2":
-        classifier = TransformerV2(args)
-    elif args.model == "TransformerV3":
-        classifier = TransformerV3(args)
-    elif args.model == "TransformerV4":
-        classifier = TransformerV4(args)
-    elif args.model == "ResNet":
-        classifier = ResNet(args)
-    else:
-        raise Exception(f"Invalid model provided: {args.model}")
+    classifier = init_model(args)
     classifier = classifier.to(args.device)
+
     args.classifier = classifier
     logging.info(f"=\tClassifier model loaded")
 
@@ -75,26 +85,49 @@ def train(args):
 
     # define the loss function
     if args.multi_class:
-        classifier_loss_func = nn.BCELoss()
+        loss_func = nn.BCELoss()
     else:
-        classifier_loss_func = nn.CrossEntropyLoss()
+        if args.train_mode == "supervised" or args.stage == "finetune":
+            loss_func = nn.CrossEntropyLoss()
+        elif args.train_mode == "contrastive":
+            """Contrastive pretraining only."""
+            # TODO: Setup argument in data yaml file
+            if args.contrastive_framework == "DINO":
+                loss_func = DINOLoss().to(args.device)
+            else:
+                loss_func = SimCLRLoss(
+                    args.batch_size,
+                    temperature=args.dataset_config["SimCLR"]["temperature"],
+                ).to(args.device)
+        else:
+            raise Exception(f"Invalid train mode provided: {args.train_mode}")
     logging.info("=\tLoss function defined")
 
     if args.train_mode == "supervised":
-        supervised_train_classifier(
+        supervised_train(
             args,
             classifier,
             augmenter,
             train_dataloader,
             val_dataloader,
             test_dataloader,
-            classifier_loss_func,
+            loss_func,
             tb_writer,
             num_batches,
         )
-    else:
-        if args.stage == "pretrain_classifier":
-            pass
+    elif args.train_mode in {"contrastive"}:
+        if args.stage == "pretrain":
+            contrastive_pretrain(
+                args,
+                classifier,
+                augmenter,
+                train_dataloader,
+                val_dataloader,
+                test_dataloader,
+                loss_func,
+                tb_writer,
+                num_batches,
+            )
         elif args.stage == "finetune":
             finetune(
                 args,
@@ -103,13 +136,14 @@ def train(args):
                 train_dataloader,
                 val_dataloader,
                 test_dataloader,
-                classifier_loss_func,
+                loss_func,
                 tb_writer,
                 num_batches,
-                triplet_flag,
             )
         else:
             raise Exception(f"Invalid stage provided: {args.stage}")
+    else:
+        pass
 
 
 def main_train():
