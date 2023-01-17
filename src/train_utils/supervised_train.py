@@ -72,7 +72,7 @@ def supervised_train_classifier(
         # regularization configuration
         for i, (time_loc_inputs, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
-            aug_freq_loc_inputs, labels = augmenter.forward(time_loc_inputs, labels)
+            aug_freq_loc_inputs, labels = augmenter.forward_random(time_loc_inputs, labels)
 
             # forward pass
             logits = classifier(aug_freq_loc_inputs)

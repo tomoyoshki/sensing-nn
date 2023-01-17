@@ -235,7 +235,11 @@ TransformerV4:
                 decay_epochs: 200
                 decay_rate: 0.2
         # Data Augmenters:
+<<<<<<< HEAD
         time_augmenters: ["permutation", "time_mask", "mag_warp", "time_warp"]
+=======
+        time_augmenters: ["scaling", "time_warp", "mag_warp"]
+>>>>>>> 45a57453af60ef72310055fde20a112ec6c9a7ef
         freq_augmenters: ["phase_shift", "freq_mask"]
 
         # Contrastive learning
@@ -256,8 +260,13 @@ mixup:
         num_classes: 7
 
 jitter:
+<<<<<<< HEAD
         std_in_percent: 0.1
         prob: 1.0
+=======
+        std_in_percent: 0.2
+        prob: 0.5
+>>>>>>> 45a57453af60ef72310055fde20a112ec6c9a7ef
 
 rotation:
         angles: [90, 180, 270]
@@ -266,17 +275,27 @@ permutation:
         prob: 1.0
 
 scaling:
+<<<<<<< HEAD
         prob: 1.0
         std: 0.1
+=======
+        prob: 0.5
+        std: 0.2
+>>>>>>> 45a57453af60ef72310055fde20a112ec6c9a7ef
 
 time_warp:
         prob: 1.0
         magnitude: 0.2
-        order: 4
+        order: 6
 
 mag_warp:
+<<<<<<< HEAD
         prob: 1.0
         magnitude: 0.2
+=======
+        prob: 0.5
+        magnitude: 0.05
+>>>>>>> 45a57453af60ef72310055fde20a112ec6c9a7ef
         order: 4
 
 negation:
@@ -286,12 +305,24 @@ channel_shuffle:
         prob: 1.0
 
 freq_mask:
+<<<<<<< HEAD
         prob: 1.0 
         mask_ratio: 0.2
+=======
+        prob: 0.5 
+        mask_ratio: 0.3
+>>>>>>> 45a57453af60ef72310055fde20a112ec6c9a7ef
 
 time_mask:
         prob: 1.0
         mask_ratio: 0.3
 
 phase_shift:
+<<<<<<< HEAD
         prob: 1.0
+=======
+        prob: 0.5 
+
+horizontal_flip:
+        prob: 0.5
+>>>>>>> 45a57453af60ef72310055fde20a112ec6c9a7ef

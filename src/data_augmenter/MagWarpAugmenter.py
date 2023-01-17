@@ -20,10 +20,10 @@ class MagWarpAugmenter(nn.Module):
         """
         Fake forward function of the scaling augmenter. Operate in the time domain.
         split_idx: 0 for training set and 1 for validation set.
-        magnitude: the strength of the warping function.
+        magnitude: the strength of the warping function, relative ratio for multiplication.
         order: the number of knots in the warping.
         x: [b, c, i, s]
-        Return: Same shape as x. A single random scaling factor for each (loc, mod).
+        Return: Same shape as x.
         """
         aug_loc_inputs = {}
         for loc in self.locations:
