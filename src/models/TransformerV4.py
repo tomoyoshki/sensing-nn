@@ -1,4 +1,4 @@
-# python3 train.py -gpu=0 -dataset=Parkland -stage=pretrain_classifier -model="TransformerV4"
+# python train.py -gpu=3 -dataset=Parkland -train_mode=supervised -model=TransformerV4
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

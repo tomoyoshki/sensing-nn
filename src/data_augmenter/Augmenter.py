@@ -14,6 +14,10 @@ from data_augmenter.HorizontalFlipAugmenter import HorizontalFlipAugmenter
 from data_augmenter.ChannelShuffleAugmenter import ChannelShuffleAugmenter
 from data_augmenter.TimeWarpAugmenter import TimeWarpAugmenter
 from data_augmenter.MagWarpAugmenter import MagWarpAugmenter
+from data_augmenter.TimeMaskAugmenter import TimeMaskAugmenter
+
+from data_augmenter.FreqMaskAugmenter import FreqMaskAugmenter
+from data_augmenter.PhaseShiftAugmenter import PhaseShiftAugmenter
 
 
 class Augmenter:
@@ -44,6 +48,7 @@ class Augmenter:
             "channel_shuffle": ChannelShuffleAugmenter,
             "time_warp": TimeWarpAugmenter,
             "mag_warp": MagWarpAugmenter,
+            "time_mask": TimeMaskAugmenter,
         }
         self.time_aug_names = args.dataset_config[args.model]["time_augmenters"]
         self.time_augmenters = []
@@ -57,6 +62,8 @@ class Augmenter:
         # load the freq augmenters
         freq_augmenter_pool = {
             "no": NoAugmenter,
+            "freq_mask": FreqMaskAugmenter,
+            "phase_shift": PhaseShiftAugmenter,
         }
         self.freq_aug_names = args.dataset_config[args.model]["freq_augmenters"]
         self.freq_augmenters = []
@@ -64,7 +71,7 @@ class Augmenter:
             if aug_name not in freq_augmenter_pool:
                 raise Exception(f"Invalid augmenter provided: {aug_name}")
             else:
-                self.freq_augmenters.append(time_augmenter_pool[aug_name](args))
+                self.freq_augmenters.append(freq_augmenter_pool[aug_name](args))
                 logging.info(f"=\t[Loaded frequency augmenter]: {aug_name}")
 
     def forward(self, time_loc_inputs, labels):
