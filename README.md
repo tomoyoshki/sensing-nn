@@ -14,7 +14,7 @@ CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=sup
 #### Self supervised learning (contrastive)
 
 ```
-python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -model=TransformerV4
+CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=pretrain -model=TransformerV4
 ```
 
 ### Testing 
