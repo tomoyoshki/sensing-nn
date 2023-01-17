@@ -123,7 +123,10 @@ def val_and_logging(
         classifier_dataloader (_type_): _description_
         classifier_loss_func (_type_): _description_
     """
-    logging.info(f"Train classifier loss: {train_loss: .5f} \n")
+    if args.train_mode in {"contrastive"} and args.stage == "pretrain":
+        logging.info(f"Train contrastive loss: {train_loss: .5f} \n")
+    else:
+        logging.info(f"Train classifier loss: {train_loss: .5f} \n")
 
     if estimator is None:
         val_classifier_loss, val_f1, val_acc, val_conf_matrix = eval_given_model(

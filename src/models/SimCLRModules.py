@@ -4,26 +4,28 @@ import torch.nn.functional as F
 
 
 class SimCLR(nn.Module):
-    def __init__(self, args, backbone, out_dim=2048):
+    def __init__(self, args, backbone):
         super().__init__()
         self.args = args
-        self.config = backbone.config
+        self.backbone_config = backbone.config
+        self.config = args.dataset_config["SimCLR"]
+
+        # components
         self.backbone = backbone
-        dim_mlp = self.config["loc_out_channels"]
-        self.backbone.class_layer = nn.Identity()
+        # self.backbone.class_layer = nn.Identity()
         self.projector = nn.Sequential(
-            nn.Linear(dim_mlp, dim_mlp),
+            nn.Linear(self.backbone_config["fc_dim"], self.backbone_config["fc_dim"]),
             nn.ReLU(),
-            nn.Linear(dim_mlp, out_dim),
+            nn.Linear(self.backbone_config["fc_dim"], self.config["emb_dim"]),
         )
 
-    def forward(self, x_i, x_j):
-
+    def forward(self, x_1, x_2):
         # get representation
-        h_i = self.backbone(x_i)
-        h_j = self.backbone(x_j)
+        h_1 = self.backbone(x_1, class_head=False)
+        h_2 = self.backbone(x_2, class_head=False)
 
         # nonlienar MLP
-        z_i = self.projector(h_i)
-        z_j = self.projector(h_j)
-        return z_i, z_j
+        z_1 = self.projector(h_1)
+        z_2 = self.projector(h_2)
+
+        return z_1, z_2

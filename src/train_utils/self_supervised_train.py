@@ -29,7 +29,7 @@ def self_supervised_train_classifier(
     train_dataloader,
     val_dataloader,
     test_dataloader,
-    classifier_loss_func,
+    loss_func,
     tb_writer,
     num_batches,
 ):
@@ -40,10 +40,10 @@ def self_supervised_train_classifier(
     # model config
     classifier_config = args.dataset_config[args.model]
     contrastive_model = None
-    if args.contrastive_learning_framework == "SimCLR":
+    if args.contrastive_framework == "SimCLR":
         default_model = SimCLR(args, backbone_model)
         default_model = default_model.to(args.device)
-    elif args.contrastive_learning_framework == "DINO":
+    elif args.contrastive_framework == "DINO":
         default_model = DINOWrapper(
             backbone_model, DINOHead(classifier_config["loc_out_channels"], 1024), args=args.dataset_config
         )
@@ -101,7 +101,7 @@ def self_supervised_train_classifier(
             feature1, feature2 = default_model(aug_freq_loc_inputs_i, aug_freq_loc_inputs_j)
 
             # forward pass
-            loss = classifier_loss_func(feature1, feature2)
+            loss = loss_func(feature1, feature2)
 
             # back propagation
             loss.backward()

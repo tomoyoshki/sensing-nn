@@ -85,18 +85,19 @@ def train(args):
 
     # define the loss function
     if args.multi_class:
-        classifier_loss_func = nn.BCELoss()
+        loss_func = nn.BCELoss()
     else:
         if args.train_mode == "supervised":
-            classifier_loss_func = nn.CrossEntropyLoss()
+            loss_func = nn.CrossEntropyLoss()
         else:
             # TODO: Setup argument in data yaml file
-            if args.contrastive_learning_framework == "DINO":
-                classifier_loss_func = DINOLoss().to(args.device)
+            if args.contrastive_framework == "DINO":
+                loss_func = DINOLoss().to(args.device)
             else:
-                classifier_loss_func = SimCLRLoss(args.batch_size, temperature=args.dataset_config["temperature"]).to(
-                    args.device
-                )
+                loss_func = SimCLRLoss(
+                    args.batch_size,
+                    temperature=args.dataset_config["SimCLR"]["temperature"],
+                ).to(args.device)
     logging.info("=\tLoss function defined")
 
     if args.train_mode == "supervised":
@@ -107,7 +108,7 @@ def train(args):
             train_dataloader,
             val_dataloader,
             test_dataloader,
-            classifier_loss_func,
+            loss_func,
             tb_writer,
             num_batches,
         )
@@ -119,7 +120,7 @@ def train(args):
             train_dataloader,
             val_dataloader,
             test_dataloader,
-            classifier_loss_func,
+            loss_func,
             tb_writer,
             num_batches,
         )
@@ -134,7 +135,7 @@ def train(args):
                 train_dataloader,
                 val_dataloader,
                 test_dataloader,
-                classifier_loss_func,
+                loss_func,
                 tb_writer,
                 num_batches,
                 triplet_flag,
