@@ -29,3 +29,5 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=supe
 | 20230116    | TransformerV4 | TimeMask           | 72.94%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp7_supervised |
 | 20230116    | TransformerV4 | HorizontalFlip     | 84.59%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised|
 | 20230116    | TransformerV4 | Jitter             | 84.46%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp11_supervised|
+| 20230116    | TransformerV4 | MagWarp            | 82.18%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp12_supervised|
+| 20230116    | TransformerV4 | TimeWarp           | 90.95%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp13_supervised|
