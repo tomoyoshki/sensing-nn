@@ -27,7 +27,7 @@ def finetune(
 ):
     """Fine tune the backbone network with only the class layer."""
     # Load the pretrained classifier and handler
-    pretrain_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_pretrain_best.pt")
+    pretrain_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_latest_best.pt")
     classifier = load_model_weight(classifier, pretrain_weight)
     learnable_parameters = []
     for name, param in classifier.named_parameters():
@@ -51,7 +51,6 @@ def finetune(
     for epoch in range(args.dataset_config[args.contrastive_framework]["finetune_lr_scheduler"]["train_epochs"]):
         # set model to train mode
         classifier.train()
-        augmenter.train()
 
         # training loop
         train_loss_list = []
