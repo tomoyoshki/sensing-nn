@@ -133,7 +133,7 @@ def contrastive_pretrain(
 
         # validation and logging
         train_loss = np.mean(train_loss_list)
-        val_acc = val_and_logging(
+        val_acc, val_loss = val_and_logging(
             args,
             epoch,
             tb_writer,
@@ -150,8 +150,8 @@ def contrastive_pretrain(
         torch.save(default_model.backbone.state_dict(), latest_weight)
 
         # Save the best model according to validation result
-        if val_acc > best_val_loss:
-            best_val_loss = val_acc
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
             torch.save(default_model.backbone.state_dict(), best_weight)
 
         # Update the learning rate scheduler

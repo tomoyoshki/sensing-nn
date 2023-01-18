@@ -78,7 +78,7 @@ def finetune(
 
         # validation and logging
         train_loss = np.mean(train_loss_list)
-        val_acc = val_and_logging(
+        val_acc, val_loss = val_and_logging(
             args,
             epoch,
             tb_writer,

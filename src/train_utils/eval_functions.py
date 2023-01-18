@@ -171,4 +171,4 @@ def val_and_logging(
         tb_writer.add_scalar("Evaluation/Test accuracy", test_acc, epoch)
         tb_writer.add_scalar("Evaluation/Test F1 score", test_f1, epoch)
 
-    return val_acc
+    return val_acc, val_loss
