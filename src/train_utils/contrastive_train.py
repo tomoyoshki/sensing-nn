@@ -61,6 +61,7 @@ def contrastive_pretrain(
     optimizer = define_optimizer(args, default_model.parameters())
     lr_scheduler = define_lr_scheduler(args, optimizer)
 
+    # Fix the patch embedding layer, from MOCOv3
     for name, param in default_model.backbone.named_parameters():
         if "patch_embed" in name:
             param.requires_grad = False
@@ -76,13 +77,8 @@ def contrastive_pretrain(
     start = time_sync()
     best_val_loss = np.inf
 
-    if args.train_mode == "supervised":
-        best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_best.pt")
-        latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_latest.pt")
-    else:
-        best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_best.pt")
-        latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_latest.pt")
-
+    best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_best.pt")
+    latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_latest.pt")
     for epoch in range(args.dataset_config[args.contrastive_framework]["pretrain_lr_scheduler"]["train_epochs"]):
         # set model to train mode
         default_model.train()
@@ -119,7 +115,6 @@ def contrastive_pretrain(
         if epoch % 10 == 0:
             # compute embedding for the validation dataloader
             embs, imgs, labels_ = compute_embedding(args, default_model.backbone, augmenter, val_dataloader)
-
             tb_writer.add_embedding(
                 embs,
                 metadata=labels_,
@@ -128,7 +123,7 @@ def contrastive_pretrain(
                 tag="embeddings",
             )
 
-        # compute
+        # Use KNN classifier for validation
         knn_estimator = compute_knn(args, default_model.backbone, augmenter, train_dataloader)
 
         # validation and logging

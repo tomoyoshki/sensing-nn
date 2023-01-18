@@ -53,13 +53,8 @@ def supervised_train(
     start = time_sync()
     best_val_acc = 0
 
-    if args.train_mode == "supervised":
-        best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_best.pt")
-        latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_latest.pt")
-    else:
-        best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_best.pt")
-        latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_latest.pt")
-
+    best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_best.pt")
+    latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_latest.pt")
     for epoch in range(classifier_config["lr_scheduler"]["train_epochs"]):
         # set model to train mode
         classifier.train()

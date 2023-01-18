@@ -21,21 +21,20 @@ def compute_knn(args, classifier, augmenter, data_loader_train):
     val_accuracy : float
         Validation accuracy.
     """
-
     classifier.eval()
 
-    all_inputs = []
+    sample_embeddings = []
     labels = []
     for time_loc_inputs, y in data_loader_train:
         aug_freq_loc_inputs, _ = augmenter.forward("no", time_loc_inputs, y)
-        all_inputs.append(classifier(aug_freq_loc_inputs, class_head=False).detach().cpu().numpy())
+        sample_embeddings.append(classifier(aug_freq_loc_inputs, class_head=False).detach().cpu().numpy())
         labels.append(y.detach().cpu().numpy())
 
-    all_inputs = np.concatenate(all_inputs)
+    sample_embeddings = np.concatenate(sample_embeddings)
     labels = np.concatenate(labels)
 
     estimator = KNeighborsClassifier()
-    estimator.fit(all_inputs, labels)
+    estimator.fit(sample_embeddings, labels)
 
     return estimator
 
@@ -58,7 +57,6 @@ def compute_embedding(args, classifier, augmenter, data_loader):
     labels : list
         List of strings representing the classes.
     """
-
     classifier.eval()
 
     embs_l = []
