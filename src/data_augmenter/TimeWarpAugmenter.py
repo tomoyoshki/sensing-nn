@@ -30,7 +30,7 @@ class TimeWarpAugmenter(nn.Module):
             aug_loc_inputs[loc] = {}
             for mod in self.modalities:
                 if random() < self.config["prob"]:
-                    mod_input = org_loc_inputs[loc][mod]
+                    mod_input = org_loc_inputs[loc][mod].clone()
                     b, c, i, s = mod_input.shape
                     mod_input = torch.reshape(mod_input, (b, c, i * s))
                     aug_loc_inputs[loc][mod] = self.warp_func(TSTensor(mod_input), split_idx=0).reshape(b, c, i, s).data

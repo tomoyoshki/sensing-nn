@@ -8,7 +8,7 @@ from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 from sklearn.neighbors import KNeighborsClassifier
 
 
-def eval_given_model(args, classifier, augmenter, dataloader, loss_func):
+def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
     """Evaluate the performance on the given dataloader.
 
     Args:
@@ -17,7 +17,6 @@ def eval_given_model(args, classifier, augmenter, dataloader, loss_func):
     """
     # set both the classifier and augmenter to eval mode
     classifier.eval()
-    augmenter.eval()
 
     # iterate over all batches
     num_batches = len(dataloader)
@@ -27,7 +26,7 @@ def eval_given_model(args, classifier, augmenter, dataloader, loss_func):
     with torch.no_grad():
         for i, (time_loc_inputs, labels) in tqdm(enumerate(dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
-            freq_loc_inputs, labels = augmenter.forward(time_loc_inputs, labels)
+            freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
 
             # forward pass
             logits = classifier(freq_loc_inputs)
@@ -74,41 +73,51 @@ def eval_given_model(args, classifier, augmenter, dataloader, loss_func):
     return mean_classifier_loss, mean_f1, mean_acc, conf_matrix
 
 
-def eval_estimator(args, classifier, estimator, augmenter, data_loader):
-    # set both the classifier and augmenter to eval mode
-    classifier.eval()
-    augmenter.eval()
+def eval_contrastive_model(model, estimator, augmenter, data_loader, loss_func):
+    """Evaluate the performance with KNN estimator."""
+    model.eval()
 
-    time_loc_inputs_l = []
+    sample_embeddings = []
     labels = []
+    loss_list = []
     with torch.no_grad():
-        # loop through datal oader
         for time_loc_inputs, label in tqdm(data_loader, total=len(data_loader)):
-            aug_freq_loc_inputs = augmenter.forward_random(time_loc_inputs)
-            time_loc_inputs_l.append(classifier(aug_freq_loc_inputs).detach().cpu().numpy())
+            """Eval contrastive loss."""
+            aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
+            aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
+            feature1, feature2 = model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
+
+            """Eval KNN estimator."""
+            aug_freq_loc_inputs = augmenter.forward("no", time_loc_inputs)
+            sample_embeddings.append(model.backbone(aug_freq_loc_inputs, class_head=False).detach().cpu().numpy())
             labels.append(label.detach().cpu().numpy())
 
-    time_loc_inputs_l = np.concatenate(time_loc_inputs_l)
+            # forward pass
+            loss = loss_func(feature1, feature2).item()
+            loss_list.append(loss)
+
+    sample_embeddings = np.concatenate(sample_embeddings)
     labels = np.concatenate(labels)
-    predictions = estimator.predict(time_loc_inputs_l)
+    predictions = estimator.predict(sample_embeddings)
 
     # compute metrics
     mean_acc = accuracy_score(labels, predictions)
     mean_f1 = f1_score(labels, predictions, average="macro", zero_division=1)
     conf_matrix = confusion_matrix(labels, predictions)
+    mean_loss = np.mean(loss_list)
 
-    return -1.0, mean_f1, mean_acc, conf_matrix
+    return mean_loss, mean_f1, mean_acc, conf_matrix
 
 
 def val_and_logging(
     args,
     epoch,
     tb_writer,
-    classifier,
+    model,
     augmenter,
-    val_dataloader,
-    test_dataloader,
-    classifier_loss_func,
+    val_loader,
+    test_loader,
+    loss_func,
     train_loss,
     tensorboard_logging=True,
     estimator=None,
@@ -129,24 +138,25 @@ def val_and_logging(
         logging.info(f"Train classifier loss: {train_loss: .5f} \n")
 
     if estimator is None:
-        val_classifier_loss, val_f1, val_acc, val_conf_matrix = eval_given_model(
-            args, classifier, augmenter, val_dataloader, classifier_loss_func
+        """Self-supervised pre-training"""
+        val_loss, val_f1, val_acc, val_conf_matrix = eval_supervised_model(
+            args, model, augmenter, val_loader, loss_func
         )
-
-        test_classifier_loss, test_f1, test_acc, test_conf_matrix = eval_given_model(
-            args, classifier, augmenter, test_dataloader, classifier_loss_func
+        test_loss, test_f1, test_acc, test_conf_matrix = eval_supervised_model(
+            args, model, augmenter, test_loader, loss_func
         )
     else:
-        val_classifier_loss, val_f1, val_acc, val_conf_matrix = eval_estimator(
-            args, classifier, estimator, augmenter, val_dataloader
+        """Supervised training or fine-tuning"""
+        val_loss, val_f1, val_acc, val_conf_matrix = eval_contrastive_model(
+            model, estimator, augmenter, val_loader, loss_func
         )
-        test_classifier_loss, test_f1, test_acc, test_conf_matrix = eval_estimator(
-            args, classifier, estimator, augmenter, test_dataloader
+        test_loss, test_f1, test_acc, test_conf_matrix = eval_contrastive_model(
+            model, estimator, augmenter, test_loader, loss_func
         )
-    logging.info(f"Val classifier loss: {val_classifier_loss: .5f}")
+    logging.info(f"Val loss: {val_loss: .5f}")
     logging.info(f"Val acc: {val_acc: .5f}, val f1: {val_f1: .5f}")
     logging.info(f"Val confusion matrix:\n {val_conf_matrix} \n")
-    logging.info(f"Test classifier loss: {test_classifier_loss: .5f}")
+    logging.info(f"Test loss: {test_loss: .5f}")
     logging.info(f"Test acc: {test_acc: .5f}, test f1: {test_f1: .5f}")
     logging.info(f"Test confusion matrix:\n {test_conf_matrix} \n")
 
@@ -154,10 +164,10 @@ def val_and_logging(
 
     # write tensorboard train log
     if tensorboard_logging:
-        tb_writer.add_scalar("Validation/Val classifier loss", val_classifier_loss, epoch)
+        tb_writer.add_scalar("Validation/Val loss", val_loss, epoch)
         tb_writer.add_scalar("Validation/Val accuracy", val_acc, epoch)
         tb_writer.add_scalar("Validation/Val F1 score", val_f1, epoch)
-        tb_writer.add_scalar("Evaluation/Test classifier loss", test_classifier_loss, epoch)
+        tb_writer.add_scalar("Evaluation/Test loss", test_loss, epoch)
         tb_writer.add_scalar("Evaluation/Test accuracy", test_acc, epoch)
         tb_writer.add_scalar("Evaluation/Test F1 score", test_f1, epoch)
 

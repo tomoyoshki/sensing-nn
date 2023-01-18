@@ -76,18 +76,16 @@ class Augmenter:
         self.aug_names = self.time_aug_names + self.freq_aug_names
         self.augmenters = self.time_augmenters + self.freq_augmenters
 
-    def forward(self, time_loc_inputs, labels):
+    def forward(self, option, time_loc_inputs, labels=None):
         """General interface for the forward function."""
-        args = self.args
-        if args.train_mode == "supervised":
+        if option == "fixed":
             return self.forward_fixed(time_loc_inputs, labels)
-        elif args.train_mode == "contrastive":
-            if args.stage == "pretrain":
-                return self.forward_random(time_loc_inputs, labels)
-            else:
-                return self.forward_noaug(time_loc_inputs, labels)
+        elif option == "random":
+            return self.forward_random(time_loc_inputs, labels)
+        elif option == "no":
+            return self.forward_noaug(time_loc_inputs, labels)
         else:
-            raise Exception(f"Invalid train mode: {args.train_mode}")
+            raise Exception(f"Invalid augmentation option: {option}")
 
     def forward_fixed(self, time_loc_inputs, labels):
         """
@@ -126,7 +124,7 @@ class Augmenter:
 
         # time-domain augmentation
         aug_time_loc_inputs, aug_labels = time_loc_inputs, labels
-        if self.train_flag and rand_aug_name in self.time_augmenter_pool:
+        if rand_aug_name in self.time_augmenter_pool:
             aug_time_loc_inputs, aug_labels = rand_augmenter(aug_time_loc_inputs, aug_labels)
 
         # time --> freq domain with FFT
@@ -134,7 +132,7 @@ class Augmenter:
 
         # freq-domain augmentation
         aug_freq_loc_inputs, aug_labels = freq_loc_inputs, labels
-        if self.train_flag and rand_aug_name in self.freq_augmenter_pool:
+        if rand_aug_name in self.freq_augmenter_pool:
             aug_freq_loc_inputs, aug_labels = rand_augmenter(aug_freq_loc_inputs, aug_labels)
 
         if labels is None:
@@ -142,7 +140,7 @@ class Augmenter:
         else:
             return aug_freq_loc_inputs, aug_labels
 
-    def forward_noaug(self, time_loc_inputs, labels):
+    def forward_noaug(self, time_loc_inputs, labels=None):
         """
         Add noise to the input_dict depending on the noise position.
         We only add noise to the time domeain, but not the feature level.
@@ -153,7 +151,10 @@ class Augmenter:
         # time --> freq domain with FFT
         freq_loc_inputs = self.fft_preprocess(time_loc_inputs)
 
-        return freq_loc_inputs, labels
+        if labels is None:
+            return freq_loc_inputs
+        else:
+            return freq_loc_inputs, labels
 
     def move_to_target_device(self, time_loc_inputs, labels):
         """Move both the data and labels to the target device"""
@@ -187,13 +188,13 @@ class Augmenter:
 
         return freq_loc_inputs
 
-    def train(self):
-        """Set all components to train mode"""
-        self.train_flag = True
+    # def train(self):
+    #     """Set all components to train mode"""
+    #     self.train_flag = True
 
-    def eval(self):
-        """Set all components to eval mode"""
-        self.train_flag = False
+    # def eval(self):
+    #     """Set all components to eval mode"""
+    #     self.train_flag = False
 
     def to(self, device):
         """Move all components to the target device"""

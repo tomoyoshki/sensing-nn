@@ -22,7 +22,7 @@ def supervised_train(
     train_dataloader,
     val_dataloader,
     test_dataloader,
-    classifier_loss_func,
+    loss_func,
     tb_writer,
     num_batches,
 ):
@@ -63,7 +63,6 @@ def supervised_train(
     for epoch in range(classifier_config["lr_scheduler"]["train_epochs"]):
         # set model to train mode
         classifier.train()
-        augmenter.train()
         args.epoch = epoch
 
         # training loop
@@ -72,11 +71,11 @@ def supervised_train(
         # regularization configuration
         for i, (time_loc_inputs, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
-            aug_freq_loc_inputs, labels = augmenter.forward(time_loc_inputs, labels)
+            aug_freq_loc_inputs, labels = augmenter.forward("fixed", time_loc_inputs, labels)
 
             # forward pass
             logits = classifier(aug_freq_loc_inputs)
-            loss = classifier_loss_func(logits, labels)
+            loss = loss_func(logits, labels)
 
             # back propagation
             optimizer.zero_grad()
@@ -101,7 +100,7 @@ def supervised_train(
             augmenter,
             val_dataloader,
             test_dataloader,
-            classifier_loss_func,
+            loss_func,
             train_loss,
         )
 

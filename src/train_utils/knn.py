@@ -23,13 +23,12 @@ def compute_knn(args, classifier, augmenter, data_loader_train):
     """
 
     classifier.eval()
-    augmenter.eval()
 
     all_inputs = []
     labels = []
     for time_loc_inputs, y in data_loader_train:
-        aug_freq_loc_inputs, _ = augmenter.forward(time_loc_inputs, y)
-        all_inputs.append(classifier(aug_freq_loc_inputs).detach().cpu().numpy())
+        aug_freq_loc_inputs, _ = augmenter.forward("no", time_loc_inputs, y)
+        all_inputs.append(classifier(aug_freq_loc_inputs, class_head=False).detach().cpu().numpy())
         labels.append(y.detach().cpu().numpy())
 
     all_inputs = np.concatenate(all_inputs)
@@ -61,21 +60,15 @@ def compute_embedding(args, classifier, augmenter, data_loader):
     """
 
     classifier.eval()
-    augmenter.eval()
 
     embs_l = []
-    time_loc_inputs_l = []
     labels = []
-
     classes = args.dataset_config["class_names"]
 
     for time_loc_inputs, y in data_loader:
-        aug_freq_loc_inputs, y = augmenter.forward(time_loc_inputs, y)
-        embs_l.append(classifier(aug_freq_loc_inputs).detach().cpu())
-        # time_loc_inputs_l.append(time_loc_inputs["shake"]["seismic"])
+        aug_freq_loc_inputs, y = augmenter.forward("no", time_loc_inputs, y)
+        embs_l.append(classifier(aug_freq_loc_inputs, class_head=False).detach().cpu())
         labels.extend([classes[i] for i in y.tolist()])
-
     embs = torch.cat(embs_l, dim=0)
-    # time_loc_inputs_l = torch.cat(time_loc_inputs_l, dim=0)
 
     return embs, None, labels

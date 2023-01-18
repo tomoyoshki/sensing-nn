@@ -13,7 +13,7 @@ from general_utils.time_utils import time_sync
 from general_utils.weight_utils import load_model_weight
 from params.test_params import parse_test_params
 from input_utils.multi_modal_dataloader import create_dataloader
-from train_utils.eval_functions import eval_given_model, eval_miss_detector
+from train_utils.eval_functions import eval_supervised_model, eval_miss_detector
 
 # power estimator
 from p_est import PowerEstimator

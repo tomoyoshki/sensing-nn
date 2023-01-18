@@ -74,7 +74,7 @@ def contrastive_pretrain(
     # Training loop
     logging.info("---------------------------Start Pretraining Classifier-------------------------------")
     start = time_sync()
-    best_val_acc = 0
+    best_val_loss = np.inf
 
     if args.train_mode == "supervised":
         best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_best.pt")
@@ -83,10 +83,9 @@ def contrastive_pretrain(
         best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_best.pt")
         latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_latest.pt")
 
-    for epoch in range(args.dataset_config[args.contrastive_framework]["pretrain_optimizer"]["train_epochs"]):
+    for epoch in range(args.dataset_config[args.contrastive_framework]["pretrain_lr_scheduler"]["train_epochs"]):
         # set model to train mode
         default_model.train()
-        augmenter.train()
 
         # training loop
         train_loss_list = []
@@ -95,8 +94,8 @@ def contrastive_pretrain(
         for i, (time_loc_inputs, _) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
             optimizer.zero_grad()
-            aug_freq_loc_inputs_1 = augmenter.forward(time_loc_inputs)
-            aug_freq_loc_inputs_2 = augmenter.forward(time_loc_inputs)
+            aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
+            aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
             feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
 
             # forward pass
@@ -138,11 +137,11 @@ def contrastive_pretrain(
             args,
             epoch,
             tb_writer,
-            default_model.backbone,
+            default_model,
             augmenter,
             val_dataloader,
             test_dataloader,
-            nn.CrossEntropyLoss(),
+            loss_func,
             train_loss,
             estimator=knn_estimator,
         )
@@ -151,8 +150,8 @@ def contrastive_pretrain(
         torch.save(default_model.backbone.state_dict(), latest_weight)
 
         # Save the best model according to validation result
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
+        if val_acc > best_val_loss:
+            best_val_loss = val_acc
             torch.save(default_model.backbone.state_dict(), best_weight)
 
         # Update the learning rate scheduler

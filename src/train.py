@@ -10,7 +10,7 @@ import numpy as np
 from tqdm import tqdm
 
 # from test import eval_given_model
-from train_utils.eval_functions import eval_given_model
+from train_utils.eval_functions import eval_supervised_model
 
 # import models
 from data_augmenter.Augmenter import Augmenter

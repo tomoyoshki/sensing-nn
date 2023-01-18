@@ -18,7 +18,7 @@ from general_utils.time_utils import time_sync
 from general_utils.weight_utils import load_model_weight
 from params.test_params import parse_test_params
 from input_utils.multi_modal_dataloader import create_dataloader
-from train_utils.eval_functions import eval_given_model
+from train_utils.eval_functions import eval_supervised_model
 
 
 def test(args):
@@ -62,7 +62,7 @@ def test(args):
             if param.requires_grad:
                 print(name)
 
-    test_classifier_loss, test_f1, test_acc, test_conf_matrix = eval_given_model(
+    test_classifier_loss, test_f1, test_acc, test_conf_matrix = eval_supervised_model(
         args, classifier, augmenter, test_dataloader, classifier_loss_func
     )
     print(f"Test classifier loss: {test_classifier_loss: .5f}")

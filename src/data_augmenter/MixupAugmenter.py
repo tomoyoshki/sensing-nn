@@ -17,7 +17,6 @@ class MixupAugmenter(nn.Module):
         x: [b, c, i, s]
         Return: Same shape as x, 1 means available, 0 means missing.
         """
-
         # TODO: Contrastive learning mixup, mixup function with no labels
         aug_loc_inputs, aug_labels = self.mixup_func(org_loc_inputs, labels, self.args.dataset_config)
 
