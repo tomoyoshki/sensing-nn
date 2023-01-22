@@ -65,8 +65,11 @@ def set_model_weight_folder(args):
         weight_folder = os.path.join(dataset_model_path, f"exp{newest_id + 1}") + f"_{suffix}"
         check_paths([weight_folder])
         model_config = args.dataset_config[args.model]
+        contrastive_framework_config = args.dataset_config[args.contrastive_framework]
         with open(os.path.join(weight_folder, "model_config.json"), "w") as f:
             f.write(json.dumps(model_config, indent=4))
+        with open(os.path.join(weight_folder, "contrastive_framework_config.json"), "w") as f:
+            f.write(json.dumps(contrastive_framework_config, indent=4))
 
     # set log files
     if args.option == "train":

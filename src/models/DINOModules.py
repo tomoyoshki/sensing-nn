@@ -1,37 +1,56 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import copy
 
 
-class DINOWrapper(nn.Module):
-    def __init__(self, backbone, new_head, args):
+class DINO(nn.Module):
+    def __init__(self, args, backbone) -> None:
         super().__init__()
-        backbone.class_layer = nn.Identity()  # deactivate original head
-        self.backbone = backbone
-        self.new_head = new_head
+
+        # arguments configurations
         self.args = args
+        self.config = args.dataset_config["DINO"]
+        self.backbone_config = backbone.config
 
-    def forward(self, x, isTeacher=False):
-        """Run the forward pass.
-        TODO: need to implement
-        Parameters
-        ----------
-        x : list
-            List of `torch.Tensor` each of shape `(n_samples, 3, size, size)`.
-        Returns
-        -------
-        tuple
-            Tuple of `torch.Tensor` each of shape `(n_samples, out_dim)` where
-            `output_dim` is determined by `Head`.
-        """
-        x_ = x.copy()
-        if isTeacher:
-            for loc in self.args["location_names"]:
-                for mod in self.args["modality_names"]:
-                    x_[loc][mod] = x_[loc][mod][:2]
-        cls_embedding = self.backbone(x_)
-        logits = self.new_head(cls_embedding)
+        # backbone and teacher model
+        self.backbone = backbone
+        self.teacher = copy.deepcopy(backbone)
 
-        return logits
+        self.backbone = self.backbone.to(args.device)
+        self.teacher = self.teacher.to(args.device)
+
+        # MLP Projectors
+        self.projector_backbone = DINOHead(in_dim=self.backbone_config["fc_dim"], out_dim=self.config["emb_dim"])
+        self.projector_teacher = DINOHead(in_dim=self.backbone_config["fc_dim"], out_dim=self.config["emb_dim"])
+        # gives teacher the same weight
+        self.teacher.load_state_dict(self.backbone.state_dict())
+        self.projector_teacher.load_state_dict(self.projector_teacher.state_dict())
+
+        # there is no backpropagation through the teacher, so no need for gradients
+        for p in self.teacher.parameters():
+            p.requires_grad = False
+
+        for p in self.projector_teacher.parameters():
+            p.requires_grad = False
+
+    def forward(self, x_1, x_2):
+        # get representation of the backbone model
+        h_1 = self.backbone(x_1, class_head=False)
+        h_2 = self.backbone(x_2, class_head=False)
+        # nonlienar MLP of the backbone model
+        z_1 = self.projector_backbone(h_1)
+        z_2 = self.projector_backbone(h_2)
+        feature_backbone = torch.stack([z_1, z_2], dim=0)
+        # get representation of the teacher model
+        h_1_t = self.teacher(x_1, class_head=False)
+        h_2_t = self.teacher(x_2, class_head=False)
+        # nonlienar MLP
+        z_1_t = self.projector_teacher(h_1_t)
+        z_2_t = self.projector_teacher(h_2_t)
+        feature_teacher = torch.stack([z_1_t, z_2_t], dim=0)
+
+        return feature_backbone, feature_teacher
 
 
 class DINOHead(nn.Module):
@@ -72,16 +91,14 @@ class DINOHead(nn.Module):
         norm_last_layer=True,
     ):
         super().__init__()
-        if n_layers == 1:
-            self.mlp = nn.Linear(in_dim, bottleneck_dim)
-        else:
-            layers = [nn.Linear(in_dim, hidden_dim)]
+
+        layers = [nn.Linear(in_dim, hidden_dim)]
+        layers.append(nn.GELU())
+        for _ in range(n_layers - 2):
+            layers.append(nn.Linear(hidden_dim, hidden_dim))
             layers.append(nn.GELU())
-            for _ in range(n_layers - 2):
-                layers.append(nn.Linear(hidden_dim, hidden_dim))
-                layers.append(nn.GELU())
-            layers.append(nn.Linear(hidden_dim, bottleneck_dim))
-            self.mlp = nn.Sequential(*layers)
+        layers.append(nn.Linear(hidden_dim, bottleneck_dim))
+        self.mlp = nn.Sequential(*layers)
 
         self.apply(self._init_weights)
 
