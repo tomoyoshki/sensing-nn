@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 # train utils
 from train_utils.eval_functions import val_and_logging
-from train_utils.optimizer import define_optimizer
+from train_utils.optimizer import define_optimizer, get_params_groups
 from train_utils.lr_scheduler import define_lr_scheduler
 from train_utils.knn import compute_embedding, compute_knn
 
@@ -17,7 +17,7 @@ from train_utils.knn import compute_embedding, compute_knn
 from general_utils.time_utils import time_sync
 
 # DINO utils
-from models.DINOModules import DINOWrapper, DINOHead
+from models.DINOModules import DINO
 from models.SimCLRModules import SimCLR
 
 
@@ -36,24 +36,14 @@ def contrastive_pretrain(
     The supervised training function for tbe backbone network,
     used in train of supervised mode or fine-tune of foundation models.
     """
-    # model config
     classifier_config = args.dataset_config[args.model]
-    contrastive_model = None
+    # model config
     if args.contrastive_framework == "SimCLR":
         default_model = SimCLR(args, backbone_model)
         default_model = default_model.to(args.device)
     elif args.contrastive_framework == "DINO":
-        default_model = DINOWrapper(
-            backbone_model, DINOHead(classifier_config["loc_out_channels"], 1024), args=args.dataset_config
-        )
-        contrastive_model = DINOWrapper(
-            backbone_model, DINOHead(classifier_config["loc_out_channels"], 1024), args=args.dataset_config
-        )
-        default_model, contrastive_model = default_model.to(args.device), contrastive_model.to(args.device)
-
-        contrastive_model.load_state_dict(default_model.state_dict())
-        for p in contrastive_model.parameters():
-            p.requires_grad = False
+        default_model = DINO(args, backbone_model)
+        default_model = default_model.to(args.device)
     else:
         raise NotImplementedError
 
@@ -105,6 +95,14 @@ def contrastive_pretrain(
             #     default_model.backbone.parameters(), classifier_config["optimizer"]["clip_grad"]
             # )
             optimizer.step()
+
+            if args.contrastive_framework == "DINO":
+                with torch.no_grad():
+                    for backbone_ps, teacher_ps in zip(
+                        default_model.backbone.parameters(), default_model.teacher.parameters()
+                    ):
+                        teacher_ps.data.mul_(default_model.config["momentum_teacher"])
+                        teacher_ps.data.add_((1 - default_model.config["momentum_teacher"]) * backbone_ps.detach().data)
 
             train_loss_list.append(loss.item())
 

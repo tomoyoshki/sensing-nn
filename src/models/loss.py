@@ -34,12 +34,17 @@ class DINOLoss(nn.Module):
         the center logits. The higher the more the running average matters.
     """
 
-    def __init__(self, out_dim=1024, teacher_temp=0.04, student_temp=0.1, center_momentum=0.9):
+    def __init__(self, args):
         super().__init__()
-        self.student_temp = student_temp
-        self.teacher_temp = teacher_temp
-        self.center_momentum = center_momentum
-        self.register_buffer("center", torch.zeros(1, out_dim))
+        self.config = args.dataset_config[args.contrastive_framework]
+
+        # hyperparameters
+        self.temperature_s = self.config["temperature_student"]
+        self.temperature_t = self.config["temperature_teacher"]
+        self.center_momentum = self.config["center_momentum"]
+
+        # centering vector
+        self.register_buffer("center", torch.zeros(1, self.config["emb_dim"]))
 
     def forward(self, student_output, teacher_output):
         """Evaluate loss.
@@ -55,20 +60,38 @@ class DINOLoss(nn.Module):
         loss : torch.Tensor
             Scalar representing the average loss.
         """
+        student_out = student_output / self.temperature_s
 
-        s1, s2 = student_output
-        t1, t2 = teacher_output
+        # teacher centering and sharpening
+        teacher_out = F.softmax((teacher_output - self.center) / self.temperature_t, dim=-1)
+        teacher_out = teacher_out.detach()
 
-        loss = (self.H(t1, s2) / 2) + (self.H(s1, t2) / 2)
+        total_loss = 0
+        n_loss_terms = 0
+        for iq, q in enumerate(teacher_out):
+            for v in range(len(student_out)):
+                if v == iq:
+                    # we skip cases where student and teacher operate on the same view
+                    continue
+                loss = torch.sum(-q * F.log_softmax(student_out[v], dim=-1), dim=-1)
+                total_loss += loss.mean()
+                n_loss_terms += 1
+        total_loss /= n_loss_terms
         self.update_center(teacher_output)
 
-        return loss
+        return total_loss
 
-    def H(self, s, t):
-        t = t.detach()
-        s = F.softmax(s / self.student_temp, dim=1)
-        t = F.softmax((t - self.center) / self.teacher_temp, dim=1)
-        return -(t * torch.log(s)).sum(dim=1).mean()
+    def H(self, feature_s, feature_t):
+        """Sub-forward function used to calculate the loss
+
+        Args:
+            z_i (_type_): student predicted feature
+            z_j (_type_): teacher predicted feature
+        """
+        feature_t = feature_t.detach()
+        loss_s = F.softmax(feature_s / self.temperature_s, dim=1)
+        loss_t = F.softmax((feature_t - self.center) / self.temperature_t, dim=1)
+        return -(loss_t * torch.log(loss_s)).sum(dim=1).mean()
 
     @torch.no_grad()
     def update_center(self, teacher_output):
@@ -80,7 +103,9 @@ class DINOLoss(nn.Module):
             Tuple of tensors of shape `(n_samples, out_dim)` where each
             tensor represents a different crop.
         """
-        batch_center = torch.cat(teacher_output).mean(dim=0, keepdim=True)  # (1, out_dim)
+        # bc = cat([t1, t2]).mean(dim=0)
+        batch_center = torch.cat((teacher_output[0], teacher_output[1])).mean(dim=0, keepdim=True)  # (1, out_dim)
+        # C = (m * c) + (1-m) * (bc)
         self.center = self.center * self.center_momentum + batch_center * (1 - self.center_momentum)
 
 

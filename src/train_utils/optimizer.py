@@ -28,6 +28,12 @@ def define_optimizer(args, parameters):
             lr=optimizer_config["start_lr"],
             weight_decay=optimizer_config["weight_decay"],
         )
+    elif optimizer_name == "SGD":
+        optimizer = optim.SGD(
+            parameters,
+            lr=optimizer_config["start_lr"],
+            weight_decay=optimizer_config["weight_decay"],
+        )
     elif optimizer_name == "LARS":
         optimizer = LARS(
             parameters,
@@ -133,23 +139,19 @@ class LARS(Optimizer):
 
                 param_state = self.state[p]
 
-                # TODO: get param names
-                # if self._use_weight_decay(param_name):
                 grad += self.weight_decay * param
 
                 if self.classic_momentum:
                     trust_ratio = 1.0
-
-                    # TODO: get param names
-                    # if self._do_layer_adaptation(param_name):
                     w_norm = torch.norm(param)
                     g_norm = torch.norm(grad)
 
                     device = g_norm.get_device()
+
                     trust_ratio = torch.where(
-                        w_norm.ge(0),
+                        w_norm.gt(0),
                         torch.where(
-                            g_norm.ge(0),
+                            g_norm.gt(0),
                             (self.eeta * w_norm / g_norm),
                             torch.Tensor([1.0]).to(device),
                         ),

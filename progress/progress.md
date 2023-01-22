@@ -3,10 +3,75 @@
 Tommy Kimura (tkimura4@illinois.edu)
 
 ## Table of Contents  
+[01/22/2023] - Tune loss temperature (#january-22nd-2023)
 [01/09/2023 - Added Mixup](#january-9th-2023)
 [01/05/2023 - Added Drop Path Rate and Absolute Positional Embedding](#january-5th-2023)
 [01/03/2023 - Added Padding and Flexible Image size](#january-3rd-2023)  
 [12/27/2022 - Initialized TransformerV4](#december-27th-2022) 
+
+## January 22nd 2023
+
+### Major changes
+```bash
+├── data
+│   └── Parkland.yaml # SimCLR temperature parameters
+```
+
+### Experiements
+
+#### Tuning SimCLR Temperature parameters
+
+- Tuning Temperature parameters. Exp0 (temperature == 0.5) was previously used.
+- Batch size is 64
+
+| Name | Temperature | KNN Accuracy | Finetune Accuracy |
+| -- | -- | -- | -- |
+| exp0 | 0.5 | 71.13% | 69.47% |
+| exp1 | 0.2 | 71.06% | 72.77% |
+| exp2 | 0.75 | 87.47% | 86.81% |
+| exp3 | 0.07 | 87.81% | 85.33% |
+
+##### Train & Val loss curves
+
+<img src="./assets/jan2223/exp03_loss.png">
+
+- Exp3 (temperature == 0.07) has the lowest loss.
+
+#### Using Cosine Scheduler
+
+- Testing cosine scheduler with the same temperature setup as the previous experiment
+
+| Name | Temperature | KNN Accuracy | Finetune Accuracy |
+| -- | -- | -- | -- |
+| exp4 | 0.5 | 75.55% | 76.89% |
+| exp5 | 0.2 | 83.12% | 83.39% |
+| exp6 | 0.75 | 85.13% | 84.06% |
+| exp7 | 0.07 | 85.93% | 84.93% |
+
+##### Train & Val loss curves
+
+<img src="./assets/jan2223/exp47_loss.png">
+
+#### Change Optimizer
+
+- Tried LARS and SGD, both did not converge.
+
+#### Test even smaller temperature & larger batch size
+
+- Temperature: 0.07 and 0.03
+- Batch size: 64 and 82
+
+| Name | Temperature | Batch size | KNN Accuracy | Finetune Accuracy |
+| -- | -- | -- | -- | -- |
+| exp20 | 0.07 | 64 | 88.41% | 88.55% |
+| exp21 | 0.07 | 82 | 89.48% | 88.75% |
+| exp23 | 0.03 | 82 | 88.28% | 88.08% |
+| exp22 | 0.03 | 64 | 88.41% | 87.01% |
+
+##### Train & Val loss curves
+
+<img src="./assets/jan2223/exp20_3_loss.png">
+
 
 ## January 9th 2023
 

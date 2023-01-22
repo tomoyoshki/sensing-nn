@@ -93,7 +93,7 @@ def train(args):
             """Contrastive pretraining only."""
             # TODO: Setup argument in data yaml file
             if args.contrastive_framework == "DINO":
-                loss_func = DINOLoss().to(args.device)
+                loss_func = DINOLoss(args).to(args.device)
             else:
                 loss_func = SimCLRLoss(
                     args.batch_size,
