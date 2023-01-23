@@ -31,11 +31,16 @@ Tommy Kimura (tkimura4@illinois.edu)
 | exp2 | 0.75 | 87.47% | 86.81% |
 | exp3 | 0.07 | 87.81% | 85.33% |
 
-##### Train & Val loss curves
+##### Accuracy Curves
 
-<img src="./assets/jan2223/exp03_loss.png">
+###### KNN
 
-- Exp3 (temperature == 0.07) has the lowest loss.
+<img src="./assets/jan2223/exp03_pretrain.png">
+
+###### Finetune
+
+<img src="./assets/jan2223/exp03_finetune.png">
+
 
 #### Using Cosine Scheduler
 
@@ -48,9 +53,16 @@ Tommy Kimura (tkimura4@illinois.edu)
 | exp6 | 0.75 | 85.13% | 84.06% |
 | exp7 | 0.07 | 85.93% | 84.93% |
 
-##### Train & Val loss curves
+##### Accuracy Curves
 
-<img src="./assets/jan2223/exp47_loss.png">
+###### KNN
+
+<img src="./assets/jan2223/exp47_pretrain.png">
+
+###### Finetune
+
+<img src="./assets/jan2223/exp47_finetune.png">
+
 
 #### Change Optimizer
 
@@ -60,6 +72,7 @@ Tommy Kimura (tkimura4@illinois.edu)
 
 - Temperature: 0.07 and 0.03
 - Batch size: 64 and 82
+- Scheduler: cosine scheduler
 
 | Name | Temperature | Batch size | KNN Accuracy | Finetune Accuracy |
 | -- | -- | -- | -- | -- |
@@ -68,10 +81,15 @@ Tommy Kimura (tkimura4@illinois.edu)
 | exp23 | 0.03 | 82 | 88.28% | 88.08% |
 | exp22 | 0.03 | 64 | 88.41% | 87.01% |
 
-##### Train & Val loss curves
+##### Accuracy Curves
 
-<img src="./assets/jan2223/exp20_3_loss.png">
+###### KNN
 
+<img src="./assets/jan2223/exp20_3_pretrain.png">
+
+###### Finetune
+
+<img src="./assets/jan2223/exp20_3_finetune.png">
 
 ## January 9th 2023
 
