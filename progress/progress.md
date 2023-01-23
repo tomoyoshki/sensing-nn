@@ -3,7 +3,7 @@
 Tommy Kimura (tkimura4@illinois.edu)
 
 ## Table of Contents  
-[01/22/2023] - Tune loss temperature (#january-22nd-2023)
+[01/22/2023 - Tune loss temperature](#january-22nd-2023)
 [01/09/2023 - Added Mixup](#january-9th-2023)
 [01/05/2023 - Added Drop Path Rate and Absolute Positional Embedding](#january-5th-2023)
 [01/03/2023 - Added Padding and Flexible Image size](#january-3rd-2023)  
