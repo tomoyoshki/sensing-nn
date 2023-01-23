@@ -160,8 +160,6 @@ def val_and_logging(
     logging.info(f"Test acc: {test_acc: .5f}, test f1: {test_f1: .5f}")
     logging.info(f"Test confusion matrix:\n {test_conf_matrix} \n")
 
-    logging.info("-" * 40 + f"Epoch {epoch + 1}" + "-" * 40)
-
     # write tensorboard train log
     if tensorboard_logging:
         tb_writer.add_scalar("Validation/Val loss", val_loss, epoch)

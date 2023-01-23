@@ -56,6 +56,9 @@ def supervised_train(
     best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_best.pt")
     latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_latest.pt")
     for epoch in range(classifier_config["lr_scheduler"]["train_epochs"]):
+        if epoch > 0:
+            logging.info("-" * 40 + f"Epoch {epoch}" + "-" * 40)
+        
         # set model to train mode
         classifier.train()
         args.epoch = epoch

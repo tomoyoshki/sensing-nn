@@ -253,9 +253,9 @@ SimCLR:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 5000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 1000
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
@@ -269,9 +269,9 @@ SimCLR:
                 name: "step"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 200
+                train_epochs: 500
                 start_epoch: 0
-                decay_epochs: 50
+                decay_epochs: 150
                 decay_rate: 0.2
 
 DINO:

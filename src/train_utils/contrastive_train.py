@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 # train utils
 from train_utils.eval_functions import val_and_logging
-from train_utils.optimizer import define_optimizer, get_params_groups
+from train_utils.optimizer import define_optimizer
 from train_utils.lr_scheduler import define_lr_scheduler
 from train_utils.knn import compute_embedding, compute_knn
 
@@ -70,6 +70,9 @@ def contrastive_pretrain(
     best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_best.pt")
     latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_latest.pt")
     for epoch in range(args.dataset_config[args.contrastive_framework]["pretrain_lr_scheduler"]["train_epochs"]):
+        if epoch > 0:
+            logging.info("-" * 40 + f"Epoch {epoch}" + "-" * 40)
+            
         # set model to train mode
         default_model.train()
 
@@ -121,31 +124,31 @@ def contrastive_pretrain(
                 tag="embeddings",
             )
 
-        # Use KNN classifier for validation
-        knn_estimator = compute_knn(args, default_model.backbone, augmenter, train_dataloader)
+            # Use KNN classifier for validation
+            knn_estimator = compute_knn(args, default_model.backbone, augmenter, train_dataloader)
 
-        # validation and logging
-        train_loss = np.mean(train_loss_list)
-        val_acc, val_loss = val_and_logging(
-            args,
-            epoch,
-            tb_writer,
-            default_model,
-            augmenter,
-            val_dataloader,
-            test_dataloader,
-            loss_func,
-            train_loss,
-            estimator=knn_estimator,
-        )
+            # validation and logging
+            train_loss = np.mean(train_loss_list)
+            val_acc, val_loss = val_and_logging(
+                args,
+                epoch,
+                tb_writer,
+                default_model,
+                augmenter,
+                val_dataloader,
+                test_dataloader,
+                loss_func,
+                train_loss,
+                estimator=knn_estimator,
+            )
 
-        # Save the latest model
-        torch.save(default_model.backbone.state_dict(), latest_weight)
+            # Save the latest model
+            torch.save(default_model.backbone.state_dict(), latest_weight)
 
-        # Save the best model according to validation result
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            torch.save(default_model.backbone.state_dict(), best_weight)
+            # Save the best model according to validation result
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                torch.save(default_model.backbone.state_dict(), best_weight)
 
         # Update the learning rate scheduler
         lr_scheduler.step(epoch)
