@@ -206,7 +206,11 @@ TransformerV4:
         patch_norm: True
         patch_size:
                 freq:
+<<<<<<< HEAD
                         audio: [1, 40]
+=======
+                        audio: [1, 2]
+>>>>>>> 1c5b9142089aaaec4f66e1d048781fe2f15bac00
                         seismic: [1, 2]
         # FC layer
         fc_dim: 512
