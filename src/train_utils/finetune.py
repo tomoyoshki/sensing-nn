@@ -28,7 +28,7 @@ def finetune(
     """Fine tune the backbone network with only the class layer."""
     # Load the pretrained classifier and handler
     pretrain_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_pretrain_latest.pt")
-    classifier = load_model_weight(classifier, pretrain_weight)
+    classifier = load_model_weight(classifier, pretrain_weight, load_class_layer=False)
     learnable_parameters = []
     for name, param in classifier.named_parameters():
         if "class_layer" in name:
