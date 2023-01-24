@@ -39,21 +39,27 @@ AUD_DOWNSAMPLE_RATE = 2
 STD_THRESHOLD = 0
 
 FREQS = {"audio": 16000 / AUD_DOWNSAMPLE_RATE, "seismic": 100, "acc": 100}
+# LABELS = {
+#     "Polaris": 0,
+#     "Warhog": 1,
+#     "Silverado": 2,
+#     "motor": 3,
+#     "tesla": 4,
+#     "mustang0528": 5,
+#     "walk": 6,
+# }
 LABELS = {
     "Polaris": 0,
     "Warhog": 1,
     "Silverado": 2,
     "motor": 3,
     "tesla": 4,
-    "mustang0528": 5,
+    "mustang": 5,
     "walk": 6,
-    "walk2": 6,
-    "motor_noisy_run1": 3,
-    "mustang_noisy_run1": 5,
-    "walk_noisy_run1": 6,
-    "motor_clean_run1": 3,
-    "mustang_clean_run1": 5,
-    "walk_clean_run1": 6,
+    "bicycle": 7,
+    "forester": 8,
+    "pickup": 9,
+    "scooter": 10,
 }
 SUBJECTS = {"rs3"}
 PRESERVED_CLEAN_FOLDERS = {
@@ -353,7 +359,7 @@ def process_one_shake_wrapper(args):
 if __name__ == "__main__":
     username = getpass.getuser()
     input_path = f"/home/{username}/data/Parkland/raw_data"
-    add_wind = True
+    add_wind = False
 
     if not add_wind:
         freq_output_path = f"/home/{username}/data/Parkland/individual_freq_samples"

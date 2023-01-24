@@ -15,7 +15,10 @@ def create_dataloader(option, args, batch_size=64, workers=5):
     """
     # select the index file
     if option == "train":
-        index_file = args.dataset_config["train_index_file"]
+        if args.train_mode != "supervised" and args.stage == "pretrain":
+            index_file = args.dataset_config["pretrain_index_file"]
+        else:
+            index_file = args.dataset_config["train_index_file"]
     elif option == "val":
         index_file = args.dataset_config["val_index_file"]
     else:
