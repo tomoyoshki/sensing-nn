@@ -35,7 +35,6 @@ loc_mod_spectrum_len:
         shake:
                 audio: 65
                 seismic: 65
-                acc: 20
 
 
 # DeepSense config
@@ -206,18 +205,14 @@ TransformerV4:
         patch_norm: True
         patch_size:
                 freq:
-<<<<<<< HEAD
-                        audio: [1, 40]
-=======
                         audio: [1, 2]
->>>>>>> 1c5b9142089aaaec4f66e1d048781fe2f15bac00
                         seismic: [1, 2]
         # FC layer
         fc_dim: 512
         # Optimizer config
         optimizer:
                 name: "AdamW"
-                start_lr: 0.0001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
