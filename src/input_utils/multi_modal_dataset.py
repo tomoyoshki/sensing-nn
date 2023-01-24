@@ -34,8 +34,19 @@ class MultiModalDataset(Dataset):
     def __getitem__(self, idx):
         sample_file = os.path.join(self.base_path, self.sample_files[idx])
         sample = torch.load(sample_file)
-        label = sample["label"]
         data = sample["data"]
+
+        # ACIDS ndarray --> tensor
+        for loc in data:
+            for mod in data[loc]:
+                if isinstance(data[loc][mod], np.ndarray):
+                    data[loc][mod] = torch.from_numpy(data[loc][mod]).float()
+
+        # ACIDS
+        if isinstance(sample["label"], dict):
+            label = sample["label"]["vehicle_type"]
+        else:
+            label = sample["label"]
 
         return data, label
 
