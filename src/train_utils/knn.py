@@ -60,13 +60,17 @@ def compute_embedding(args, classifier, augmenter, data_loader):
     classifier.eval()
 
     embs_l = []
-    labels = []
+    all_labels = []
     classes = args.dataset_config["class_names"]
 
-    for time_loc_inputs, y in data_loader:
-        aug_freq_loc_inputs, y = augmenter.forward("no", time_loc_inputs, y)
+    for time_loc_inputs, labels in data_loader:
+        aug_freq_loc_inputs, y = augmenter.forward("no", time_loc_inputs, labels)
         embs_l.append(classifier(aug_freq_loc_inputs, class_head=False).detach().cpu())
-        labels.extend([classes[i] for i in y.tolist()])
-    embs = torch.cat(embs_l, dim=0)
+        if labels.dim() > 1:
+            labels = labels.argmax(dim=1, keepdim=False)
+        all_labels.append([classes[i] for i in labels])
 
-    return embs, None, labels
+    embs = torch.cat(embs_l, dim=0)
+    all_labels = np.concatenate(all_labels, axis=0)
+
+    return embs, None, all_labels
