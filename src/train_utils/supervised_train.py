@@ -58,7 +58,7 @@ def supervised_train(
     for epoch in range(classifier_config["lr_scheduler"]["train_epochs"]):
         if epoch > 0:
             logging.info("-" * 40 + f"Epoch {epoch}" + "-" * 40)
-        
+
         # set model to train mode
         classifier.train()
         args.epoch = epoch
