@@ -1,12 +1,9 @@
 # data paths  
 base_path: /home/sl29/data/Parkland  
+pretrain_index_file: time_data_partition/pretrain_index.txt 
 train_index_file: time_data_partition/train_index.txt 
 val_index_file: time_data_partition/val_index.txt  
 test_index_file: time_data_partition/test_index.txt 
-# noisy_test_index_file: time_data_partition/noisy_test_index.txt 
-noisy_test_index_file: time_data_partition/test_index_1107_clean.txt 
-# noisy_test_index_file: time_data_partition/test_index_1107_noisy.txt 
-wind_test_index_file: time_data_partition_with_wind/test_index.txt
 
 repetition: 3
 
@@ -71,6 +68,13 @@ DeepSense:
         scheduler_step: 300
         scheduler_gamma: 0.2
         start_lr: 0.00001
+        # Augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
+                freq_augmenters: ["phase_shift"]
+        fixed_augmenters:
+                time_augmenters: ["mixup"]
+                freq_augmenters: ["no"]
         
 # ResNet config              
 ResNet:
@@ -97,6 +101,13 @@ ResNet:
         scheduler_step: 300
         scheduler_gamma: 0.2
         start_lr: 0.00003
+        # Augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
+                freq_augmenters: ["phase_shift"]
+        fixed_augmenters:
+                time_augmenters: ["mixup"]
+                freq_augmenters: ["no"]
 
 # Transformer config
 Transformer:
@@ -235,8 +246,12 @@ TransformerV4:
                 decay_epochs: 200
                 decay_rate: 0.2
         # Data Augmenters:
-        time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
-        freq_augmenters: ["phase_shift"]
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
+                freq_augmenters: ["phase_shift"]
+        fixed_augmenters:
+                time_augmenters: ["mixup"]
+                freq_augmenters: ["no"]
 
 SimCLR:
         emb_dim: 512
@@ -253,9 +268,9 @@ SimCLR:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 5000
+                train_epochs: 2500
                 start_epoch: 0
-                decay_epochs: 1000
+                decay_epochs: 500
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:

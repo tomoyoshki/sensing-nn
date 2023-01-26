@@ -7,7 +7,6 @@ from scipy import signal
 
 PATH_A = "/home/sl29/data/ACIDS/ACIDSData_public_testset-mat/Acoustics"
 PATH_S = "/home/sl29/data/ACIDS/ACIDSData_public_testset-mat/Seismic"
-
 TEST_FILE = "/home/sl29/FoundationSense/src/data_preprocess/ACIDS/test_file_list.txt"
 
 FILES = [
@@ -153,10 +152,6 @@ SAMPLE_LEN = 1024
 
 def gene_data(FILES_SET, mode="fft"):
     meta_info = load_meta()
-    # print("meta_info: ", meta_info.keys())
-    # x_dict = {}
-    # for i in range(1,10):
-    # 	x_dict[i] = []
     X = []
     Y = []
     file_sample_count = np.zeros(len(FILES_SET))
@@ -186,15 +181,11 @@ def gene_data(FILES_SET, mode="fft"):
         data = scio.loadmat(os.path.join(PATH_S, s_filename))
         x_s = data["Output_data"]
         x_s = x_s[:, :-20]  # Delete outliers
-        # print x_s.shape
+
         if x_a.shape[1] != x_s.shape[1]:
             print("shape not equal", x_a.shape, x_s.shape)
 
-        if filename == "Gv3c1090.mat" or filename == "Gv1a1136.mat":
-            print(f"{filename}: {x_a.shape} {x_a[0][:10]}")
-
         x = np.concatenate((x_a, x_s), axis=0)
-
         x = (x - np.mean(x, axis=1, keepdims=True)) / np.std(x, axis=1, keepdims=True)
 
         i = 0
@@ -202,7 +193,6 @@ def gene_data(FILES_SET, mode="fft"):
             file_sample_count[n] += 1
 
             if mode == "fft":
-                # fft_signal = np.abs(np.fft.fft(x[:,i:i+SAMPLE_LEN], axis=-1))[:, :SAMPLE_LEN//2]
                 fft_signal = np.fft.fft(x[:, i : i + SAMPLE_LEN], axis=-1)[:, : SAMPLE_LEN // 2]
                 fft_signal = np.concatenate([fft_signal.real, fft_signal.imag], axis=0)
                 fft_signal = np.concatenate(
