@@ -85,13 +85,23 @@ if __name__ == "__main__":
     for e in os.listdir(os.path.join(input_path, "Acoustics")):
         if e.endswith(".mat") and e in meta_info:
             files_to_process.append(e[:-4])
+
     train_files, val_files, test_files = [], [], []
+    cover_flags = [False for _ in range(9)]
+    random.shuffle(files_to_process)
     for e in files_to_process:
-        if random.random() < 0.9:
-            train_files.append(e)
-        else:
+        class_id = int(e[2]) - 1
+        if not cover_flags[class_id]:
             val_files.append(e)
             test_files.append(e)
+            cover_flags[class_id] = True
+        else:
+            if random.random() < 0.9:
+                train_files.append(e)
+            else:
+                val_files.append(e)
+                test_files.append(e)
+    print(val_files)
 
     # partition the dta
     partition_data(paired_data_path, output_path, train_files, val_files, test_files)
