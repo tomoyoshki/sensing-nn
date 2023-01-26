@@ -17,11 +17,10 @@ Configuration:
     4) We simultaneously save the aligned time-series and the spectrogram for each channel.
 """
 
-SEGMENT_SPAN = 2
+SEGMENT_SPAN = 1
 INTERVAL_SPAN = 0.125
 SEGMENT_OVERLAP_RATIO = 0.0
-INTERVAL_OVERLAP_RATIO = 0.0
-AUD_DOWNSAMPLE_RATE = 2
+INTERVAL_OVERLAP_RATIO = 0.5
 STD_THRESHOLD = 0
 
 FREQS = {"audio": 1024, "seismic": 1024}
@@ -139,7 +138,7 @@ def process_one_mat(file, labels, input_path, time_output_path):
     seismic_file = os.path.join(input_path, "Seismic", file[0:3] + "s" + file[3:])
 
     # load the audio, [channel, samples]
-    raw_audio = loadmat(audio_file)["Output_data"]
+    raw_audio = loadmat(audio_file)["Output_data"][0:1, :]
     raw_audio = np.transpose(raw_audio, (1, 0))
 
     # load the seismic data
@@ -182,7 +181,8 @@ def process_one_mat_wrapper(args):
 
 if __name__ == "__main__":
     input_path = "/home/sl29/data/ACIDS/ACIDSData_public_testset-mat"
-    time_output_path = "/home/sl29/data/ACIDS/individual_time_samples_two_sec"
+    # time_output_path = "/home/sl29/data/ACIDS/individual_time_samples_two_sec"
+    time_output_path = "/home/sl29/data/ACIDS/individual_time_samples_one_sec"
     meta_info = load_meta()
 
     if not os.path.exists(time_output_path):

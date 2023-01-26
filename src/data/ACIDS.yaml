@@ -1,16 +1,16 @@
 # data paths  
-base_path: /home/sl29/data/ACIDS/ 
-pretrain_index_file: partition_index_two_sec/train_index.txt 
-train_index_file: partition_index_two_sec/train_index.txt 
-val_index_file: partition_index_two_sec/val_index.txt  
-test_index_file: partition_index_two_sec/test_index.txt 
+base_path: /home/sl29/data/ACIDS/partition_index_one_sec
+pretrain_index_file: train_index.txt 
+train_index_file: train_index.txt 
+val_index_file: val_index.txt  
+test_index_file: test_index.txt 
 
 # Classes
 num_classes: 9  # number of classes
 class_names: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 
 # Segments
-num_segments: 16
+num_segments: 15
 
 # Locations 
 num_locaiton: 1
@@ -25,11 +25,11 @@ loc_modalities:
         shake: ["seismic", "audio"]
 loc_mod_in_freq_channels:
         shake:
-                audio: 6
+                audio: 2
                 seismic: 4
 loc_mod_in_time_channels:
         shake:
-                audio: 3
+                audio: 1
                 seismic: 2
 loc_mod_spectrum_len:
         shake:
@@ -47,11 +47,11 @@ DeepSense:
         loc_mod_conv_lens: 
                 audio: [[1, 4], [1, 4], [1, 4]]
                 seismic: [[1, 4], [1, 4], [1, 4]]
-        loc_mod_out_channels: 256
+        loc_mod_out_channels: 128
         loc_mod_conv_inter_layers: 4
         # single interval + location
         loc_conv_lens: [[1, 4], [1, 4], [1, 4]]
-        loc_out_channels: 256
+        loc_out_channels: 128
         loc_conv_inter_layers: 3
         # recurrent layer
         recurrent_dim: 256
@@ -71,16 +71,16 @@ DeepSense:
                 name: "step"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 1200
                 start_epoch: 0
-                decay_epochs: 400
+                decay_epochs: 200
                 decay_rate: 0.2
         # Data Augmenters:
         random_augmenters:
                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
                 freq_augmenters: ["phase_shift"]
         fixed_augmenters:
-                time_augmenters: ["no"]
+                time_augmenters: ["mixup"]
                 freq_augmenters: ["no"]
         
 # ResNet config              
