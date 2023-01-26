@@ -72,7 +72,7 @@ def contrastive_pretrain(
     for epoch in range(args.dataset_config[args.contrastive_framework]["pretrain_lr_scheduler"]["train_epochs"]):
         if epoch > 0:
             logging.info("-" * 40 + f"Epoch {epoch}" + "-" * 40)
-            
+
         # set model to train mode
         default_model.train()
 

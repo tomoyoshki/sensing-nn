@@ -73,7 +73,7 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
     return mean_classifier_loss, mean_f1, mean_acc, conf_matrix
 
 
-def eval_contrastive_model(model, estimator, augmenter, data_loader, loss_func):
+def eval_contrastive_model(args, model, estimator, augmenter, data_loader, loss_func):
     """Evaluate the performance with KNN estimator."""
     model.eval()
 
@@ -90,7 +90,11 @@ def eval_contrastive_model(model, estimator, augmenter, data_loader, loss_func):
             """Eval KNN estimator."""
             aug_freq_loc_inputs = augmenter.forward("no", time_loc_inputs)
             sample_embeddings.append(model.backbone(aug_freq_loc_inputs, class_head=False).detach().cpu().numpy())
-            labels.append(label.detach().cpu().numpy())
+            if label.dim() > 1:
+                label = label.argmax(dim=1, keepdim=False)
+
+            saved_labels = label.cpu().numpy()
+            labels.append(saved_labels)
 
             # forward pass
             loss = loss_func(feature1, feature2).item()
@@ -99,6 +103,8 @@ def eval_contrastive_model(model, estimator, augmenter, data_loader, loss_func):
     sample_embeddings = np.concatenate(sample_embeddings)
     labels = np.concatenate(labels)
     predictions = estimator.predict(sample_embeddings)
+    predictions = torch.Tensor(predictions)
+    predictions = predictions.argmax(dim=1, keepdim=False)
 
     # compute metrics
     mean_acc = accuracy_score(labels, predictions)
@@ -148,10 +154,10 @@ def val_and_logging(
     else:
         """Supervised training or fine-tuning"""
         val_loss, val_f1, val_acc, val_conf_matrix = eval_contrastive_model(
-            model, estimator, augmenter, val_loader, loss_func
+            args, model, estimator, augmenter, val_loader, loss_func
         )
         test_loss, test_f1, test_acc, test_conf_matrix = eval_contrastive_model(
-            model, estimator, augmenter, test_loader, loss_func
+            args, model, estimator, augmenter, test_loader, loss_func
         )
     logging.info(f"Val loss: {val_loss: .5f}")
     logging.info(f"Val acc: {val_acc: .5f}, val f1: {val_f1: .5f}")
