@@ -74,9 +74,7 @@ def partition_data(paired_data_path, output_path, train_files, val_files, test_f
 
 if __name__ == "__main__":
     input_path = "/home/sl29/data/ACIDS/ACIDSData_public_testset-mat"
-    # paired_data_path = f"/home/sl29/data/ACIDS/individual_time_samples_two_sec"
     paired_data_path = "/home/sl29/data/ACIDS/individual_time_samples_one_sec"
-    # output_path = f"/home/sl29/data/ACIDS/partition_index_two_sec"
     output_path = f"/home/sl29/data/ACIDS/partition_index_one_sec"
     meta_info = load_meta()
 
@@ -98,7 +96,7 @@ if __name__ == "__main__":
             test_files.append(e)
             cover_flags[class_id] = True
         else:
-            if random.random() < 0.95:
+            if random.random() < 0.9:
                 train_files.append(e)
             else:
                 val_files.append(e)

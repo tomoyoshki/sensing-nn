@@ -14,7 +14,7 @@ Configuration:
     1) Sampling frequency:
         - acoustic: 1025.641 Hz
         - acc, seismic: 1025.641 Hz
-    4) We simultaneously save the aligned time-series and the spectrogram for each channel.
+    4) We save the aligned time-series for each sensor in shape [channel, interval, spectrum (time series)].
 """
 
 SEGMENT_SPAN = 1
@@ -66,10 +66,10 @@ def extract_loc_mod_tensor(raw_data, segment_len, freq):
 
     # Step 1: Divide the segment into fixed-length intervals, (i, s, c)
     interval_sensor_values = split_array_with_overlap(
-        raw_data, INTERVAL_OVERLAP_RATIO, interval_len=int(INTERVAL_SPAN * freq)
+        raw_data, INTERVAL_OVERLAP_RATIO, interval_len=int(INTERVAL_SPAN * freq),
     )
 
-    # Step 2: Convert numpy array to tensor, and conver to [c. i, s] shape
+    # Step 2: Convert numpy array to tensor, and convert to [c. i, s] shape
     time_tensor = torch.from_numpy(interval_sensor_values).float()
     time_tensor = time_tensor.permute(2, 0, 1)
 
@@ -148,10 +148,14 @@ def process_one_mat(file, labels, input_path, time_output_path):
     # Step 2: Partition into individual samples
     splitted_data = {"audio": [], "seismic": []}
     splitted_data["audio"] = split_array_with_overlap(
-        raw_audio, SEGMENT_OVERLAP_RATIO, interval_len=SEGMENT_SPAN * FREQS["audio"]
+        raw_audio,
+        SEGMENT_OVERLAP_RATIO,
+        interval_len=SEGMENT_SPAN * FREQS["audio"],
     )
     splitted_data["seismic"] = split_array_with_overlap(
-        raw_seismic, SEGMENT_OVERLAP_RATIO, interval_len=SEGMENT_SPAN * FREQS["seismic"]
+        raw_seismic,
+        SEGMENT_OVERLAP_RATIO,
+        interval_len=SEGMENT_SPAN * FREQS["seismic"],
     )
 
     # prepare the individual samples
