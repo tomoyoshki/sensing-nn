@@ -25,7 +25,7 @@ class MoCo(nn.Module):
         self.config = args.dataset_config["MoCo"]
 
         self.T = self.config["temperature"]
-        self.momentum = self.config["momentum"]
+        self.m = self.config["momentum"]
 
         # build encoders
         self.backbone = backbone(args)
