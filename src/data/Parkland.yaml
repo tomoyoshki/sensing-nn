@@ -292,6 +292,7 @@ SimCLR:
 MoCo:
         emb_dim: 512
         temperature: 1.0
+        momentum: 0.99
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
