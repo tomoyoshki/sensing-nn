@@ -99,7 +99,9 @@ class DeepSense(nn.Module):
             nn.ReLU(),
         )
         self.class_layer = nn.Sequential(
-            nn.Linear(self.config["fc_dim"], args.dataset_config["num_classes"]),
+            nn.Linear(self.config["fc_dim"], int(self.config["fc_dim"] / 2)),
+            nn.GELU(),
+            nn.Linear(int(self.config["fc_dim"] / 2), args.dataset_config["num_classes"]),
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 

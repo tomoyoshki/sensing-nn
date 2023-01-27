@@ -66,7 +66,9 @@ def extract_loc_mod_tensor(raw_data, segment_len, freq):
 
     # Step 1: Divide the segment into fixed-length intervals, (i, s, c)
     interval_sensor_values = split_array_with_overlap(
-        raw_data, INTERVAL_OVERLAP_RATIO, interval_len=int(INTERVAL_SPAN * freq),
+        raw_data,
+        INTERVAL_OVERLAP_RATIO,
+        interval_len=int(INTERVAL_SPAN * freq),
     )
 
     # Step 2: Convert numpy array to tensor, and convert to [c. i, s] shape
@@ -138,7 +140,7 @@ def process_one_mat(file, labels, input_path, time_output_path):
     seismic_file = os.path.join(input_path, "Seismic", file[0:3] + "s" + file[3:])
 
     # load the audio, [channel, samples]
-    raw_audio = loadmat(audio_file)["Output_data"][0:1, :]
+    raw_audio = loadmat(audio_file)["Output_data"]
     raw_audio = np.transpose(raw_audio, (1, 0))
 
     # load the seismic data
@@ -185,7 +187,6 @@ def process_one_mat_wrapper(args):
 
 if __name__ == "__main__":
     input_path = "/home/sl29/data/ACIDS/ACIDSData_public_testset-mat"
-    # time_output_path = "/home/sl29/data/ACIDS/individual_time_samples_two_sec"
     time_output_path = "/home/sl29/data/ACIDS/individual_time_samples_one_sec"
     meta_info = load_meta()
 
