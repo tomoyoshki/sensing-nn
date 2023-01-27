@@ -27,7 +27,7 @@ from train_utils.contrastive_train import contrastive_pretrain
 from train_utils.finetune import finetune
 
 # loss functions
-from models.loss import DINOLoss, SimCLRLoss
+from models.loss import DINOLoss, SimCLRLoss, MoCoLoss
 
 # utils
 from torch.utils.tensorboard import SummaryWriter
@@ -45,11 +45,17 @@ def init_model(args):
     elif args.model == "TransformerV3":
         classifier = TransformerV3(args)
     elif args.model == "TransformerV4":
-        classifier = TransformerV4(args)
+        # TODO: generalization
+        if args.contrastive_framework == "MoCo":
+            classifier = TransformerV4
+            return classifier
+        else:
+            classifier = TransformerV4(args)
     elif args.model == "ResNet":
         classifier = ResNet(args)
     else:
         raise Exception(f"Invalid model provided: {args.model}")
+    classifier = classifier.to(args.device)
     return classifier
 
 
@@ -74,7 +80,6 @@ def train(args):
 
     # Init the classifier model
     classifier = init_model(args)
-    classifier = classifier.to(args.device)
 
     args.classifier = classifier
     logging.info(f"=\tClassifier model loaded")
@@ -94,6 +99,8 @@ def train(args):
             # TODO: Setup argument in data yaml file
             if args.contrastive_framework == "DINO":
                 loss_func = DINOLoss(args).to(args.device)
+            elif args.contrastive_framework == "MoCo":
+                loss_func = MoCoLoss(args).to(args.device)
             else:
                 loss_func = SimCLRLoss(
                     args.batch_size,

@@ -16,9 +16,10 @@ from train_utils.knn import compute_embedding, compute_knn
 # utils
 from general_utils.time_utils import time_sync
 
-# DINO utils
+# Contrastive Learning utils
 from models.DINOModules import DINO
 from models.SimCLRModules import SimCLR
+from models.MoCoModule import MoCoWrapper
 
 
 def contrastive_pretrain(
@@ -37,15 +38,9 @@ def contrastive_pretrain(
     used in train of supervised mode or fine-tune of foundation models.
     """
     classifier_config = args.dataset_config[args.model]
-    # model config
-    if args.contrastive_framework == "SimCLR":
-        default_model = SimCLR(args, backbone_model)
-        default_model = default_model.to(args.device)
-    elif args.contrastive_framework == "DINO":
-        default_model = DINO(args, backbone_model)
-        default_model = default_model.to(args.device)
-    else:
-        raise NotImplementedError
+
+    # Initialize contrastive model
+    default_model = init_contrastive_framework(args, backbone_model)
 
     # Define the optimizer and learning rate scheduler
     optimizer = define_optimizer(args, default_model.parameters())
@@ -89,7 +84,6 @@ def contrastive_pretrain(
 
             # forward pass
             loss = loss_func(feature1, feature2)
-
             # back propagation
             loss.backward()
 
@@ -160,3 +154,17 @@ def contrastive_pretrain(
     end = time_sync()
     logging.info("------------------------------------------------------------------------")
     logging.info(f"Total processing time: {(end - start): .3f} s")
+
+
+def init_contrastive_framework(args, backbone_model):
+    # model config
+    if args.contrastive_framework == "SimCLR":
+        default_model = SimCLR(args, backbone_model)
+    elif args.contrastive_framework == "DINO":
+        default_model = DINO(args, backbone_model)
+    elif args.contrastive_framework == "MoCo":
+        default_model = MoCoWrapper(args, backbone_model)
+    else:
+        raise NotImplementedError
+    default_model = default_model.to(args.device)
+    return default_model

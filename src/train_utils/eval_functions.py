@@ -104,7 +104,8 @@ def eval_contrastive_model(args, model, estimator, augmenter, data_loader, loss_
     labels = np.concatenate(labels)
     predictions = estimator.predict(sample_embeddings)
     predictions = torch.Tensor(predictions)
-    predictions = predictions.argmax(dim=1, keepdim=False)
+    if predictions.dim() > 1:
+        predictions = predictions.argmax(dim=1, keepdim=False)
 
     # compute metrics
     mean_acc = accuracy_score(labels, predictions)

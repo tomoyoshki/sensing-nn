@@ -152,3 +152,30 @@ class SimCLRLoss(nn.Module):
         loss = self.criterion(logits, labels)
         loss /= N
         return loss
+
+
+class MoCoLoss(nn.Module):
+    """MoCo Loss function
+    https://github.com/facebookresearch/moco-v3/blob/main/moco/builder.py
+    """
+
+    def __init__(self, args):
+        super(MoCoLoss, self).__init__()
+        self.args = args
+        self.T = args.dataset_config["MoCo"]["temperature"]
+
+    def contrastive_loss(self, q, k):
+        # normalize
+        q = nn.functional.normalize(q, dim=1)
+        k = nn.functional.normalize(k, dim=1)
+        # Einstein sum is more intuitive
+        logits = torch.einsum("nc,mc->nm", [q, k]) / self.T
+        N = logits.shape[0]  # batch size per GPU
+        labels = (torch.arange(N, dtype=torch.long)).to(self.args.device)
+        return nn.CrossEntropyLoss()(logits, labels) * (2 * self.T)
+
+    def forward(self, q, k):
+        q1, q2 = q
+        k1, k2 = k
+        loss = self.contrastive_loss(q1, k2) + self.contrastive_loss(q2, k1)
+        return loss

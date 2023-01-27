@@ -289,6 +289,42 @@ SimCLR:
                 decay_epochs: 150
                 decay_rate: 0.2
 
+MoCo:
+        emb_dim: 512
+        temperature: 1.0
+        # Pre training  
+        pretrain_optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        pretrain_lr_scheduler:
+                name: "cosine"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 2500
+                start_epoch: 0
+                decay_epochs: 500
+                decay_rate: 0.2
+        # Fine tuning 
+        finetune_optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        finetune_lr_scheduler:
+                name: "step"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 500
+                start_epoch: 0
+                decay_epochs: 150
+                decay_rate: 0.2
+
 DINO:
         emb_dim: 512
         momentum_teacher: 0.9995
