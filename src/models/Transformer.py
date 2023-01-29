@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 
 from torch.nn import TransformerEncoderLayer
-from input_utils.fft_utils import fft_preprocess
 from models.FusionModules import TransformerFusionBlock
 
 

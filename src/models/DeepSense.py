@@ -6,7 +6,6 @@ import torch.nn as nn
 from models.ConvModules import ConvBlock
 from models.FusionModules import MeanFusionBlock, SelfAttentionFusionBlock
 from models.RecurrentModule import RecurrentBlock
-from input_utils.fft_utils import fft_preprocess
 from input_utils.normalize import normalize_input
 
 

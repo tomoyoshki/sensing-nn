@@ -1,9 +1,10 @@
 # data paths  
-base_path: /home/sl29/data/Parkland  
-pretrain_index_file: time_data_partition/pretrain_index.txt 
-train_index_file: time_data_partition/train_index.txt 
-val_index_file: time_data_partition/val_index.txt  
-test_index_file: time_data_partition/test_index.txt 
+base_path: /home/sl29/data/Parkland/time_data_partition  
+# base_path: /home/sl29/data/Parkland_1107/time_data_partition
+pretrain_index_file: pretrain_index.txt 
+train_index_file: train_index.txt 
+val_index_file: val_index.txt  
+test_index_file: test_index.txt
 
 repetition: 3
 

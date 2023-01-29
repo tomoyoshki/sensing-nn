@@ -1,7 +1,10 @@
+import os
 import logging
 import torch
+import json
 import numpy as np
 import random
+
 from data_augmenter.NoAugmenter import NoAugmenter
 from data_augmenter.MissAugmenter import MissAugmenter
 from data_augmenter.MixupAugmenter import MixupAugmenter
@@ -27,63 +30,19 @@ class Augmenter:
             model (_type_): _description_
         """
         self.args = args
-        self.train_flag = True
         self.mode = self.args.train_mode if self.args.option == "train" else self.args.inference_mode
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
         logging.info(f"=\t[Option]: {args.option}, mode: {self.mode}, stage: {args.stage}")
 
-        # load the time augmenters
-        self.time_augmenter_pool = {
-            "no": NoAugmenter,
-            "miss": MissAugmenter,
-            "mixup": MixupAugmenter,
-            "jitter": JitterAugmenter,
-            "permutation": PermutationAugmenter,
-            "scaling": ScalingAugmenter,
-            "negation": NegationAugmenter,
-            "horizontal_flip": HorizontalFlipAugmenter,
-            "channel_shuffle": ChannelShuffleAugmenter,
-            "time_warp": TimeWarpAugmenter,
-            "mag_warp": MagWarpAugmenter,
-            "time_mask": TimeMaskAugmenter,
-        }
-        if args.train_mode in {"contrastive"} and args.stage == "pretrain":
-            self.time_aug_names = args.dataset_config[args.model]["random_augmenters"]["time_augmenters"]
-        else:
-            self.time_aug_names = args.dataset_config[args.model]["fixed_augmenters"]["time_augmenters"]
-        self.time_augmenters = []
-        for aug_name in self.time_aug_names:
-            if aug_name not in self.time_augmenter_pool:
-                raise Exception(f"Invalid augmenter provided: {aug_name}")
-            else:
-                self.time_augmenters.append(self.time_augmenter_pool[aug_name](args))
-                logging.info(f"=\t[Loaded time augmenter]: {aug_name}")
-
-        # load the freq augmenters
-        self.freq_augmenter_pool = {
-            "no": NoAugmenter,
-            "freq_mask": FreqMaskAugmenter,
-            "phase_shift": PhaseShiftAugmenter,
-        }
-        if args.train_mode in {"contrastive"} and args.stage == "pretrain":
-            self.freq_aug_names = args.dataset_config[args.model]["random_augmenters"]["freq_augmenters"]
-        else:
-            self.freq_aug_names = args.dataset_config[args.model]["fixed_augmenters"]["freq_augmenters"]
-        self.freq_augmenters = []
-        for aug_name in self.freq_aug_names:
-            if aug_name not in self.freq_augmenter_pool:
-                raise Exception(f"Invalid augmenter provided: {aug_name}")
-            else:
-                self.freq_augmenters.append(self.freq_augmenter_pool[aug_name](args))
-                logging.info(f"=\t[Loaded frequency augmenter]: {aug_name}")
-
-        # random augmenter pool
-        self.aug_names = self.time_aug_names + self.freq_aug_names
-        self.augmenters = self.time_augmenters + self.freq_augmenters
+        # setup the augmenters
+        self.load_augmenters(args)
 
     def forward(self, option, time_loc_inputs, labels=None):
         """General interface for the forward function."""
+        # move to target device
+        time_loc_inputs, labels = self.move_to_target_device(time_loc_inputs, labels)
+
         if option == "fixed":
             return self.forward_fixed(time_loc_inputs, labels)
         elif option == "random":
@@ -98,31 +57,23 @@ class Augmenter:
         Add noise to the input_dict depending on the noise position.
         We only add noise to the time domeain, but not the feature level.
         """
-        # move to target device
-        time_loc_inputs, labels = self.move_to_target_device(time_loc_inputs, labels)
-
         # time-domain augmentation
         aug_time_loc_inputs, aug_labels = time_loc_inputs, labels
-        if self.train_flag:
-            for augmenter in self.time_augmenters:
-                aug_time_loc_inputs, aug_labels = augmenter(aug_time_loc_inputs, aug_labels)
+        for augmenter in self.time_augmenters:
+            aug_time_loc_inputs, aug_labels = augmenter(aug_time_loc_inputs, aug_labels)
 
         # time --> freq domain with FFT
         freq_loc_inputs = self.fft_preprocess(aug_time_loc_inputs)
 
         # freq-domain augmentation
         aug_freq_loc_inputs, aug_labels = freq_loc_inputs, labels
-        if self.train_flag:
-            for augmenter in self.freq_augmenters:
-                aug_freq_loc_inputs, aug_labels = augmenter(aug_freq_loc_inputs, aug_labels)
+        for augmenter in self.freq_augmenters:
+            aug_freq_loc_inputs, aug_labels = augmenter(aug_freq_loc_inputs, aug_labels)
 
         return aug_freq_loc_inputs, aug_labels
 
     def forward_random(self, time_loc_inputs, labels=None):
         """Randomly select one augmenter from both (time, freq) augmenter pool and apply it to the input."""
-        # move to target device
-        time_loc_inputs, labels = self.move_to_target_device(time_loc_inputs, labels)
-
         # select a random augmenter
         rand_aug_id = np.random.randint(len(self.aug_names))
         rand_aug_name = self.aug_names[rand_aug_id]
@@ -151,9 +102,6 @@ class Augmenter:
         Add noise to the input_dict depending on the noise position.
         We only add noise to the time domeain, but not the feature level.
         """
-        # move to target device
-        time_loc_inputs, labels = self.move_to_target_device(time_loc_inputs, labels)
-
         # time --> freq domain with FFT
         freq_loc_inputs = self.fft_preprocess(time_loc_inputs)
 
@@ -194,15 +142,66 @@ class Augmenter:
 
         return freq_loc_inputs
 
-    # def train(self):
-    #     """Set all components to train mode"""
-    #     self.train_flag = True
-
-    # def eval(self):
-    #     """Set all components to eval mode"""
-    #     self.train_flag = False
-
     def to(self, device):
         """Move all components to the target device"""
         for augmenter in self.time_augmenters:
             augmenter.to(device)
+
+    def load_augmenters(self, args):
+        """Load all augmenters."""
+        # load the time augmenters
+        self.load_time_augmenters(args)
+
+        # load the freq augmenters
+        self.load_freq_augmenters(args)
+
+        # random augmenter pool
+        self.aug_names = self.time_aug_names + self.freq_aug_names
+        self.augmenters = self.time_augmenters + self.freq_augmenters
+
+    def load_time_augmenters(self, args):
+        """Load time-domain augmenters."""
+        self.time_augmenter_pool = {
+            "no": NoAugmenter,
+            "miss": MissAugmenter,
+            "mixup": MixupAugmenter,
+            "jitter": JitterAugmenter,
+            "permutation": PermutationAugmenter,
+            "scaling": ScalingAugmenter,
+            "negation": NegationAugmenter,
+            "horizontal_flip": HorizontalFlipAugmenter,
+            "channel_shuffle": ChannelShuffleAugmenter,
+            "time_warp": TimeWarpAugmenter,
+            "mag_warp": MagWarpAugmenter,
+            "time_mask": TimeMaskAugmenter,
+        }
+        if args.train_mode in {"contrastive"} and args.stage == "pretrain":
+            self.time_aug_names = args.dataset_config[args.model]["random_augmenters"]["time_augmenters"]
+        else:
+            self.time_aug_names = args.dataset_config[args.model]["fixed_augmenters"]["time_augmenters"]
+        self.time_augmenters = []
+        for aug_name in self.time_aug_names:
+            if aug_name not in self.time_augmenter_pool:
+                raise Exception(f"Invalid augmenter provided: {aug_name}")
+            else:
+                self.time_augmenters.append(self.time_augmenter_pool[aug_name](args))
+                logging.info(f"=\t[Loaded time augmenter]: {aug_name}")
+
+    def load_freq_augmenters(self, args):
+        """Load freq-domain augmenters."""
+        self.freq_augmenter_pool = {
+            "no": NoAugmenter,
+            "freq_mask": FreqMaskAugmenter,
+            "phase_shift": PhaseShiftAugmenter,
+        }
+        if args.train_mode in {"contrastive"} and args.stage == "pretrain":
+            self.freq_aug_names = args.dataset_config[args.model]["random_augmenters"]["freq_augmenters"]
+        else:
+            self.freq_aug_names = args.dataset_config[args.model]["fixed_augmenters"]["freq_augmenters"]
+        self.freq_augmenters = []
+        for aug_name in self.freq_aug_names:
+            if aug_name not in self.freq_augmenter_pool:
+                raise Exception(f"Invalid augmenter provided: {aug_name}")
+            else:
+                self.freq_augmenters.append(self.freq_augmenter_pool[aug_name](args))
+                logging.info(f"=\t[Loaded frequency augmenter]: {aug_name}")

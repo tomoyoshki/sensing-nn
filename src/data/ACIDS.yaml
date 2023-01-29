@@ -10,7 +10,7 @@ num_classes: 9  # number of classes
 class_names: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 
 # Segments
-num_segments: 15
+num_segments: 7
 
 # Locations 
 num_locaiton: 1
@@ -25,21 +25,21 @@ loc_modalities:
         shake: ["seismic", "audio"]
 loc_mod_in_freq_channels:
         shake:
-                audio: 2
+                audio: 6
                 seismic: 4
 loc_mod_in_time_channels:
         shake:
-                audio: 1
+                audio: 3
                 seismic: 2
 loc_mod_spectrum_len:
         shake:
-                audio: 128
-                seismic: 128
+                audio: 256
+                seismic: 256
 
 
 # DeepSense config
 DeepSense:
-        dropout_ratio: 0.2 
+        dropout_ratio: 0.2
         # single interval + location + modality
         loc_mod_in_conv_stride:
                 audio: [1, 4]
@@ -54,53 +54,53 @@ DeepSense:
         loc_out_channels: 128
         loc_conv_inter_layers: 3
         # recurrent layer
-        recurrent_dim: 256
+        recurrent_dim: 128
         recurrent_layers: 2
         # FC layer
-        fc_dim: 512
+        fc_dim: 256
         # Optimizer config
         optimizer:
                 name: "AdamW"
                 start_lr: 0.0001
                 warmup_lr: 0.000001
-                min_lr: 0.0000001
+                min_lr: 0.000001
                 clip_grad: 5.0
                 weight_decay: 0.05
         # LR scheduler
         lr_scheduler:
-                name: "step"
+                name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 1200
+                train_epochs: 1800
                 start_epoch: 0
-                decay_epochs: 200
+                decay_epochs: 300
                 decay_rate: 0.2
         # Data Augmenters:
         random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
-                freq_augmenters: ["phase_shift"]
-        fixed_augmenters:
-                time_augmenters: ["mixup"]
+                time_augmenters: ["permutation", "time_warp", "mag_warp"]
                 freq_augmenters: ["no"]
+        fixed_augmenters:
+                time_augmenters: ["time_warp"]
+                freq_augmenters: ["phase_shift"]
         
 # ResNet config              
 ResNet:
-        interval_num: 17
+        interval_num: 7
         dropout_ratio: 0.2
         # single interval + location + modality
         loc_mod_in_conv_stride:
-                audio: [1, 5]
-                seismic: [1, 5]
+                audio: [1, 4]
+                seismic: [1, 4]
                 acc: 1
         loc_mod_conv_lens: 
-                audio: [[1, 5], [4, 4], [3, 3]]
-                seismic: [[1, 5], [4, 4], [3, 3]]
+                audio: [[1, 4], [4, 4], [3, 3]]
+                seismic: [[1,4], [4, 4], [3, 3]]
         loc_mod_out_channels: 256
-        loc_mod_conv_inter_layers: 2
+        loc_mod_conv_inter_layers: 3
         # single interval + location
         loc_conv_lens: [[3, 3], [3, 3], [3, 3]]
         loc_out_channels: 256
-        loc_conv_inter_layers: 1
+        loc_conv_inter_layers: 2
         # FC layer
         fc_dim: 256
         # Optimizer config
@@ -125,97 +125,13 @@ ResNet:
                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
                 freq_augmenters: ["phase_shift"]
         fixed_augmenters:
-                time_augmenters: ["mixup"]
+                time_augmenters: ["no"]
                 freq_augmenters: ["no"]
-
-
-# Transformer config
-Transformer:
-        dropout_ratio: 0.2
-        # single modality
-        loc_mod_out_channels: 128
-        loc_mod_head_num: 4
-        loc_mod_block_num: 2
-        # single location
-        loc_out_channels: 128
-        loc_head_num: 4
-        loc_block_num: 2
-        # single interval 
-        sample_out_channels: 128
-        sample_head_num: 4
-        sample_block_num: 2
-        # FC layer
-        fc_dim: 256
-        # Training config
-        train_epochs: 1500
-        scheduler_step: 300
-        scheduler_gamma: 0.2
-        start_lr: 0.0001
-
-# Transformer config
-TransformerV2:
-        dropout_ratio: 0.2
-        # loc mod freq feature
-        in_stride:
-                audio: 80
-                seismic: 1
-        freq_out_channels: 256
-        freq_head_num: 4
-        freq_block_num: 4
-        # single modality
-        loc_mod_out_channels: 256
-        loc_mod_head_num: 4
-        loc_mod_block_num: 2
-        # single location
-        loc_out_channels: 256
-        loc_head_num: 4
-        loc_block_num: 2
-        # sample
-        interval_out_channels: 256
-        interval_head_num: 4
-        interval_block_num: 2
-        # FC layer
-        fc_dim: 512
-        # Training config
-        train_epochs: 1500
-        scheduler_step: 200
-        scheduler_gamma: 0.2
-        start_lr: 0.00003
-
-# Transformer config
-TransformerV3:
-        dropout_ratio: 0.2
-        # single freq
-        in_stride:
-                audio: 80
-                seismic: 1
-        freq_out_channels: 256
-        freq_head_num: 4
-        freq_block_num: 4
-        # single interval 
-        interval_out_channels: 256
-        interval_head_num: 4
-        interval_block_num: 2
-        # single modality
-        loc_mod_out_channels: 256
-        loc_mod_head_num: 4
-        loc_mod_block_num: 2
-        # single location
-        loc_out_channels: 256
-        loc_head_num: 4
-        loc_block_num: 2
-        # FC layer
-        fc_dim: 512
-        # Training config
-        train_epochs: 1500
-        scheduler_step: 200
-        scheduler_gamma: 0.2
-        start_lr: 0.00003
 
 TransformerV4:
         dropout_ratio: 0.2
         drop_path_rate: 0.1
-        attn_drop_rate: 0.1
+        attn_drop_rate: 0.2
         # loc mod freq feature
         in_stride:
                 audio: 1
@@ -224,8 +140,8 @@ TransformerV4:
         time_freq_out_channels: 64
         time_freq_head_num: 4
         time_freq_block_num: 
-                audio: [2, 2, 2]
-                seismic: [2, 2, 2]
+                audio: [4, 4, 2]
+                seismic: [4, 4, 2]
         # modality fusion
         mod_out_channels: 256
         mod_head_num: 4
@@ -236,8 +152,8 @@ TransformerV4:
         loc_block_num: 2
         # SwinTransformer configs
         window_size: 
-                audio: [4, 4] 
-                seismic: [4, 4] 
+                audio: [3, 4] 
+                seismic: [3, 4] 
         mlp_ratio: 4.
         qkv_bias: True
         APE: False
@@ -251,14 +167,14 @@ TransformerV4:
         # Optimizer config
         optimizer:
                 name: "AdamW"
-                start_lr: 0.00001
+                start_lr: 0.0001
                 warmup_lr: 0.000001
-                min_lr: 0.0000001
+                min_lr: 0.000001
                 clip_grad: 5.0
                 weight_decay: 0.05
         # LR scheduler
         lr_scheduler:
-                name: "step"
+                name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
                 train_epochs: 2500
@@ -267,10 +183,10 @@ TransformerV4:
                 decay_rate: 0.2
         # Data Augmenters:
         random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
-                freq_augmenters: ["phase_shift"]
+                time_augmenters: ["permutation", "time_warp", "mag_warp"]
+                freq_augmenters: ["no"]
         fixed_augmenters:
-                time_augmenters: ["mixup"]
+                time_augmenters: ["no"]
                 freq_augmenters: ["no"]
 
 SimCLR:
@@ -306,7 +222,7 @@ SimCLR:
                 warmup_epochs: 0
                 train_epochs: 500
                 start_epoch: 0
-                decay_epochs: 150
+                decay_epochs: 100
                 decay_rate: 0.2
 
 DINO:

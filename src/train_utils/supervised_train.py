@@ -37,11 +37,6 @@ def supervised_train(
     optimizer = define_optimizer(args, classifier.parameters())
     lr_scheduler = define_lr_scheduler(args, optimizer)
 
-    # TODO: Freeze the patch embedding layer, from MOCOv3
-    # for name, param in classifier.named_parameters():
-    #     if "patch_embed" in name:
-    #         param.requires_grad = False
-
     # Print the trainable parameters
     if args.verbose:
         for name, param in classifier.named_parameters():
