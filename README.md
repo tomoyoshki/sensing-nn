@@ -3,31 +3,36 @@
 Transformer-based foundation models for (multi-modal) time-series sensing data
 
 
-### Training 
+### Supervised Learning 
 
-#### Supervised learning
-
+#### Training
 ```
 CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4
 ```
 
-#### Self supervised pretraining (contrastive)
+#### Testing 
+```
+CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised
+```
 
+### Contrastive Learning
+
+#### Pretraining
 ```
 CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=pretrain -model=TransformerV4
 ```
 
-#### Self supervised finetuning (contrastive)
+#### Fine Tuning
 
 ```
 CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -model=TransformerV4
 ```
 
-### Testing 
+#### Testing 
+```
+CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive
+```
 
-```
-CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised
-```
 
 ### Augmenter performance on Parkland dataset with supervised train
 |  Date       | Model | Augmenter   |  Accuracy  | Weight Checkpoint |
