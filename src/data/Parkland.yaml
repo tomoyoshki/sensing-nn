@@ -247,7 +247,7 @@ TransformerV4:
                 decay_rate: 0.2
         # Data Augmenters:
         random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter"]
                 freq_augmenters: ["phase_shift"]
         fixed_augmenters:
                 time_augmenters: ["mixup"]
@@ -291,7 +291,7 @@ SimCLR:
 
 MoCo:
         emb_dim: 512
-        temperature: 1.0
+        temperature: 0.07
         momentum: 0.99
         # Pre training  
         pretrain_optimizer:

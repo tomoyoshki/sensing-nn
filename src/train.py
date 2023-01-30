@@ -46,7 +46,7 @@ def init_model(args):
         classifier = TransformerV3(args)
     elif args.model == "TransformerV4":
         # TODO: generalization
-        if args.contrastive_framework == "MoCo":
+        if args.stage == "contrastive" and args.contrastive_framework == "MoCo":
             classifier = TransformerV4
             return classifier
         else:
