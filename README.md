@@ -17,12 +17,13 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=supe
 
 ### Contrastive Learning
 
+
 #### Pretraining
 ```
 CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=pretrain -model=TransformerV4
 ```
 
-#### Fine Tuning
+#### Self supervised finetuning (contrastive)
 
 ```
 CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -model=TransformerV4
@@ -53,6 +54,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=cont
 | :---:       |    :----:    |      :---: | :--: | :--: |
 | 20230130    | TransformerV4 (Supervised)| 88.74%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp63_supervised | use MixUp augmentation. |
 | 20230130    | TransformerV4 + SimCLR | 93.03%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive | use large datasets, batch size 256|
+| 20230130    | TransformerV4 + MoCoV3 | 91.03%   | /home/tkimura4/FoundationSense/weights/Parkland_TransformerV4/exp10_contrastive | use MoCo, batch size 64|
 
 ### Model performance on ACIDS dataset
 

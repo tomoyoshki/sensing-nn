@@ -248,7 +248,7 @@ TransformerV4:
                 decay_rate: 0.2
         # Data Augmenters:
         random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter"]
                 freq_augmenters: ["phase_shift"]
         fixed_augmenters:
                 time_augmenters: ["mixup"]
@@ -257,6 +257,43 @@ TransformerV4:
 SimCLR:
         emb_dim: 512
         temperature: 0.07
+        # Pre training  
+        pretrain_optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        pretrain_lr_scheduler:
+                name: "cosine"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 2500
+                start_epoch: 0
+                decay_epochs: 500
+                decay_rate: 0.2
+        # Fine tuning 
+        finetune_optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        finetune_lr_scheduler:
+                name: "step"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 500
+                start_epoch: 0
+                decay_epochs: 150
+                decay_rate: 0.2
+
+MoCo:
+        emb_dim: 512
+        temperature: 0.07
+        momentum: 0.99
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
