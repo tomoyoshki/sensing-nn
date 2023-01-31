@@ -97,12 +97,22 @@ class DeepSense(nn.Module):
             nn.Linear(self.config["recurrent_dim"] * 2, self.config["fc_dim"]),
             nn.ReLU(),
         )
-        self.class_layer = nn.Sequential(
-            nn.Linear(self.config["fc_dim"], int(self.config["fc_dim"] / 2)),
-            nn.GELU(),
-            nn.Linear(int(self.config["fc_dim"] / 2), args.dataset_config["num_classes"]),
-            nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
-        )
+
+        # Classification layer
+        if args.train_mode == "supervised":
+            """Linear classification layers for supervised learning."""
+            self.class_layer = nn.Sequential(
+                nn.Linear(self.config["fc_dim"], args.dataset_config["num_classes"]),
+                nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
+            )
+        else:
+            """Non-linear classification layers for self-supervised learning."""
+            self.class_layer = nn.Sequential(
+                nn.Linear(self.config["fc_dim"], int(self.config["fc_dim"] / 2)),
+                nn.GELU(),
+                nn.Linear(int(self.config["fc_dim"] / 2), args.dataset_config["num_classes"]),
+                nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
+            )
 
     def forward(self, freq_x, class_head=True):
         """The forward function of DeepSense.

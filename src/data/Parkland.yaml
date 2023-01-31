@@ -64,11 +64,23 @@ DeepSense:
         recurrent_layers: 3
         # FC layer
         fc_dim: 512
-        # Training config
-        train_epochs: 1500
-        scheduler_step: 300
-        scheduler_gamma: 0.2
-        start_lr: 0.00001
+        # Optimizer config
+        optimizer:
+                name: "AdamW"
+                start_lr: 0.00001
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        # LR scheduler
+        lr_scheduler:
+                name: "step"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 1500
+                start_epoch: 0
+                decay_epochs: 300
+                decay_rate: 0.2
         # Augmenters
         random_augmenters:
                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
@@ -97,11 +109,23 @@ ResNet:
         loc_conv_inter_layers: 4
         # FC layer
         fc_dim: 512
-        # Training config
-        train_epochs: 1500
-        scheduler_step: 300
-        scheduler_gamma: 0.2
-        start_lr: 0.00003
+        # Optimizer config
+        optimizer:
+                name: "AdamW"
+                start_lr: 0.00003
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        # LR scheduler
+        lr_scheduler:
+                name: "step"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 1500
+                start_epoch: 0
+                decay_epochs: 300
+                decay_rate: 0.2
         # Augmenters
         random_augmenters:
                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
@@ -244,7 +268,7 @@ TransformerV4:
                 warmup_epochs: 0
                 train_epochs: 1500
                 start_epoch: 0
-                decay_epochs: 200
+                decay_epochs: 300
                 decay_rate: 0.2
         # Data Augmenters:
         random_augmenters:

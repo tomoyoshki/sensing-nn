@@ -187,17 +187,27 @@ class TransformerV4(nn.Module):
             self.config["dropout_ratio"],
         )
 
-        # Sample embedding layer + classification layer
+        # Sample embedding layer
         self.sample_embd_layer = nn.Sequential(
             nn.Linear(self.config["loc_out_channels"], self.config["fc_dim"]),
             nn.GELU(),
         )
-        self.class_layer = nn.Sequential(
-            nn.Linear(self.config["fc_dim"], int(self.config["fc_dim"] / 2)),
-            nn.GELU(),
-            nn.Linear(int(self.config["fc_dim"] / 2), args.dataset_config["num_classes"]),
-            nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
-        )
+
+        # Classification layer
+        if args.train_mode == "supervised":
+            """Linear classification layers for supervised learning."""
+            self.class_layer = nn.Sequential(
+                nn.Linear(self.config["fc_dim"], args.dataset_config["num_classes"]),
+                nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
+            )
+        else:
+            """Non-linear classification layers for self-supervised learning."""
+            self.class_layer = nn.Sequential(
+                nn.Linear(self.config["fc_dim"], int(self.config["fc_dim"] / 2)),
+                nn.GELU(),
+                nn.Linear(int(self.config["fc_dim"] / 2), args.dataset_config["num_classes"]),
+                nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
+            )
 
     def forward(self, freq_x, class_head=True):
         args = self.args
