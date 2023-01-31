@@ -51,7 +51,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=cont
 
 |  Date       | Model |  Accuracy  | Weight | Comment | 
 | :---:       |    :----:    |      :---: | :--: | :--: |
-| 20230130    | TransformerV4 (Supervised)| 90.09%   | | |
+| 20230130    | TransformerV4 (Supervised)| 88.74%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp63_supervised | use MixUp augmentation. |
 | 20230130    | TransformerV4 + SimCLR | 93.03%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive | use large datasets, batch size 256|
 
 ### Model performance on ACIDS dataset
