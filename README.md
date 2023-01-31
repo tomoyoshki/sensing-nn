@@ -3,23 +3,24 @@
 Transformer-based foundation models for (multi-modal) time-series sensing data
 
 
-### Training 
+### Supervised Learning 
 
-#### Supervised learning
-
+#### Training
 ```
 CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4
 ```
 
-#### Self supervised pretraining (contrastive)
+#### Testing 
+```
+CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised
+```
+
+### Contrastive Learning
 
 
+#### Pretraining
 ```
 CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=pretrain -model=TransformerV4
-```
-
-```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=MoCo -stage=pretrain -model=TransformerV4
 ```
 
 #### Self supervised finetuning (contrastive)
@@ -28,20 +29,11 @@ CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=con
 CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -model=TransformerV4
 ```
 
-### Testing 
-
+#### Testing 
 ```
-CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised
+CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive
 ```
 
-### Model performance on Parkland dataset
-
-|  Date       | Model | Branch:Commit   |  Accuracy  |
-| :---:       |    :----:    |    :----:   |      :---: |
-| 20221230    | TransformerV4 | main:c7f5b7c4d31c76ef42e57f5c62ed81d3d870435d           | 74.01%   |
-| 20230104    | TransformerV4 | main:41d6036a5bbb76dd22df2c49687b854aa1955eec           | 78.23%   |
-| 20230105    | TransformerV4 | main:34b1b024a4b3ba83850dc5c19016ac1a8ca01c7e           | 83.47%   |
-| 20230105    | TransformerV4 | main:5a9ded0aee37589755a591cf5a079de5549aa0fa           | 90.09%   |
 
 ### Augmenter performance on Parkland dataset with supervised train
 |  Date       | Model | Augmenter   |  Accuracy  | Weight Checkpoint |
@@ -56,3 +48,17 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=supe
 | 20230117    | TransformerV4 | Negation           | 86.06%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp14_supervised|
 | 20230117    | TransformerV4 | Permutation        | 84.26%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp15_supervised|
 
+### Model performance on Parkland dataset
+
+|  Date       | Model |  Accuracy  | Weight | Comment | 
+| :---:       |    :----:    |      :---: | :--: | :--: |
+| 20230130    | TransformerV4 (Supervised)| 88.74%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp63_supervised | use MixUp augmentation. |
+| 20230130    | TransformerV4 + SimCLR | 93.03%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive | use large datasets, batch size 256|
+| 20230130    | TransformerV4 + MoCoV3 | 91.03%   | /home/tkimura4/FoundationSense/weights/Parkland_TransformerV4/exp10_contrastive | use MoCo, batch size 64|
+
+### Model performance on ACIDS dataset
+
+|  Date       | Model |  Accuracy  | Weight Checkpoint   |
+| :---:       |    :----:     |   :----:   |      :---: |
+| 20230130    | DeepSense (Supervised)     |  93.48%   | /home/sl29/FoundationSense/weights/ACIDS_DeepSense/exp21_supervised           |
+| 20230130    | TransformerV4 (Supervised) |  89.71%   | /home/sl29/FoundationSense/weights/ACIDS_TransformerV4/exp17_supervised       |

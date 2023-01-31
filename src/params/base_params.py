@@ -29,19 +29,18 @@ def parse_base_args(option="train"):
         help="The backbone classification model to use.",
     )
 
-    parser.add_argument(
-        "-contrastive_framework",
-        type=str,
-        default="SimCLR",
-        help="Contrastive learning framework to use",
-    )
-
     # training and inference mode
     parser.add_argument(
         "-train_mode",
         type=str,
         default="supervised",
-        help="The used mode for model training (supervised/original/contrastive/...).",
+        help="The used mode for model training (supervised/contrastive/...).",
+    )
+    parser.add_argument(
+        "-contrastive_framework",
+        type=str,
+        default="SimCLR",
+        help="Contrastive learning framework to use",
     )
     parser.add_argument(
         "-inference_mode",
@@ -92,6 +91,12 @@ def parse_base_args(option="train"):
         type=str,
         default="false",
         help="Whether to show detailed logs.",
+    )
+    parser.add_argument(
+        "-count_range",
+        type=str,
+        default="false",
+        help="Whether to count value range.",
     )
 
     args = parser.parse_args()

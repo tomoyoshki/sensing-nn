@@ -30,7 +30,7 @@ class PhaseShiftAugmenter(nn.Module):
                     # real --> complex
                     b, c, i, s = mod_input.shape
                     mod_input = mod_input.reshape([b, c // 2, 2, i, s])
-                    mod_input = mod_input.permute([0, 1, 3, 4, 2])
+                    mod_input = mod_input.permute([0, 1, 3, 4, 2]).contiguous()
                     mod_input = torch.view_as_complex(mod_input)
 
                     # perform the random shift

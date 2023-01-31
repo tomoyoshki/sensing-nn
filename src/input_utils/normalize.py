@@ -67,6 +67,12 @@ all_value_ranges = {
             "seismic": 14450094.0,
         },
     },
+    "ACIDS": {
+        "time": {
+            "audio": 32768.0,
+            "seismic": 32768.0,
+        },
+    },
     "WESAD": {
         "time": {
             "EMG": 0.45025634765625,
