@@ -39,6 +39,7 @@ def set_model_weight_folder(args):
             suffix = f"contrastive_{args.contrastive_framework}"
         else:
             raise Exception(f"Unknown train mode: {args.train_mode}")
+        print(suffix)
 
     # get the newest id matching the current config
     newest_id = -1
@@ -60,7 +61,7 @@ def set_model_weight_folder(args):
         if args.model_weight is None:
             """Select the newest experiment in the given (dataset, model) config."""
             if newest_id == -1:
-                raise Exception(f"No existing model weights for {args.dataset} {args.model}")
+                raise Exception(f"No existing model weights for {suffix}")
             else:
                 weight_folder = os.path.join(dataset_model_path, newest_weight)
         else:
