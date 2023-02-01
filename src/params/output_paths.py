@@ -33,7 +33,12 @@ def set_model_weight_folder(args):
             suffix += f"-{mod}"
     else:
         """Other modes include: supervised, contrastive, and more..."""
-        suffix = args.train_mode
+        if args.train_mode == "supervised":
+            suffix = f"supervised_{args.task}_{args.label_ratio}"
+        elif args.train_mode == "contrastive":
+            suffix = f"contrastive_{args.contrastive_framework}"
+        else:
+            raise Exception(f"Unknown train mode: {args.train_mode}")
 
     # get the newest id matching the current config
     newest_id = -1
@@ -77,8 +82,8 @@ def set_model_weight_folder(args):
             args.train_log_file = os.path.join(weight_folder, f"train_log.txt")
             args.tensorboard_log = os.path.join(weight_folder, f"train_events")
         else:
-            args.train_log_file = os.path.join(weight_folder, f"{args.stage}_log.txt")
-            args.tensorboard_log = os.path.join(weight_folder, f"{args.stage}_events")
+            args.train_log_file = os.path.join(weight_folder, f"{args.task}_{args.label_ratio}_{args.stage}_log.txt")
+            args.tensorboard_log = os.path.join(weight_folder, f"{args.task}_{args.label_ratio}_{args.stage}_events")
 
     print(f"[Model weights path]: {weight_folder}")
     args.weight_folder = weight_folder
@@ -91,7 +96,7 @@ def set_model_weight_file(args):
     if args.train_mode == "supervised":
         args.classifier_weight = os.path.join(
             args.weight_folder,
-            f"{args.dataset}_{args.model}_best.pt",
+            f"{args.dataset}_{args.model}_{args.task}_best.pt",
         )
     elif args.train_mode in {"contrastive"}:
         if args.stage == "pretrain":
@@ -102,7 +107,7 @@ def set_model_weight_file(args):
         else:
             args.classifier_weight = os.path.join(
                 args.weight_folder,
-                f"{args.dataset}_{args.model}_finetune_best.pt",
+                f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_best.pt",
             )
     else:
         raise Exception(f"Invalid training mode provided: {args.stage}")
@@ -118,11 +123,7 @@ def set_output_paths(args):
     Args:
         args (_type_): _description_
     """
-    # results path
     log_root_path = f"/home/{args.username}/FoundationSense/result/log"
-
-    # today = date.today()
-    # d1 = today.strftime("%m%d%Y")
     args.log_path = os.path.join(log_root_path, f"{args.dataset}_{args.model}_{args.train_mode}")
     check_paths([args.log_path])
 

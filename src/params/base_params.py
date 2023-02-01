@@ -23,6 +23,12 @@ def parse_base_args(option="train"):
         help="Dataset to evaluate.",
     )
     parser.add_argument(
+        "-task",
+        type=str,
+        default="vehicle_classification",
+        help="Dataset to evaluate.",
+    )
+    parser.add_argument(
         "-model",
         type=str,
         default="TransformerV3",
@@ -53,6 +59,12 @@ def parse_base_args(option="train"):
         type=str,
         default="pretrain",
         help="The pretrain/finetune, used for foundation model only.",
+    )
+    parser.add_argument(
+        "-label_ratio",
+        type=float,
+        default=0.3,
+        help="Only used in supervised training or finetune stage, specify the ratio of labeled data.",
     )
 
     # used for separate training and inference

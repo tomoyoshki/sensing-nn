@@ -14,19 +14,23 @@ def create_dataloader(option, args, batch_size=64, workers=5):
         workers (_type_): _description_
     """
     # select the index file
+    label_ratio = 1
     if option == "train":
         if args.train_mode != "supervised" and args.stage == "pretrain":
+            "self-supervised training"
             index_file = args.dataset_config["pretrain_index_file"]
         else:
-            index_file = args.dataset_config["train_index_file"]
+            """supervised training"""
+            index_file = args.dataset_config[args.task]["train_index_file"]
+            label_ratio = args.label_ratio
     elif option == "val":
-        index_file = args.dataset_config["val_index_file"]
+        index_file = args.dataset_config[args.task]["val_index_file"]
     else:
-        index_file = args.dataset_config["test_index_file"]
+        index_file = args.dataset_config[args.task]["test_index_file"]
 
     # init the dataset
     triplet_flag = False
-    dataset = MultiModalDataset(index_file, args.dataset_config["base_path"])
+    dataset = MultiModalDataset(args, index_file, label_ratio)
     batch_size = min(batch_size, len(dataset))
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=(option == "train"), num_workers=workers)
 

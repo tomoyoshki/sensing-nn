@@ -3,10 +3,11 @@ import torch
 import numpy as np
 
 from torch.utils.data import Dataset
+from random import shuffle
 
 
 class MultiModalDataset(Dataset):
-    def __init__(self, index_file, batch_path):
+    def __init__(self, args, index_file, label_ratio=1):
         """
         Args:
             modalities (_type_): The list of modalities
@@ -25,20 +26,28 @@ class MultiModalDataset(Dataset):
                     - audio: Tensor
                     - acc: Tensor
         """
-        self.sample_files = list(np.loadtxt(os.path.join(batch_path, index_file), dtype=str))
-        self.base_path = batch_path
+        self.args = args
+        self.sample_files = list(np.loadtxt(index_file, dtype=str))
+
+        if label_ratio < 1:
+            shuffle(self.sample_files)
+            self.sample_files = self.sample_files[: round(len(self.sample_files) * label_ratio)]
 
     def __len__(self):
         return len(self.sample_files)
 
     def __getitem__(self, idx):
-        sample_file = os.path.join(self.base_path, self.sample_files[idx])
-        sample = torch.load(sample_file)
+        sample = torch.load(self.sample_files[idx])
         data = sample["data"]
 
         # ACIDS
         if isinstance(sample["label"], dict):
-            label = sample["label"]["vehicle_type"]
+            if self.args.task == "vehicle_classification":
+                label = sample["label"]["vehicle_type"]
+            elif self.args.task == "distance_classification":
+                label = sample["label"]["distance"]
+            elif self.args.task == "speed_classification":
+                label = sample["label"]["speed"]
         else:
             label = sample["label"]
 
