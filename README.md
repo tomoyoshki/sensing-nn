@@ -62,9 +62,9 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 
 |  Date       | Model |  Accuracy  | Weight | Comment | 
 | :---:       |    :----:    |      :---: | :--: | :--: |
-| 20230131    | DeepSense (Supervised)| xx.xx%   |  | use MixUp augmentation. |
+| 20230131    | DeepSense (Supervised)| 59.37%   | /home/sl29/FoundationSense/weights/Parkland_DeepSense/exp0_supervised_speed_classification_1.0 | use MixUp augmentation. |
 | 20230131    | DeepSense + SimCLR | 96.87%   | /home/sl29/FoundationSense/weights/Parkland_DeepSense/exp0_contrastive_SimCLR | use large datasets, batch size 256|
-| 20230131    | TransformerV4 (Supervised)| xx.xx%   |  | use MixUp augmentation. |
+| 20230131    | TransformerV4 (Supervised)| 56.25%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp0_supervised_speed_classification_1.0 | use MixUp augmentation. |
 | 20230131    | TransformerV4 + SimCLR | 93.75%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive_SimCLR | use large datasets, batch size 256|
 
 ### Distance classification performance on Parkland dataset
