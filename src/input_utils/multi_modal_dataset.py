@@ -48,6 +48,10 @@ class MultiModalDataset(Dataset):
                 label = sample["label"]["distance"]
             elif self.args.task == "speed_classification":
                 label = sample["label"]["speed"]
+            elif self.args.task == "terrain_classification":
+                label = sample["label"]["terrain"]
+            else:
+                raise ValueError(f"Unknown task: {self.args.task}")
         else:
             label = sample["label"]
 

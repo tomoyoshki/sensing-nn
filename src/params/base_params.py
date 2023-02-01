@@ -93,7 +93,7 @@ def parse_base_args(option="train"):
     parser.add_argument(
         "-gpu",
         type=int,
-        default=3,
+        default=0,
         help="Specify which GPU to use.",
     )
 

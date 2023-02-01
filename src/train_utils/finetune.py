@@ -83,26 +83,27 @@ def finetune(
                 tb_writer.add_scalar("Train/Train loss", loss.item(), epoch * num_batches + i)
 
         # validation and logging
-        train_loss = np.mean(train_loss_list)
-        val_acc, val_loss = val_and_logging(
-            args,
-            epoch,
-            tb_writer,
-            classifier,
-            augmenter,
-            val_dataloader,
-            test_dataloader,
-            classifier_loss_func,
-            train_loss,
-        )
+        if epoch % 10 == 0:
+            train_loss = np.mean(train_loss_list)
+            val_acc, val_loss = val_and_logging(
+                args,
+                epoch,
+                tb_writer,
+                classifier,
+                augmenter,
+                val_dataloader,
+                test_dataloader,
+                classifier_loss_func,
+                train_loss,
+            )
 
-        # Save the latest model
-        torch.save(classifier.state_dict(), latest_weight)
+            # Save the latest model
+            torch.save(classifier.state_dict(), latest_weight)
 
-        # Save the best model according to validation result
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            torch.save(classifier.state_dict(), best_weight)
+            # Save the best model according to validation result
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                torch.save(classifier.state_dict(), best_weight)
 
         # Update the learning rate scheduler
         lr_scheduler.step(epoch)
