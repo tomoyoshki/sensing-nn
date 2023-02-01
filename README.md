@@ -61,5 +61,5 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=cont
 
 |  Date       | Model |  Accuracy  | Weight Checkpoint   |
 | :---:       |    :----:     |   :----:   |      :---: |
-| 20230130    | DeepSense (Supervised)     |  93.48%   | /home/sl29/FoundationSense/weights/ACIDS_DeepSense/exp22_supervised           |
+| 20230130    | DeepSense (Supervised)     |  93.44%   | /home/sl29/FoundationSense/weights/ACIDS_DeepSense/exp22_supervised_vehicle_classification_1.0          |
 | 20230130    | TransformerV4 (Supervised) |  88.67%   | /home/sl29/FoundationSense/weights/ACIDS_TransformerV4/exp20_supervised_vehicle_classification_1.0       |
