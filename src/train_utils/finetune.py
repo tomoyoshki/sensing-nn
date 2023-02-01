@@ -45,13 +45,13 @@ def finetune(
     logging.info("---------------------------Start Fine Tuning-------------------------------")
     start = time_sync()
     best_val_acc = 0
-    best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_finetune_best.pt")
-    latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_finetune_latest.pt")
+    best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_finetune_best.pt")
+    latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_finetune_latest.pt")
 
     for epoch in range(args.dataset_config[args.contrastive_framework]["finetune_lr_scheduler"]["train_epochs"]):
         if epoch > 0:
             logging.info("-" * 40 + f"Epoch {epoch}" + "-" * 40)
-            
+
         # set model to train mode
         classifier.train()
 

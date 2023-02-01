@@ -1,13 +1,24 @@
 # data paths  
-base_path: /home/sl29/data/ACIDS/partition_index_one_sec
-pretrain_index_file: train_index.txt 
-train_index_file: train_index.txt 
-val_index_file: val_index.txt  
-test_index_file: test_index.txt 
+pretrain_index_file: /home/sl29/data/ACIDS/partition_index_one_sec/train_index.txt 
+vehicle_classification:
+        num_classes: 9  # number of classes
+        class_names: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+        train_index_file: /home/sl29/data/ACIDS/partition_index_one_sec/train_index.txt 
+        val_index_file: /home/sl29/data/ACIDS/partition_index_one_sec/val_index.txt  
+        test_index_file: /home/sl29/data/ACIDS/partition_index_one_sec/test_index.txt 
+distance_classification:
+        num_classes: 3  # number of classes
+        class_names: ["close", "medium", "far"]
+        train_index_file: train_index.txt 
+        val_index_file: val_index.txt  
+        test_index_file: test_index.txt 
+speed_classification:
+        num_classes: 3  # number of classes
+        class_names: ["low", "medium", "high"]
+        train_index_file: train_index.txt 
+        val_index_file: val_index.txt  
+        test_index_file: test_index.txt 
 
-# Classes
-num_classes: 9  # number of classes
-class_names: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 
 # Segments
 num_segments: 7
