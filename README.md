@@ -7,12 +7,12 @@ Transformer-based foundation models for (multi-modal) time-series sensing data
 
 #### Training
 ```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=supervised -task=vehicle_classification -model=TransformerV4
 ```
 
 #### Testing 
 ```
-CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=supervised -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised
+CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=supervised -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised
 ```
 
 ### Contrastive Learning
@@ -20,18 +20,18 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=supe
 
 #### Pretraining
 ```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=pretrain -model=TransformerV4
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=pretrain -model=TransformerV4
 ```
 
 #### Finetuning
 
 ```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4
 ```
 
 #### Testing 
 ```
-CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive
+CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive
 ```
 
 
