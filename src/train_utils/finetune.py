@@ -45,8 +45,12 @@ def finetune(
     logging.info("---------------------------Start Fine Tuning-------------------------------")
     start = time_sync()
     best_val_acc = 0
-    best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_finetune_best.pt")
-    latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_finetune_latest.pt")
+    best_weight = os.path.join(
+        args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_best.pt"
+    )
+    latest_weight = os.path.join(
+        args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_latest.pt"
+    )
 
     for epoch in range(args.dataset_config[args.contrastive_framework]["finetune_lr_scheduler"]["train_epochs"]):
         if epoch > 0:

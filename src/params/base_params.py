@@ -63,7 +63,7 @@ def parse_base_args(option="train"):
     parser.add_argument(
         "-label_ratio",
         type=float,
-        default=1.0,
+        default=0.3,
         help="Only used in supervised training or finetune stage, specify the ratio of labeled data.",
     )
 

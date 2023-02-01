@@ -34,7 +34,7 @@ def set_model_weight_folder(args):
     else:
         """Other modes include: supervised, contrastive, and more..."""
         if args.train_mode == "supervised":
-            suffix = f"supervised_{args.task}"
+            suffix = f"supervised_{args.task}_{args.label_ratio}"
         elif args.train_mode == "contrastive":
             suffix = f"contrastive_{args.contrastive_framework}"
         else:
@@ -82,8 +82,8 @@ def set_model_weight_folder(args):
             args.train_log_file = os.path.join(weight_folder, f"train_log.txt")
             args.tensorboard_log = os.path.join(weight_folder, f"train_events")
         else:
-            args.train_log_file = os.path.join(weight_folder, f"{args.task}_{args.stage}_log.txt")
-            args.tensorboard_log = os.path.join(weight_folder, f"{args.task}_{args.stage}_events")
+            args.train_log_file = os.path.join(weight_folder, f"{args.task}_{args.label_ratio}_{args.stage}_log.txt")
+            args.tensorboard_log = os.path.join(weight_folder, f"{args.task}_{args.label_ratio}_{args.stage}_events")
 
     print(f"[Model weights path]: {weight_folder}")
     args.weight_folder = weight_folder
@@ -107,7 +107,7 @@ def set_model_weight_file(args):
         else:
             args.classifier_weight = os.path.join(
                 args.weight_folder,
-                f"{args.dataset}_{args.model}_{args.task}_finetune_best.pt",
+                f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_best.pt",
             )
     else:
         raise Exception(f"Invalid training mode provided: {args.stage}")
