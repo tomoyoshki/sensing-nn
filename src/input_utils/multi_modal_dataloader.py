@@ -15,7 +15,7 @@ def create_dataloader(option, args, batch_size=64, workers=5):
     """
     # select the index file
     if option == "train":
-        if args.train_mode != "supervised" and args.stage == "pretrain" and args.dataset != "Parkland":
+        if args.train_mode != "supervised" and args.stage == "pretrain":
             index_file = args.dataset_config["pretrain_index_file"]
         else:
             index_file = args.dataset_config["train_index_file"]

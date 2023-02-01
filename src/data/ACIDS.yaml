@@ -152,8 +152,8 @@ TransformerV4:
         loc_block_num: 2
         # SwinTransformer configs
         window_size: 
-                audio: [3, 4] 
-                seismic: [3, 4] 
+                audio: [2, 4] 
+                seismic: [2, 4] 
         mlp_ratio: 4.
         qkv_bias: True
         APE: False
@@ -186,7 +186,7 @@ TransformerV4:
                 time_augmenters: ["permutation", "time_warp", "mag_warp"]
                 freq_augmenters: ["no"]
         fixed_augmenters:
-                time_augmenters: ["no"]
+                time_augmenters: ["time_warp"]
                 freq_augmenters: ["no"]
 
 SimCLR:
@@ -294,7 +294,7 @@ scaling:
 
 time_warp:
         prob: 0.5
-        magnitude: 0.3
+        magnitude: 0.2
         order: 6
 
 mag_warp:
