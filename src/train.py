@@ -27,7 +27,7 @@ from train_utils.contrastive_train import contrastive_pretrain
 from train_utils.finetune import finetune
 
 # loss functions
-from models.loss import DINOLoss, SimCLRLoss, MoCoLoss
+from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss
 
 # utils
 from torch.utils.tensorboard import SummaryWriter
@@ -45,8 +45,7 @@ def init_model(args):
     elif args.model == "TransformerV3":
         classifier = TransformerV3(args)
     elif args.model == "TransformerV4":
-        # TODO: generalization
-        if args.stage == "contrastive" and args.contrastive_framework == "MoCo":
+        if args.stage == "pretrain" and args.contrastive_framework in {"MoCo", "CMC"}:
             classifier = TransformerV4
             return classifier
         else:
@@ -101,11 +100,15 @@ def train(args):
                 loss_func = DINOLoss(args).to(args.device)
             elif args.contrastive_framework == "MoCo":
                 loss_func = MoCoLoss(args).to(args.device)
-            else:
+            elif args.contrastive_framework == "CMC":
+                loss_func = CMCLoss(args, args.batch_size)
+            elif args.contrastive_framework == "SimCLR":
                 loss_func = SimCLRLoss(
                     args.batch_size,
                     temperature=args.dataset_config["SimCLR"]["temperature"],
                 ).to(args.device)
+            else:
+                raise NotImplementedError(f"Loss function for {args.contrastive_framework} yet implemented")
         else:
             raise Exception(f"Invalid train mode provided: {args.train_mode}")
     logging.info("=\tLoss function defined")

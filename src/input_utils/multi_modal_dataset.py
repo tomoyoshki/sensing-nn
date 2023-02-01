@@ -42,7 +42,7 @@ class MultiModalDataset(Dataset):
         else:
             label = sample["label"]
 
-        return data, label
+        return data, label, idx
 
 
 class TripletMultiModalDataset(Dataset):

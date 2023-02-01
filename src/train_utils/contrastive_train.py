@@ -20,6 +20,7 @@ from general_utils.time_utils import time_sync
 from models.DINOModules import DINO
 from models.SimCLRModules import SimCLR
 from models.MoCoModule import MoCoWrapper
+from models.CMCModules import CMC
 
 
 def contrastive_pretrain(
@@ -75,15 +76,16 @@ def contrastive_pretrain(
         train_loss_list = []
 
         # regularization configuration
-        for i, (time_loc_inputs, _) in tqdm(enumerate(train_dataloader), total=num_batches):
+        for i, (time_loc_inputs, _, idx) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
             optimizer.zero_grad()
+            idx = idx.to(args.device)
             aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
             aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
             feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
 
             # forward pass
-            loss = loss_func(feature1, feature2)
+            loss = loss_func(feature1, feature2, idx)
             # back propagation
             loss.backward()
 
@@ -164,6 +166,8 @@ def init_contrastive_framework(args, backbone_model):
         default_model = DINO(args, backbone_model)
     elif args.contrastive_framework == "MoCo":
         default_model = MoCoWrapper(args, backbone_model)
+    elif args.contrastive_framework == "CMC":
+        default_model = CMC(args, backbone_model)
     else:
         raise NotImplementedError
     default_model = default_model.to(args.device)
