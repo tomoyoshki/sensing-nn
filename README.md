@@ -54,8 +54,17 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -gpu=0 -dataset=Parkland -train_mode=cont
 | :---:       |    :----:    |      :---: | :--: | :--: |
 | 20230131    | DeepSense (Supervised)| 91.22%   | /home/sl29/FoundationSense/weights/Parkland_DeepSense/exp0_supervised_vehicle_classification_1.0 | use MixUp augmentation. |
 | 20230130    | TransformerV4 (Supervised)| 88.74%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp63_supervised_vehicle_classification_1.0 | use MixUp augmentation. |
-| 20230130    | TransformerV4 + SimCLR | 93.03%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive | use large datasets, batch size 256|
+| 20230130    | TransformerV4 + SimCLR | 93.03%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive_SimCLR | use large datasets, batch size 256|
 | 20230130    | TransformerV4 + MoCoV3 | 91.03%   | /home/tkimura4/FoundationSense/weights/Parkland_TransformerV4/exp10_contrastive | use MoCo, batch size 64|
+
+### Speed classification performance on Parkland dataset
+
+|  Date       | Model |  Accuracy  | Weight | Comment | 
+| :---:       |    :----:    |      :---: | :--: | :--: |
+| 20230131    | DeepSense (Supervised)| xx.xx%   |  | use MixUp augmentation. |
+| 20230130    | TransformerV4 (Supervised)| xx.xx%   |  | use MixUp augmentation. |
+| 20230130    | TransformerV4 + SimCLR | xx.xx%   | /home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive_SimCLR | use large datasets, batch size 256|
+
 
 ### Model performance on ACIDS dataset
 
