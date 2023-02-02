@@ -66,6 +66,7 @@ def partition_data(option, paired_data_path, output_path, train_files, val_files
     data_samples = truncate_data_samples(data_samples)
 
     # split
+    pretrain_samples = []
     train_samples = []
     val_samples = []
     test_samples = []
@@ -79,17 +80,28 @@ def partition_data(option, paired_data_path, output_path, train_files, val_files
             continue
 
         if sample_file in train_files:
-            train_samples.append(file_path)
+            pretrain_samples.append(file_path)
+            if load_sample["label"]["vehicle_type"].item() == 0 and random.random() < 0.9:
+                continue
+            else:
+                train_samples.append(file_path)
         else:
-            val_samples.append(file_path)
-            test_samples.append(file_path)
+            if load_sample["label"]["vehicle_type"].item() == 0 and random.random() < 0.9:
+                continue
+            else:
+                val_samples.append(file_path)
+                test_samples.append(file_path)
 
     # save the index file
     print(
-        f"Number of training samples: {len(train_samples)}, \
+        f"Number of pretraining samples: {len(pretrain_samples)}, \
+        number of training samples: {len(val_samples)}, \
         number of validation samples: {len(val_samples)}, \
         number of testing samples: {len(test_samples)}."
     )
+    with open(os.path.join(output_path, "pretrain_index.txt"), "w") as f:
+        for sample_file in pretrain_samples:
+            f.write(sample_file + "\n")
     with open(os.path.join(output_path, "train_index.txt"), "w") as f:
         for sample_file in train_samples:
             f.write(sample_file + "\n")
