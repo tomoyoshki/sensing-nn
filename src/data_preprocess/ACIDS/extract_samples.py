@@ -1,5 +1,6 @@
 import os
 import time
+import json
 import torch
 import numpy as np
 
@@ -15,6 +16,7 @@ Configuration:
         - acoustic: 1025.641 Hz
         - acc, seismic: 1025.641 Hz
     4) We save the aligned time-series for each sensor in shape [channel, interval, spectrum (time series)].
+    5) 0 represents the background class, 1-9 denote the vehicle classes.
 """
 
 SEGMENT_SPAN = 1
@@ -78,7 +80,7 @@ def extract_loc_mod_tensor(raw_data, segment_len, freq):
     return time_tensor
 
 
-def process_one_sample(sample, labels, mat_file, time_output_path):
+def process_one_sample(sample, labels, mat_file, time_output_path, background_flag=False):
     """Process and save a sample.
 
     Args:
@@ -90,16 +92,28 @@ def process_one_sample(sample, labels, mat_file, time_output_path):
     id = sample["id"]
     time_output_file = os.path.join(time_output_path, f"{mat_file[:-4]}_{id}.pt")
 
-    time_sample = {
-        "label": {
-            "vehicle_type": torch.tensor(labels["vehicle"]).float(),
-            "terrain": torch.tensor(labels["terrain"]).float(),
-            "speed": torch.tensor(labels["speed"]).float(),
-            "distance": torch.tensor(labels["distance"]).float(),
-        },
-        "flag": {},
-        "data": {},
-    }
+    if not background_flag:
+        time_sample = {
+            "label": {
+                "vehicle_type": torch.tensor(labels["vehicle"]).long(),
+                "terrain": torch.tensor(labels["terrain"]).long(),
+                "speed": torch.tensor(labels["speed"]).long(),
+                "distance": torch.tensor(labels["distance"]).long(),
+            },
+            "flag": {},
+            "data": {},
+        }
+    else:
+        time_sample = {
+            "label": {
+                "vehicle_type": torch.tensor(0.0).long(),
+                "terrain": torch.tensor(-1.0).long(),
+                "speed": torch.tensor(-1.0).long(),
+                "distance": torch.tensor(-1.0).long(),
+            },
+            "flag": {},
+            "data": {},
+        }
 
     # extract modality tensor
     for loc in sample["signal"]:
@@ -123,7 +137,7 @@ def process_one_sample_wrapper(args):
     return process_one_sample(*args)
 
 
-def process_one_mat(file, labels, input_path, time_output_path):
+def process_one_mat(file, labels, input_path, time_output_path, file_label_range):
     """Process a single mat file.
 
     Args:
@@ -134,6 +148,10 @@ def process_one_mat(file, labels, input_path, time_output_path):
             "distance": float(distance),
         }
     """
+    # parse the ranges for labeling
+    background_range = file_label_range["background"]
+    cpa_ranges = file_label_range["cpa"]
+
     # Step 1: Loading original files
     print(f"Processing: {file}")
     audio_file = os.path.join(input_path, "Acoustics", file)
@@ -162,10 +180,21 @@ def process_one_mat(file, labels, input_path, time_output_path):
 
     # prepare the individual samples
     sample_list = []
+    background_flag_list = []
     for i in range(len(splitted_data["seismic"])):
         sample = {"id": i, "signal": {"shake": {}}}
         sample["signal"]["shake"]["audio"] = splitted_data["audio"][i]
         sample["signal"]["shake"]["seismic"] = splitted_data["seismic"][i]
+
+        # calculate background flag
+        start_index = i * int(1024 * (1 - SEGMENT_OVERLAP_RATIO))
+        sample_range = [start_index, start_index + 1024]
+        if sample_range in background_range:
+            background_flag_list.append(True)
+        elif sample_range in cpa_ranges:
+            background_flag_list.append(False)
+        else:
+            continue
 
         if len(splitted_data["seismic"][i]) < SEGMENT_SPAN * FREQS["seismic"]:
             continue
@@ -175,7 +204,10 @@ def process_one_mat(file, labels, input_path, time_output_path):
     # Step 3: Parallel processing and saving of the invidual samples
     print(f"Processing and saving individual samples: {file, len(sample_list)}")
     pool = Pool(max_workers=cpu_count())
-    args_list = [[sample, labels, file, time_output_path] for sample in sample_list]
+    args_list = [
+        [sample, labels, file, time_output_path, background_flag]
+        for (sample, background_flag) in zip(sample_list, background_flag_list)
+    ]
     pool.map(process_one_sample_wrapper, args_list, chunksize=1)
     pool.shutdown()
 
@@ -193,6 +225,11 @@ if __name__ == "__main__":
     if not os.path.exists(time_output_path):
         os.mkdir(time_output_path)
 
+    # load the label range: {mat_file: {background: [list of range], cpa: [list of range]}}
+    label_range_file = "/home/sl29/data/ACIDS/mat_label_range.json"
+    with open(label_range_file, "r") as f:
+        label_range = json.load(f)
+
     # list the files to process
     files_to_process = []
     for e in os.listdir(os.path.join(input_path, "Acoustics")):
@@ -202,11 +239,10 @@ if __name__ == "__main__":
     # process the files in parallel
     args_list = []
     for file in files_to_process:
-        if file in meta_info:
-            args_list.append([file, meta_info[file], input_path, time_output_path])
+        if file in meta_info and file in label_range:
+            args_list.append([file, meta_info[file], input_path, time_output_path, label_range[file]])
 
     start = time.time()
-
     pool = Pool(max_workers=cpu_count())
     pool.map(process_one_mat_wrapper, args_list, chunksize=1)
     pool.shutdown()

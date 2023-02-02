@@ -61,7 +61,7 @@ def compute_embedding(args, classifier, augmenter, data_loader):
 
     embs_l = []
     all_labels = []
-    classes = args.dataset_config["class_names"]
+    classes = args.dataset_config[args.task]["class_names"]
 
     for time_loc_inputs, labels in data_loader:
         aug_freq_loc_inputs, y = augmenter.forward("no", time_loc_inputs, labels)

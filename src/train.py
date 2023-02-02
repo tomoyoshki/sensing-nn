@@ -9,7 +9,6 @@ import numpy as np
 
 from tqdm import tqdm
 
-
 # import models
 from data_augmenter.Augmenter import Augmenter
 from models.ResNet import ResNet

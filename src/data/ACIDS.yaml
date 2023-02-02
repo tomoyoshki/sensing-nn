@@ -1,23 +1,29 @@
 # data paths  
-pretrain_index_file: /home/sl29/data/ACIDS/partition_index_one_sec/train_index.txt 
+pretrain_index_file: /home/sl29/data/ACIDS/partition_index_vehicle_classification/train_index.txt 
 vehicle_classification:
-        num_classes: 9  # number of classes
-        class_names: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
-        train_index_file: /home/sl29/data/ACIDS/partition_index_one_sec/train_index.txt 
-        val_index_file: /home/sl29/data/ACIDS/partition_index_one_sec/val_index.txt  
-        test_index_file: /home/sl29/data/ACIDS/partition_index_one_sec/test_index.txt 
+        num_classes: 10 
+        class_names: ["background", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+        train_index_file: /home/sl29/data/ACIDS/partition_index_vehicle_classification/train_index.txt 
+        val_index_file: /home/sl29/data/ACIDS/partition_index_vehicle_classification/val_index.txt  
+        test_index_file: /home/sl29/data/ACIDS/partition_index_vehicle_classification/test_index.txt 
 distance_classification:
-        num_classes: 3  # number of classes
-        class_names: ["close", "medium", "far"]
-        train_index_file: train_index.txt 
-        val_index_file: val_index.txt  
-        test_index_file: test_index.txt 
+        num_classes: 5
+        class_names: ["5", "10", "25", "50", "75"]
+        train_index_file: /home/sl29/data/ACIDS/partition_index_distance_classification/train_index.txt 
+        val_index_file: /home/sl29/data/ACIDS/partition_index_distance_classification/val_index.txt  
+        test_index_file: /home/sl29/data/ACIDS/partition_index_distance_classification/test_index.txt 
 speed_classification:
-        num_classes: 3  # number of classes
-        class_names: ["low", "medium", "high"]
-        train_index_file: train_index.txt 
-        val_index_file: val_index.txt  
-        test_index_file: test_index.txt 
+        num_classes: 7  
+        class_names: ["1", "5", "10", "15", "20", "30", ">30"]
+        train_index_file: /home/sl29/data/ACIDS/partition_index_speed_classification/train_index.txt 
+        val_index_file: /home/sl29/data/ACIDS/partition_index_speed_classification/val_index.txt  
+        test_index_file: /home/sl29/data/ACIDS/partition_index_speed_classification/test_index.txt 
+terrain_classification:
+        num_classes: 3  
+        class_names: ["desert", "arctic", "normal"]
+        train_index_file: /home/sl29/data/ACIDS/partition_index_terrain_classification/train_index.txt 
+        val_index_file: /home/sl29/data/ACIDS/partition_index_terrain_classification/val_index.txt  
+        test_index_file: /home/sl29/data/ACIDS/partition_index_terrain_classification/test_index.txt 
 
 
 # Segments
@@ -91,8 +97,10 @@ DeepSense:
                 time_augmenters: ["permutation", "time_warp", "mag_warp", "jitter", "channel_shuffle"]
                 freq_augmenters: ["no"]
         fixed_augmenters:
-                time_augmenters: ["time_warp"]
-                freq_augmenters: ["phase_shift"]
+                # time_augmenters: ["time_warp"]
+                # freq_augmenters: ["phase_shift"]
+                time_augmenters: ["no"]
+                freq_augmenters: ["no"]
         
 # ResNet config              
 ResNet:
@@ -194,10 +202,10 @@ TransformerV4:
                 decay_rate: 0.2
         # Data Augmenters:
         random_augmenters:
-                time_augmenters: ["permutation", "time_warp", "mag_warp"]
+                time_augmenters: ["permutation", "time_warp", "mag_warp", "jitter", "channel_shuffle"]
                 freq_augmenters: ["no"]
         fixed_augmenters:
-                time_augmenters: ["time_warp"]
+                time_augmenters: ["no"]
                 freq_augmenters: ["no"]
 
 SimCLR:
