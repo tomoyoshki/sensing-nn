@@ -25,7 +25,7 @@ def compute_knn(args, classifier, augmenter, data_loader_train):
 
     sample_embeddings = []
     labels = []
-    for time_loc_inputs, y in data_loader_train:
+    for time_loc_inputs, y, _ in data_loader_train:
         aug_freq_loc_inputs, _ = augmenter.forward("no", time_loc_inputs, y)
         sample_embeddings.append(classifier(aug_freq_loc_inputs, class_head=False).detach().cpu().numpy())
         labels.append(y.detach().cpu().numpy())
@@ -63,7 +63,7 @@ def compute_embedding(args, classifier, augmenter, data_loader):
     all_labels = []
     classes = args.dataset_config["class_names"]
 
-    for time_loc_inputs, labels in data_loader:
+    for time_loc_inputs, labels, _ in data_loader:
         aug_freq_loc_inputs, y = augmenter.forward("no", time_loc_inputs, labels)
         embs_l.append(classifier(aug_freq_loc_inputs, class_head=False).detach().cpu())
         if labels.dim() > 1:

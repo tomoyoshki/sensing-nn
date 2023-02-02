@@ -101,7 +101,7 @@ def train(args):
             elif args.contrastive_framework == "MoCo":
                 loss_func = MoCoLoss(args).to(args.device)
             elif args.contrastive_framework == "CMC":
-                loss_func = CMCLoss(args, args.batch_size)
+                loss_func = CMCLoss(args, len(train_dataloader.dataset))
             elif args.contrastive_framework == "SimCLR":
                 loss_func = SimCLRLoss(
                     args.batch_size,

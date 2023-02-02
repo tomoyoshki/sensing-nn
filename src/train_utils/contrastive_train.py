@@ -93,7 +93,7 @@ def contrastive_pretrain(
             # torch.nn.utils.clip_grad_norm(
             #     default_model.backbone.parameters(), classifier_config["optimizer"]["clip_grad"]
             # )
-            optimizer.step()
+            # optimizer.step()
 
             if args.contrastive_framework == "DINO":
                 with torch.no_grad():
