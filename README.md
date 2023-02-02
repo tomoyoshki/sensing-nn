@@ -35,7 +35,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 ```
 
 ### Parkland Results
-#### Augmenter performance with supervised train
+#### 1. Augmenter performance with supervised train
 |  Date       | Model | Augmenter   |  Accuracy  | User| Weight Checkpoint |
 | :---:       |    :----:    |    :----:   |      :---: |     :---: |    :---: | 
 | 20230116    | TransformerV4 | PhaseShift         | 88.68%   | sl29 | Parkland_TransformerV4/exp6_supervised |
@@ -48,7 +48,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 | 20230117    | TransformerV4 | Negation           | 86.06%   | sl29 |  Parkland_TransformerV4/exp14_supervised|
 | 20230117    | TransformerV4 | Permutation        | 84.26%   | sl29 |  Parkland_TransformerV4/exp15_supervised|
 
-#### Vehicle classification 
+#### 2. Vehicle classification 
 
 |  Date       | Model |  Accuracy  | User | Weight | Comment | 
 | :---:       |    :----:    |      :---: | :--: | :--: | :--: |
@@ -58,7 +58,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 | 20230130    | TransformerV4 + SimCLR | 93.03%   |  sl29 | Parkland_TransformerV4/exp22_contrastive_SimCLR | use large dataset, batch size 256|
 | 20230130    | TransformerV4 + MoCoV3 | 91.03%   | tkimura4 | Parkland_TransformerV4/exp10_contrastive | use MoCo, batch size 64|
 
-#### Speed classification 
+#### 3. Speed classification 
 
 |  Date       | Model |  Accuracy  | User | Weight | Comment | 
 | :---:       |    :----:    |      :---: | :--: | :--: | :--: |
@@ -67,7 +67,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 | 20230131    | TransformerV4 (Supervised)| 56.25%   |  sl29 | Parkland_TransformerV4/exp0_supervised_speed_classification_1.0 | use MixUp augmentation. |
 | 20230131    | TransformerV4 + SimCLR | 93.75%   |  sl29 | Parkland_TransformerV4/exp22_contrastive_SimCLR | use large datasets, batch size 256|
 
-#### Distance classification 
+#### 4. Distance classification 
 
 |  Date       | Model |  Accuracy  | User | Weight | Comment | 
 | :---:       |    :----:    |      :---: | :--: | :--: | :--: |
@@ -79,7 +79,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 
 ### ACIDS Results
 
-#### Vehicle Classification
+#### 1. Vehicle Classification
 |  Date       | Model |  Accuracy  | User | Weight Checkpoint   | Comment |
 | :---:       |    :----:     |   :----:   |      :---: |  :---: | :---: |
 | 20230201    | DeepSense (Supervised)     |  xx.xx%   | sl29 |  | |
@@ -87,7 +87,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 | 20230201    | DeepSense + SimCLR    |  xx.xx%   | sl29 | | |
 | 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 |  | |
 
-#### Terrain Classification
+#### 2. Terrain Classification
 |  Date       | Model |  Accuracy  | User | Weight Checkpoint   | Comment |
 | :---:       |    :----:     |   :----:   |      :---: |  :---: | :---: |
 | 20230201    | DeepSense (Supervised)     |  xx.xx%   | sl29 |  | |
@@ -95,7 +95,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 | 20230201    | DeepSense + SimCLR    |  xx.xx%   | sl29 | | |
 | 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 |  | |
 
-#### Distance Classification
+#### 3. Distance Classification
 |  Date       | Model |  Accuracy  | User | Weight Checkpoint   | Comment |
 | :---:       |    :----:     |   :----:   |      :---: |  :---: | :---: |
 | 20230201    | DeepSense (Supervised)     |  xx.xx%   | sl29 |  | |
@@ -103,7 +103,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 | 20230201    | DeepSense + SimCLR    |  xx.xx%   | sl29 | | |
 | 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 |  | |
 
-#### Speed Classification
+#### 4. Speed Classification
 |  Date       | Model |  Accuracy  | User | Weight Checkpoint   | Comment |
 | :---:       |    :----:     |   :----:   |      :---: |  :---: | :---: |
 | 20230201    | DeepSense (Supervised)     |  xx.xx%   | sl29 |  | |
