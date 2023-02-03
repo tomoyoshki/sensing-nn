@@ -84,7 +84,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 | :---:       |    :----:     |   :----:   |      :---: |  :--- | :--- |
 | 20230201    | DeepSense (Supervised)     |  92.90%   | sl29 | ACIDS_DeepSense/exp2_supervised_vehicle_classification_1.0 | no augmentations |
 | 20230201    | TransformerV4 (Supervised) |  xx.xx%   | sl29 |  | |
-| 20230201    | DeepSense + SimCLR    |  79.34%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR | no augmentations |
+| 20230201    | DeepSense + SimCLR    |  81.15%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR | no augmentations |
 | 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 |  | |
 
 #### 2. Terrain Classification
