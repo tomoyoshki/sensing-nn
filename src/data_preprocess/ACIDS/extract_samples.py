@@ -219,11 +219,11 @@ def process_one_mat_wrapper(args):
 
 if __name__ == "__main__":
     input_path = "/home/sl29/data/ACIDS/ACIDSData_public_testset-mat"
-    time_output_path = "/home/sl29/data/ACIDS/individual_time_samples_one_sec"
+    output_path = "/home/sl29/data/ACIDS/individual_time_samples_one_sec"
     meta_info = load_meta()
 
-    if not os.path.exists(time_output_path):
-        os.mkdir(time_output_path)
+    if not os.path.exists(output_path):
+        os.mkdir(output_path)
 
     # load the label range: {mat_file: {background: [list of range], cpa: [list of range]}}
     label_range_file = "/home/sl29/data/ACIDS/mat_label_range.json"
@@ -240,12 +240,17 @@ if __name__ == "__main__":
     args_list = []
     for file in files_to_process:
         if file in meta_info and file in label_range:
-            args_list.append([file, meta_info[file], input_path, time_output_path, label_range[file]])
+            args_list.append([file, meta_info[file], input_path, output_path, label_range[file]])
 
     start = time.time()
     pool = Pool(max_workers=cpu_count())
     pool.map(process_one_mat_wrapper, args_list, chunksize=1)
     pool.shutdown()
+
+    # Synchronize the data from INCAS --> Eugene
+    cmd = f"rsync -av {output_path}/ eugene:{output_path}/"
+    print(cmd)
+    os.system(cmd)
 
     end = time.time()
     print("------------------------------------------------------------------------")

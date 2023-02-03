@@ -39,7 +39,6 @@ def set_model_weight_folder(args):
             suffix = f"contrastive_{args.contrastive_framework}"
         else:
             raise Exception(f"Unknown train mode: {args.train_mode}")
-        print(suffix)
 
     # get the newest id matching the current config
     newest_id = -1
@@ -83,8 +82,18 @@ def set_model_weight_folder(args):
             args.train_log_file = os.path.join(weight_folder, f"train_log.txt")
             args.tensorboard_log = os.path.join(weight_folder, f"train_events")
         else:
-            args.train_log_file = os.path.join(weight_folder, f"{args.task}_{args.label_ratio}_{args.stage}_log.txt")
-            args.tensorboard_log = os.path.join(weight_folder, f"{args.task}_{args.label_ratio}_{args.stage}_events")
+            if args.stage == "pretrain":
+                args.train_log_file = os.path.join(weight_folder, f"pretrain_log.txt")
+                args.tensorboard_log = os.path.join(weight_folder, f"pretrain_events")
+            else:
+                args.train_log_file = os.path.join(
+                    weight_folder,
+                    f"{args.task}_{args.label_ratio}_{args.stage}_log.txt",
+                )
+                args.tensorboard_log = os.path.join(
+                    weight_folder,
+                    f"{args.task}_{args.label_ratio}_{args.stage}_events",
+                )
 
     print(f"[Model weights path]: {weight_folder}")
     args.weight_folder = weight_folder

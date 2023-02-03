@@ -1,29 +1,29 @@
 # data paths  
-pretrain_index_file: /home/sl29/data/ACIDS/partition_index_vehicle_classification/train_index.txt 
+pretrain_index_file: /home/sl29/data/ACIDS/random_partition_index_vehicle_classification/train_index.txt 
 vehicle_classification:
         num_classes: 10 
         class_names: ["background", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
-        train_index_file: /home/sl29/data/ACIDS/partition_index_vehicle_classification/train_index.txt 
-        val_index_file: /home/sl29/data/ACIDS/partition_index_vehicle_classification/val_index.txt  
-        test_index_file: /home/sl29/data/ACIDS/partition_index_vehicle_classification/test_index.txt 
+        train_index_file: /home/sl29/data/ACIDS/random_partition_index_vehicle_classification/train_index.txt 
+        val_index_file: /home/sl29/data/ACIDS/random_partition_index_vehicle_classification/val_index.txt  
+        test_index_file: /home/sl29/data/ACIDS/random_partition_index_vehicle_classification/test_index.txt 
 distance_classification:
         num_classes: 5
         class_names: ["5", "10", "25", "50", "75"]
-        train_index_file: /home/sl29/data/ACIDS/partition_index_distance_classification/train_index.txt 
-        val_index_file: /home/sl29/data/ACIDS/partition_index_distance_classification/val_index.txt  
-        test_index_file: /home/sl29/data/ACIDS/partition_index_distance_classification/test_index.txt 
+        train_index_file: /home/sl29/data/ACIDS/random_partition_index_distance_classification/train_index.txt 
+        val_index_file: /home/sl29/data/ACIDS/random_partition_index_distance_classification/val_index.txt  
+        test_index_file: /home/sl29/data/ACIDS/random_partition_index_distance_classification/test_index.txt 
 speed_classification:
         num_classes: 7  
         class_names: ["1", "5", "10", "15", "20", "30", ">30"]
-        train_index_file: /home/sl29/data/ACIDS/partition_index_speed_classification/train_index.txt 
-        val_index_file: /home/sl29/data/ACIDS/partition_index_speed_classification/val_index.txt  
-        test_index_file: /home/sl29/data/ACIDS/partition_index_speed_classification/test_index.txt 
+        train_index_file: /home/sl29/data/ACIDS/random_partition_index_speed_classification/train_index.txt 
+        val_index_file: /home/sl29/data/ACIDS/random_partition_index_speed_classification/val_index.txt  
+        test_index_file: /home/sl29/data/ACIDS/random_partition_index_speed_classification/test_index.txt 
 terrain_classification:
         num_classes: 3  
         class_names: ["desert", "arctic", "normal"]
-        train_index_file: /home/sl29/data/ACIDS/partition_index_terrain_classification/train_index.txt 
-        val_index_file: /home/sl29/data/ACIDS/partition_index_terrain_classification/val_index.txt  
-        test_index_file: /home/sl29/data/ACIDS/partition_index_terrain_classification/test_index.txt 
+        train_index_file: /home/sl29/data/ACIDS/random_partition_index_terrain_classification/train_index.txt 
+        val_index_file: /home/sl29/data/ACIDS/random_partition_index_terrain_classification/val_index.txt  
+        test_index_file: /home/sl29/data/ACIDS/random_partition_index_terrain_classification/test_index.txt 
 
 
 # Segments
@@ -99,8 +99,8 @@ DeepSense:
         fixed_augmenters:
                 # time_augmenters: ["time_warp"]
                 # freq_augmenters: ["phase_shift"]
-                time_augmenters: ["no"]
-                freq_augmenters: ["no"]
+                time_augmenters: ["time_warp"]
+                freq_augmenters: ["phase_shift"]
         
 # ResNet config              
 ResNet:
@@ -209,8 +209,8 @@ TransformerV4:
                 freq_augmenters: ["no"]
 
 SimCLR:
-        emb_dim: 256
-        temperature: 0.07
+        emb_dim: 512
+        temperature: 0.02
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
@@ -295,7 +295,6 @@ mixup:
         switch_prob: 0.75
         mode: 'random_batch'
         label_smoothing: 0
-        num_classes: 9
 
 jitter:
         std_in_percent: 3
