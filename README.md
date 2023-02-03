@@ -84,7 +84,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 | :---:       |    :----:     |   :----:   |      :---: |  :--- | :--- |
 | 20230201    | DeepSense (Supervised)     |  92.90%   | sl29 | ACIDS_DeepSense/exp2_supervised_vehicle_classification_1.0 | no augmentations |
 | 20230201    | TransformerV4 (Supervised) |  xx.xx%   | sl29 |  | |
-| 20230201    | DeepSense + SimCLR    |  xx.xx%   | sl29 | | |
+| 20230201    | DeepSense + SimCLR    |  73.67%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR | no augmentations |
 | 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 |  | |
 
 #### 2. Terrain Classification
@@ -92,7 +92,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 | :---:       |    :----:     |   :----:   |      :---: |  :--- | :--- |
 | 20230201    | DeepSense (Supervised)     |  85.97%   | sl29 | ACIDS_DeepSense/exp0_supervised_terrain_classification_1.0 | no augmentations |
 | 20230201    | TransformerV4 (Supervised) |  xx.xx%   | sl29 |  | |
-| 20230201    | DeepSense + SimCLR    |  xx.xx%   | sl29 | | |
+| 20230201    | DeepSense + SimCLR    |  64.46%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR | no augmentations |
 | 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 |  | |
 
 #### 3. Distance Classification
@@ -100,7 +100,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 | :---:       |    :----:     |   :----:   |      :---: |  :--- | :--- |
 | 20230201    | DeepSense (Supervised)     |  81.52%   | sl29 | ACIDS_DeepSense/exp0_supervised_speed_classification_1.0 | no augmentations |
 | 20230201    | TransformerV4 (Supervised) |  xx.xx%   | sl29 |  | |
-| 20230201    | DeepSense + SimCLR    |  xx.xx%   | sl29 | | |
+| 20230201    | DeepSense + SimCLR    |  57.71%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR | no augmentations |
 | 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 |  | |
 
 #### 4. Speed Classification
@@ -108,5 +108,5 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 | :---:       |    :----:     |   :----:   |      :---: |  :--- | :--- |
 | 20230201    | DeepSense (Supervised)     |  68.27%   | sl29 | ACIDS_DeepSense/exp0_supervised_speed_classification_1.0 | no augmentations |
 | 20230201    | TransformerV4 (Supervised) |  xx.xx%   | sl29 |  | |
-| 20230201    | DeepSense + SimCLR    |  xx.xx%   | sl29 | | |
+| 20230201    | DeepSense + SimCLR    |  47.01%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR | no augmentations |
 | 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 |  | |
