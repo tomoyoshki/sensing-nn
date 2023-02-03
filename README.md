@@ -98,7 +98,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 #### 3. Distance Classification
 |  Date       | Model |  Accuracy  | User | Weight Checkpoint   | Comment |
 | :---:       |    :----:     |   :----:   |      :---: |  :--- | :--- |
-| 20230201    | DeepSense (Supervised)     |  xx.xx%   | sl29 |  | |
+| 20230201    | DeepSense (Supervised)     |  81.52%   | sl29 | ACIDS_DeepSense/exp0_supervised_speed_classification_1.0 | no augmentations |
 | 20230201    | TransformerV4 (Supervised) |  xx.xx%   | sl29 |  | |
 | 20230201    | DeepSense + SimCLR    |  xx.xx%   | sl29 | | |
 | 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 |  | |
@@ -106,7 +106,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 #### 4. Speed Classification
 |  Date       | Model |  Accuracy  | User | Weight Checkpoint   | Comment |
 | :---:       |    :----:     |   :----:   |      :---: |  :--- | :--- |
-| 20230201    | DeepSense (Supervised)     |  xx.xx%   | sl29 |  | |
+| 20230201    | DeepSense (Supervised)     |  68.27%   | sl29 | ACIDS_DeepSense/exp0_supervised_speed_classification_1.0 | no augmentations |
 | 20230201    | TransformerV4 (Supervised) |  xx.xx%   | sl29 |  | |
 | 20230201    | DeepSense + SimCLR    |  xx.xx%   | sl29 | | |
 | 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 |  | |
