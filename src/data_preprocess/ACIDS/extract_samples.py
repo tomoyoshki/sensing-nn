@@ -231,16 +231,11 @@ if __name__ == "__main__":
         label_range = json.load(f)
 
     # list the files to process
-    files_to_process = []
-    for e in os.listdir(os.path.join(input_path, "Acoustics")):
-        if e.endswith(".mat"):
-            files_to_process.append(e)
-
-    # process the files in parallel
     args_list = []
-    for file in files_to_process:
-        if file in meta_info and file in label_range:
-            args_list.append([file, meta_info[file], input_path, output_path, label_range[file]])
+    for e in os.listdir(os.path.join(input_path, "Acoustics")):
+        if e.endswith(".mat") and e in meta_info and e in label_range:
+            args_list.append([e, meta_info[e], input_path, output_path, label_range[e]])
+    print(f"Valid mat file count: {len(args_list)}")
 
     start = time.time()
     pool = Pool(max_workers=cpu_count())

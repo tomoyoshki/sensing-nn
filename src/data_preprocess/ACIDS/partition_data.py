@@ -71,9 +71,10 @@ def random_parition_files(files_to_process):
             train_files.append(e)
             train_cover_flags[class_id] = True
         else:
-            if random.random() < 0.9:
+            rand_num = random.random()
+            if rand_num < 0.8:
                 train_files.append(e)
-            elif 0.9 <= random.random() < 0.95:
+            elif 0.8 <= rand_num < 0.9:
                 val_files.append(e)
             else:
                 test_files.append(e)
@@ -92,7 +93,7 @@ def partition_data(task, paired_data_path, output_path, train_files, val_files, 
     """
     # for users in training set, only preserve their data samples with complete modalities
     data_samples = os.listdir(paired_data_path)
-    bg_ratio = 0.05
+    bg_ratio = 0.08
 
     # sample truncation
     # data_samples = truncate_data_samples(data_samples)
@@ -103,32 +104,53 @@ def partition_data(task, paired_data_path, output_path, train_files, val_files, 
     val_samples = []
     test_samples = []
     train_class_count = {}
+    val_class_count = {}
+    test_class_count = {}
 
     for sample in tqdm(data_samples):
         sample_file = os.path.basename(sample).split("_")[0]
         file_path = os.path.join(os.path.join(paired_data_path, sample))
         load_sample = torch.load(file_path)
-        class_id = load_sample["label"]["vehicle_type"].item()
+        vehicle_type = load_sample["label"]["vehicle_type"].item()
 
         # background class is not used in speed/terrain/distance classification
         if task == "vehicle_classification":
             if sample_file in train_files:
                 pretrain_samples.append(file_path)
-                if class_id > 0 or random.random() < bg_ratio:
-                    if class_id not in train_class_count:
-                        train_class_count[class_id] = 1
+                if vehicle_type > 0 or random.random() < bg_ratio:
+                    if vehicle_type not in train_class_count:
+                        train_class_count[vehicle_type] = 1
                     else:
-                        train_class_count[class_id] += 1
+                        train_class_count[vehicle_type] += 1
                     train_samples.append(file_path)
             elif sample_file in val_files:
-                if class_id > 0 or random.random() < bg_ratio:
+                if vehicle_type > 0 or random.random() < bg_ratio:
+                    if vehicle_type not in val_class_count:
+                        val_class_count[vehicle_type] = 1
+                    else:
+                        val_class_count[vehicle_type] += 1
                     val_samples.append(file_path)
             else:
-                if class_id > 0 or random.random() < bg_ratio:
+                if vehicle_type > 0 or random.random() < bg_ratio:
+                    if vehicle_type not in test_class_count:
+                        test_class_count[vehicle_type] = 1
+                    else:
+                        test_class_count[vehicle_type] += 1
                     test_samples.append(file_path)
 
         else:
-            if class_id == 0:
+            if vehicle_type == 0:
+                continue
+
+            # extract class id
+            if task == "speed_classification":
+                class_id = load_sample["label"]["speed"].item()
+            elif task == "distance_classification":
+                class_id = load_sample["label"]["distance"].item()
+            else:
+                class_id = load_sample["label"]["terrain"].item()
+
+            if class_id < 0:
                 continue
 
             if sample_file in train_files:
@@ -141,6 +163,8 @@ def partition_data(task, paired_data_path, output_path, train_files, val_files, 
     # Print class distribution for training set of vehicle classification
     if task == "vehicle_classification":
         print(f"Class distribution for training set: {dict(sorted(train_class_count.items()))}")
+        print(f"Class distribution for validation set: {dict(sorted(val_class_count.items()))}")
+        print(f"Class distribution for testing set: {dict(sorted(test_class_count.items()))}")
 
     # save the index file
     print(
@@ -185,6 +209,7 @@ if __name__ == "__main__":
     for e in os.listdir(os.path.join(input_path, "Acoustics")):
         if e.endswith(".mat") and e in meta_info and e in label_range:
             files_to_process.append(e[:-4])
+    print(f"Total number of files to process: {len(files_to_process)}")
 
     # partition the data
     if parition_option == "random":

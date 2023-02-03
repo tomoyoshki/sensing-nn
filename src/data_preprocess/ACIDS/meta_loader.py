@@ -17,7 +17,7 @@ def load_meta():
             distance = DISTANCE[distance]
 
             if speed == "?":
-                continue
+                speed = -1
             else:
                 speed = SPEED[speed]
 
