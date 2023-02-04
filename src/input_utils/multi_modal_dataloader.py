@@ -1,4 +1,7 @@
+import os
 import torch
+import logging
+import numpy as np
 
 from torch.utils.data import DataLoader
 from input_utils.multi_modal_dataset import MultiModalDataset, TripletMultiModalDataset
@@ -30,9 +33,19 @@ def create_dataloader(option, args, batch_size=64, workers=5):
 
     # init the dataset
     triplet_flag = False
-    dataset = MultiModalDataset(args, index_file, label_ratio)
+    balanced_sample_flag = (
+        args.balanced_sample and option == "train" and (args.train_mode == "supervised" or args.stage != "pretrain")
+    )
+    dataset = MultiModalDataset(args, index_file, label_ratio, balanced_sample_flag)
     batch_size = min(batch_size, len(dataset))
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=(option == "train"), num_workers=workers)
+
+    # define the dataloader with weighted sampler for training
+    if balanced_sample_flag:
+        sampler = torch.utils.data.sampler.WeightedRandomSampler(dataset.sample_weights, dataset.epoch_len)
+        dataloader = DataLoader(dataset, batch_size=batch_size, sampler=sampler, num_workers=workers)
+        logging.info("=\tUsing class balanced sampler for training")
+    else:
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=(option == "train"), num_workers=workers)
 
     return dataloader, triplet_flag
 

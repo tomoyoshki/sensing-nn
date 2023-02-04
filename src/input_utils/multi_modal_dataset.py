@@ -7,7 +7,7 @@ from random import shuffle
 
 
 class MultiModalDataset(Dataset):
-    def __init__(self, args, index_file, label_ratio=1):
+    def __init__(self, args, index_file, label_ratio=1, balanced_sample=False):
         """
         Args:
             modalities (_type_): The list of modalities
@@ -32,6 +32,24 @@ class MultiModalDataset(Dataset):
         if label_ratio < 1:
             shuffle(self.sample_files)
             self.sample_files = self.sample_files[: round(len(self.sample_files) * label_ratio)]
+
+        if balanced_sample:
+            self.load_sample_labels()
+
+    def load_sample_labels(self):
+        sample_labels = []
+        label_count = [0 for i in range(self.args.dataset_config[self.args.task]["num_classes"])]
+
+        for idx in range(len(self.sample_files)):
+            _, label = self.__getitem__(idx)
+            label = torch.argmax(label).item() if label.numel() > 1 else label.item()
+            sample_labels.append(label)
+            label_count[label] += 1
+
+        self.sample_weights = []
+        self.epoch_len = int(np.max(label_count) * len(label_count))
+        for sample_label in sample_labels:
+            self.sample_weights.append(1 / label_count[sample_label])
 
     def __len__(self):
         return len(self.sample_files)

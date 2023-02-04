@@ -6,24 +6,28 @@ vehicle_classification:
         train_index_file: /home/sl29/data/ACIDS/random_partition_index_vehicle_classification/train_index.txt 
         val_index_file: /home/sl29/data/ACIDS/random_partition_index_vehicle_classification/val_index.txt  
         test_index_file: /home/sl29/data/ACIDS/random_partition_index_vehicle_classification/test_index.txt 
+        train_class_count_file: /home/sl29/data/ACIDS/random_partition_index_vehicle_classification/train_class_count.txt
 distance_classification:
         num_classes: 5
         class_names: ["5", "10", "25", "50", "75"]
         train_index_file: /home/sl29/data/ACIDS/random_partition_index_distance_classification/train_index.txt 
         val_index_file: /home/sl29/data/ACIDS/random_partition_index_distance_classification/val_index.txt  
         test_index_file: /home/sl29/data/ACIDS/random_partition_index_distance_classification/test_index.txt 
+        train_class_count_file: /home/sl29/data/ACIDS/random_partition_index_distance_classification/train_class_count.txt
 speed_classification:
         num_classes: 7  
         class_names: ["1", "5", "10", "15", "20", "30", ">30"]
         train_index_file: /home/sl29/data/ACIDS/random_partition_index_speed_classification/train_index.txt 
         val_index_file: /home/sl29/data/ACIDS/random_partition_index_speed_classification/val_index.txt  
         test_index_file: /home/sl29/data/ACIDS/random_partition_index_speed_classification/test_index.txt 
+        train_class_count_file: /home/sl29/data/ACIDS/random_partition_index_speed_classification/train_class_count.txt
 terrain_classification:
         num_classes: 3  
         class_names: ["desert", "arctic", "normal"]
         train_index_file: /home/sl29/data/ACIDS/random_partition_index_terrain_classification/train_index.txt 
         val_index_file: /home/sl29/data/ACIDS/random_partition_index_terrain_classification/val_index.txt  
         test_index_file: /home/sl29/data/ACIDS/random_partition_index_terrain_classification/test_index.txt 
+        train_class_count_file: /home/sl29/data/ACIDS/random_partition_index_terrain_classification/train_class_count.txt
 
 
 # Segments
@@ -94,13 +98,13 @@ DeepSense:
                 decay_rate: 0.2
         # Data Augmenters:
         random_augmenters:
-                time_augmenters: ["permutation", "time_warp", "mag_warp", "jitter", "channel_shuffle"]
-                freq_augmenters: ["no"]
+                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter"]
+                 freq_augmenters: ["phase_shift"]
         fixed_augmenters:
                 # time_augmenters: ["time_warp"]
                 # freq_augmenters: ["phase_shift"]
-                time_augmenters: ["time_warp"]
-                freq_augmenters: ["phase_shift"]
+                time_augmenters: ["no"]
+                freq_augmenters: ["no"]
         
 # ResNet config              
 ResNet:
@@ -156,11 +160,11 @@ TransformerV4:
                 audio: 1
                 seismic: 1
         # single modality
-        time_freq_out_channels: 64
+        time_freq_out_channels: 128
         time_freq_head_num: 4
         time_freq_block_num: 
-                audio: [4, 4, 2]
-                seismic: [4, 4, 2]
+                audio: [4, 4]
+                seismic: [4, 4]
         # modality fusion
         mod_out_channels: 256
         mod_head_num: 4
@@ -171,8 +175,8 @@ TransformerV4:
         loc_block_num: 2
         # SwinTransformer configs
         window_size: 
-                audio: [2, 4] 
-                seismic: [2, 4] 
+                audio: [3, 3] 
+                seismic: [3, 3] 
         mlp_ratio: 4.
         qkv_bias: True
         APE: False
@@ -186,7 +190,7 @@ TransformerV4:
         # Optimizer config
         optimizer:
                 name: "AdamW"
-                start_lr: 0.0001
+                start_lr: 0.00001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
@@ -210,7 +214,7 @@ TransformerV4:
 
 SimCLR:
         emb_dim: 512
-        temperature: 0.02
+        temperature: 0.2
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
@@ -223,16 +227,16 @@ SimCLR:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2500
+                train_epochs: 4000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 600
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
                 name: "AdamW"
-                start_lr: 0.0001
+                start_lr: 0.001
                 warmup_lr: 0.000001
-                min_lr: 0.0000001
+                min_lr: 0.000001
                 clip_grad: 5.0
                 weight_decay: 0.05
         finetune_lr_scheduler:

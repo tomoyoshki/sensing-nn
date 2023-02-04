@@ -111,6 +111,14 @@ def parse_base_args(option="train"):
         help="Whether to count value range.",
     )
 
+    # balanced sampling for the training data
+    parser.add_argument(
+        "-balanced_sample",
+        type=str,
+        default="false",
+        help="Whether to perform balanced sampling on classes.",
+    )
+
     args = parser.parse_args()
 
     # set option first

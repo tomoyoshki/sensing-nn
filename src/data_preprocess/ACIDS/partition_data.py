@@ -187,6 +187,12 @@ def partition_data(task, paired_data_path, output_path, train_files, val_files, 
         for sample_file in test_samples:
             f.write(sample_file + "\n")
 
+    # save the class sample distribution
+    np.savetxt(
+        os.path.join(output_path, "train_class_count.txt"),
+        np.array(list(dict(sorted(train_class_count.items())).values())).astype(int),
+    )
+
     # Synchronize the data from INCAS --> Eugene
     cmd = f"rsync -av {output_path}/ eugene:{output_path}/"
     print(cmd)
