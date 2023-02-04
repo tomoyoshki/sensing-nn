@@ -115,7 +115,7 @@ def parse_base_args(option="train"):
     parser.add_argument(
         "-balanced_sample",
         type=str,
-        default="false",
+        default="true",
         help="Whether to perform balanced sampling on classes.",
     )
 

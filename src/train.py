@@ -36,7 +36,10 @@ from input_utils.time_input_utils import count_range
 
 def init_model(args):
     if args.model == "DeepSense":
-        classifier = DeepSense(args, self_attention=False)
+        if args.stage == "pretrain" and args.contrastive_framework == "MoCo":
+            return DeepSense
+        else:
+            classifier = DeepSense(args, self_attention=False)
     elif args.model == "Transformer":
         classifier = Transformer(args)
     elif args.model == "TransformerV2":
@@ -46,8 +49,7 @@ def init_model(args):
     elif args.model == "TransformerV4":
         # TODO: generalization
         if args.stage == "pretrain" and args.contrastive_framework == "MoCo":
-            classifier = TransformerV4
-            return classifier
+            return TransformerV4
         else:
             classifier = TransformerV4(args)
     elif args.model == "ResNet":

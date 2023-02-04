@@ -84,6 +84,7 @@ def contrastive_pretrain(
 
             # forward pass
             loss = loss_func(feature1, feature2)
+
             # back propagation
             loss.backward()
 

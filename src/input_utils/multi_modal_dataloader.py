@@ -34,7 +34,7 @@ def create_dataloader(option, args, batch_size=64, workers=5):
     # init the dataset
     triplet_flag = False
     balanced_sample_flag = (
-        args.balanced_sample and option == "train" and (args.train_mode == "supervised" or args.stage != "pretrain")
+        args.balanced_sample and option == "train" and (args.train_mode == "supervised" or args.stage == "finetune")
     )
     dataset = MultiModalDataset(args, index_file, label_ratio, balanced_sample_flag)
     batch_size = min(batch_size, len(dataset))
