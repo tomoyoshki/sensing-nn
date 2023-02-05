@@ -226,7 +226,7 @@ if __name__ == "__main__":
         os.mkdir(output_path)
 
     # load the label range: {mat_file: {background: [list of range], cpa: [list of range]}}
-    label_range_file = "/home/sl29/data/ACIDS/mat_label_range.json"
+    label_range_file = "/home/sl29/data/ACIDS/global_mat_label_range.json"
     with open(label_range_file, "r") as f:
         label_range = json.load(f)
 

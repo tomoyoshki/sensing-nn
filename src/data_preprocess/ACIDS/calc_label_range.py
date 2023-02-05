@@ -1,0 +1,131 @@
+import os
+import time
+import json
+import torch
+import numpy as np
+
+from meta_loader import load_meta
+from scipy.io import loadmat
+
+from extract_samples import split_array_with_overlap, SEGMENT_OVERLAP_RATIO, FREQS, SEGMENT_SPAN
+from concurrent.futures import ProcessPoolExecutor as Pool
+from multiprocessing import cpu_count
+
+
+def process_one_mat(file, labels, input_path, time_output_path):
+    """Process a single mat file.
+
+    Args:
+        labels: {
+            "vehicle": vehicle_type,
+            "terrain": terrain_type,
+            "speed": float(speed),
+            "distance": float(distance),
+        }
+    """
+    # Step 1: Loading original files
+    print(f"Processing: {file}")
+    audio_file = os.path.join(input_path, "Acoustics", file)
+    seismic_file = os.path.join(input_path, "Seismic", file[0:3] + "s" + file[3:])
+
+    # load the audio, [channel, samples]
+    raw_audio = loadmat(audio_file)["Output_data"]
+    raw_audio = np.transpose(raw_audio, (1, 0))
+
+    # load the seismic data
+    raw_seismic = loadmat(seismic_file)["Output_data"]
+    raw_seismic = np.transpose(raw_seismic, (1, 0))
+
+    # Step 2: Partition into individual samples
+    splitted_data = {"audio": [], "seismic": []}
+    splitted_data["audio"] = split_array_with_overlap(
+        raw_audio,
+        SEGMENT_OVERLAP_RATIO,
+        interval_len=SEGMENT_SPAN * FREQS["audio"],
+    )
+    splitted_data["seismic"] = split_array_with_overlap(
+        raw_seismic,
+        SEGMENT_OVERLAP_RATIO,
+        interval_len=SEGMENT_SPAN * FREQS["seismic"],
+    )
+
+    # prepare the individual samples
+    audio_energies = []
+    for i in range(len(splitted_data["seismic"])):
+        energy = np.sum(np.square(splitted_data["audio"][i].astype(np.int64)), axis=0)
+        audio_energies.append(energy)
+
+    # save the energy file
+    np.savetxt(os.path.join(time_output_path, f"{file.split('.')[0]}_energy.txt"), audio_energies)
+
+
+def process_one_mat_wrapper(args):
+    """Wrapper function for procesing one folder."""
+    return process_one_mat(*args)
+
+
+def calc_label_ranges(energy_path, json_output, db_threshold=-6):
+    """Calculate the label ranges for each mat file."""
+    # calculate the cutoff energy range
+    min_max_energy = np.inf
+    for file in os.listdir(energy_path):
+        input_file = os.path.join(energy_path, file)
+        audio_energies = np.loadtxt(input_file, dtype=np.float64)
+        max_energy = np.max(audio_energies)
+        if max_energy < min_max_energy:
+            min_max_energy = max_energy
+            min_mat_file = file.split("_")[0] + ".mat"
+
+    cutoff_energy = min_max_energy * 10 ** (db_threshold / 10)
+    print("Cutoff energy: ", cutoff_energy)
+
+    # calculate the label ranges
+    label_ranges = {}
+    for file in os.listdir(energy_path):
+        input_file = os.path.join(energy_path, file)
+        mat_file = file.split("_")[0] + ".mat"
+        audio_energies = np.loadtxt(input_file, dtype=np.float64)
+        audio_energies = np.max(audio_energies, axis=1)
+        background_flag = audio_energies < cutoff_energy
+        mat_label_range = {"background": [], "cpa": []}
+        for i, flag in enumerate(background_flag):
+            if flag:
+                mat_label_range["background"].append([i * 512, i * 512 + 1024])
+            else:
+                mat_label_range["cpa"].append([i * 512, i * 512 + 1024])
+
+        label_ranges[mat_file] = mat_label_range
+        print(
+            mat_file,
+            ", valid samples: ",
+            np.sum(1 - background_flag),
+            ", background samples: ",
+            np.sum(background_flag),
+        )
+
+    # save the label ranges
+    with open(json_output, "w") as f:
+        f.write(json.dumps(label_ranges, indent=4))
+
+
+if __name__ == "__main__":
+    input_path = "/home/sl29/data/ACIDS/ACIDSData_public_testset-mat"
+    energy_path = "/home/sl29/data/ACIDS/mat_segment_energies"
+    label_range_file = "/home/sl29/data/ACIDS/global_mat_label_range.json"
+    meta_info = load_meta()
+    db_threshold = -6
+
+    # list the files to process
+    args_list = []
+    for e in os.listdir(os.path.join(input_path, "Acoustics")):
+        if e.endswith(".mat") and e in meta_info:
+            args_list.append([e, meta_info[e], input_path, energy_path])
+    print(f"Valid mat file count: {len(args_list)}")
+
+    start = time.time()
+    pool = Pool(max_workers=cpu_count())
+    pool.map(process_one_mat_wrapper, args_list, chunksize=1)
+    pool.shutdown()
+
+    # generate the label ranges
+    calc_label_ranges(energy_path, label_range_file, db_threshold)

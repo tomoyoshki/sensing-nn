@@ -56,7 +56,7 @@ def random_parition_files(files_to_process):
     train_files, val_files, test_files = [], [], []
     train_cover_flags = [False for _ in range(9)]
     val_cover_flags = [False for _ in range(9)]
-    test_cover_flags = [False for _ in range(9)]
+    # test_cover_flags = [False for _ in range(9)]
 
     random.shuffle(files_to_process)
     for e in files_to_process:
@@ -64,20 +64,22 @@ def random_parition_files(files_to_process):
         if not val_cover_flags[class_id]:
             val_files.append(e)
             val_cover_flags[class_id] = True
-        elif not test_cover_flags[class_id]:
-            test_files.append(e)
-            test_cover_flags[class_id] = True
+        # elif not test_cover_flags[class_id]:
+        #     test_files.append(e)
+        #     test_cover_flags[class_id] = True
         elif not train_cover_flags[class_id]:
             train_files.append(e)
             train_cover_flags[class_id] = True
         else:
             rand_num = random.random()
-            if rand_num < 0.8:
+            if rand_num < 0.85:
                 train_files.append(e)
-            elif 0.8 <= rand_num < 0.9:
-                val_files.append(e)
+            # elif 0.8 <= rand_num < 0.9:
+            #     val_files.append(e)
             else:
-                test_files.append(e)
+                val_files.append(e)
+
+    test_files = val_files
 
     return train_files, val_files, test_files
 
@@ -93,7 +95,7 @@ def partition_data(task, paired_data_path, output_path, train_files, val_files, 
     """
     # for users in training set, only preserve their data samples with complete modalities
     data_samples = os.listdir(paired_data_path)
-    bg_ratio = 0.08
+    bg_ratio = 1
 
     # sample truncation
     # data_samples = truncate_data_samples(data_samples)
@@ -130,12 +132,12 @@ def partition_data(task, paired_data_path, output_path, train_files, val_files, 
                     else:
                         val_class_count[vehicle_type] += 1
                     val_samples.append(file_path)
-            else:
-                if vehicle_type > 0 or random.random() < bg_ratio:
-                    if vehicle_type not in test_class_count:
-                        test_class_count[vehicle_type] = 1
-                    else:
-                        test_class_count[vehicle_type] += 1
+                    # else:
+                    #     if vehicle_type > 0 or random.random() < bg_ratio:
+                    #         if vehicle_type not in test_class_count:
+                    #             test_class_count[vehicle_type] = 1
+                    #         else:
+                    #             test_class_count[vehicle_type] += 1
                     test_samples.append(file_path)
 
         else:
@@ -157,7 +159,7 @@ def partition_data(task, paired_data_path, output_path, train_files, val_files, 
                 train_samples.append(file_path)
             elif sample_file in val_files:
                 val_samples.append(file_path)
-            else:
+                # else:
                 test_samples.append(file_path)
 
     # Print class distribution for training set of vehicle classification
