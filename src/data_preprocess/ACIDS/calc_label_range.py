@@ -64,7 +64,7 @@ def process_one_mat_wrapper(args):
     return process_one_mat(*args)
 
 
-def calc_label_ranges(energy_path, json_output, db_threshold=-6):
+def calc_label_ranges(energy_path, json_output, upper_db_threshold, lower_db_threshold):
     """Calculate the label ranges for each mat file."""
     # calculate the cutoff energy range
     min_max_energy = np.inf
@@ -74,10 +74,10 @@ def calc_label_ranges(energy_path, json_output, db_threshold=-6):
         max_energy = np.max(audio_energies)
         if max_energy < min_max_energy:
             min_max_energy = max_energy
-            min_mat_file = file.split("_")[0] + ".mat"
 
-    cutoff_energy = min_max_energy * 10 ** (db_threshold / 10)
-    print("Cutoff energy: ", cutoff_energy)
+    signal_energy_treshold = min_max_energy * 10 ** (upper_db_threshold / 10)
+    background_energy_threshold = min_max_energy * 10 ** (lower_db_threshold / 10)
+    print("Cutoff energy: ", signal_energy_treshold, background_energy_threshold)
 
     # calculate the label ranges
     label_ranges = {}
@@ -86,21 +86,24 @@ def calc_label_ranges(energy_path, json_output, db_threshold=-6):
         mat_file = file.split("_")[0] + ".mat"
         audio_energies = np.loadtxt(input_file, dtype=np.float64)
         audio_energies = np.max(audio_energies, axis=1)
-        background_flag = audio_energies < cutoff_energy
+        background_flags = audio_energies < background_energy_threshold
+        signal_flags = audio_energies > signal_energy_treshold
         mat_label_range = {"background": [], "cpa": []}
-        for i, flag in enumerate(background_flag):
-            if flag:
-                mat_label_range["background"].append([i * 512, i * 512 + 1024])
-            else:
-                mat_label_range["cpa"].append([i * 512, i * 512 + 1024])
+        for i, (signal_flag, background_flag) in enumerate(zip(signal_flags, background_flags)):
+            start_id = int(i * FREQS["audio"] * SEGMENT_SPAN * SEGMENT_OVERLAP_RATIO)
+            id_span = int(FREQS["audio"] * SEGMENT_SPAN)
+            if background_flag:
+                mat_label_range["background"].append([start_id, start_id + id_span])
+            elif signal_flag:
+                mat_label_range["cpa"].append([start_id, start_id + id_span])
 
         label_ranges[mat_file] = mat_label_range
         print(
             mat_file,
             ", valid samples: ",
-            np.sum(1 - background_flag),
+            np.sum(1 - background_flags),
             ", background samples: ",
-            np.sum(background_flag),
+            np.sum(background_flags),
         )
 
     # save the label ranges
@@ -113,7 +116,8 @@ if __name__ == "__main__":
     energy_path = "/home/sl29/data/ACIDS/mat_segment_energies"
     label_range_file = "/home/sl29/data/ACIDS/global_mat_label_range.json"
     meta_info = load_meta()
-    db_threshold = -6
+    upper_db_threshold = -4
+    lower_db_threshold = -10
 
     # list the files to process
     args_list = []
@@ -128,4 +132,4 @@ if __name__ == "__main__":
     pool.shutdown()
 
     # generate the label ranges
-    calc_label_ranges(energy_path, label_range_file, db_threshold)
+    calc_label_ranges(energy_path, label_range_file, upper_db_threshold, lower_db_threshold)

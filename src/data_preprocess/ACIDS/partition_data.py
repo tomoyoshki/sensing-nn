@@ -72,7 +72,7 @@ def random_parition_files(files_to_process):
             train_cover_flags[class_id] = True
         else:
             rand_num = random.random()
-            if rand_num < 0.85:
+            if rand_num < 0.9:
                 train_files.append(e)
             # elif 0.8 <= rand_num < 0.9:
             #     val_files.append(e)
@@ -214,8 +214,9 @@ if __name__ == "__main__":
 
     # 126 qualified files
     files_to_process = []
+    files_to_skip = {"Gv2b2198.mat", "Gv7a1068.mat"}
     for e in os.listdir(os.path.join(input_path, "Acoustics")):
-        if e.endswith(".mat") and e in meta_info and e in label_range:
+        if e.endswith(".mat") and e in meta_info and e in label_range and e not in files_to_skip:
             files_to_process.append(e[:-4])
     print(f"Total number of files to process: {len(files_to_process)}")
 

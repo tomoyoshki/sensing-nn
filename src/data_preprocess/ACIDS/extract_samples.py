@@ -187,8 +187,8 @@ def process_one_mat(file, labels, input_path, time_output_path, file_label_range
         sample["signal"]["shake"]["seismic"] = splitted_data["seismic"][i]
 
         # calculate background flag
-        start_index = i * int(1024 * (1 - SEGMENT_OVERLAP_RATIO))
-        sample_range = [start_index, start_index + 1024]
+        start_index = i * int(FREQS["audio"] * (1 - SEGMENT_OVERLAP_RATIO))
+        sample_range = [start_index, start_index + FREQS["audio"]]
         if sample_range in background_range:
             background_flag_list.append(True)
         elif sample_range in cpa_ranges:
