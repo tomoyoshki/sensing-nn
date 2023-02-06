@@ -74,6 +74,7 @@ DeepSense:
         recurrent_layers: 3
         # FC layer
         fc_dim: 512
+        pretrained_head: "mlp"
         # Optimizer config
         optimizer:
                 name: "AdamW"
@@ -144,89 +145,6 @@ ResNet:
                 time_augmenters: ["mixup"]
                 freq_augmenters: ["no"]
 
-# Transformer config
-Transformer:
-        dropout_ratio: 0.2
-        # single modality
-        loc_mod_out_channels: 128
-        loc_mod_head_num: 4
-        loc_mod_block_num: 2
-        # single location
-        loc_out_channels: 128
-        loc_head_num: 4
-        loc_block_num: 2
-        # single interval 
-        sample_out_channels: 128
-        sample_head_num: 4
-        sample_block_num: 2
-        # FC layer
-        fc_dim: 256
-        # Training config
-        train_epochs: 1500
-        scheduler_step: 300
-        scheduler_gamma: 0.2
-        start_lr: 0.0001
-
-# Transformer config
-TransformerV2:
-        dropout_ratio: 0.2
-        # loc mod freq feature
-        in_stride:
-                audio: 80
-                seismic: 1
-        freq_out_channels: 256
-        freq_head_num: 4
-        freq_block_num: 4
-        # single modality
-        loc_mod_out_channels: 256
-        loc_mod_head_num: 4
-        loc_mod_block_num: 2
-        # single location
-        loc_out_channels: 256
-        loc_head_num: 4
-        loc_block_num: 2
-        # sample
-        interval_out_channels: 256
-        interval_head_num: 4
-        interval_block_num: 2
-        # FC layer
-        fc_dim: 512
-        # Training config
-        train_epochs: 1500
-        scheduler_step: 200
-        scheduler_gamma: 0.2
-        start_lr: 0.00003
-
-# Transformer config
-TransformerV3:
-        dropout_ratio: 0.2
-        # single freq
-        in_stride:
-                audio: 80
-                seismic: 1
-        freq_out_channels: 256
-        freq_head_num: 4
-        freq_block_num: 4
-        # single interval 
-        interval_out_channels: 256
-        interval_head_num: 4
-        interval_block_num: 2
-        # single modality
-        loc_mod_out_channels: 256
-        loc_mod_head_num: 4
-        loc_mod_block_num: 2
-        # single location
-        loc_out_channels: 256
-        loc_head_num: 4
-        loc_block_num: 2
-        # FC layer
-        fc_dim: 512
-        # Training config
-        train_epochs: 1500
-        scheduler_step: 200
-        scheduler_gamma: 0.2
-        start_lr: 0.00003
-
 TransformerV4:
         dropout_ratio: 0.2
         drop_path_rate: 0.1
@@ -263,6 +181,7 @@ TransformerV4:
                         seismic: [1, 2]
         # FC layer
         fc_dim: 512
+        pretrained_head: "mlp"
         # Optimizer config
         optimizer:
                 name: "AdamW"
