@@ -71,7 +71,7 @@ def calc_label_ranges(energy_path, json_output, upper_db_threshold, lower_db_thr
     for file in os.listdir(energy_path):
         input_file = os.path.join(energy_path, file)
         audio_energies = np.loadtxt(input_file, dtype=np.float64)
-        max_energy = np.max(audio_energies)
+        max_energy = np.max(audio_energies[:, 0])
         if max_energy < min_max_energy:
             min_max_energy = max_energy
 
@@ -85,7 +85,7 @@ def calc_label_ranges(energy_path, json_output, upper_db_threshold, lower_db_thr
         input_file = os.path.join(energy_path, file)
         mat_file = file.split("_")[0] + ".mat"
         audio_energies = np.loadtxt(input_file, dtype=np.float64)
-        audio_energies = np.max(audio_energies, axis=1)
+        audio_energies = audio_energies[:, 0]
         background_flags = audio_energies < background_energy_threshold
         signal_flags = audio_energies > signal_energy_treshold
         mat_label_range = {"background": [], "cpa": []}
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     energy_path = "/home/sl29/data/ACIDS/mat_segment_energies"
     label_range_file = "/home/sl29/data/ACIDS/global_mat_label_range.json"
     meta_info = load_meta()
-    upper_db_threshold = -4
+    upper_db_threshold = -3
     lower_db_threshold = -10
 
     # list the files to process

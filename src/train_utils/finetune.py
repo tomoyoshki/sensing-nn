@@ -52,6 +52,7 @@ def finetune(
         args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_latest.pt"
     )
 
+    val_epochs = 5 if args.dataset == "Parkland" else 3
     for epoch in range(args.dataset_config[args.contrastive_framework]["finetune_lr_scheduler"]["train_epochs"]):
         if epoch > 0:
             logging.info("-" * 40 + f"Epoch {epoch}" + "-" * 40)
@@ -83,7 +84,7 @@ def finetune(
                 tb_writer.add_scalar("Train/Train loss", loss.item(), epoch * num_batches + i)
 
         # validation and logging
-        if epoch % 10 == 0:
+        if epoch % val_epochs == 0:
             train_loss = np.mean(train_loss_list)
             val_acc, val_loss = val_and_logging(
                 args,
