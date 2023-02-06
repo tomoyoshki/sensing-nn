@@ -10,6 +10,8 @@ from scipy.io import loadmat
 from concurrent.futures import ProcessPoolExecutor as Pool
 from multiprocessing import cpu_count
 
+from calc_label_range import main_label_range
+
 """
 Configuration:
     1) Sampling frequency:
@@ -219,14 +221,18 @@ def process_one_mat_wrapper(args):
 
 if __name__ == "__main__":
     input_path = "/home/sl29/data/ACIDS/ACIDSData_public_testset-mat"
+    energy_path = "/home/sl29/data/ACIDS/mat_segment_energies"
     output_path = "/home/sl29/data/ACIDS/individual_time_samples_one_sec"
+    label_range_file = "/home/sl29/data/ACIDS/global_mat_label_range.json"
     meta_info = load_meta()
 
     if not os.path.exists(output_path):
         os.mkdir(output_path)
 
-    # load the label range: {mat_file: {background: [list of range], cpa: [list of range]}}
-    label_range_file = "/home/sl29/data/ACIDS/global_mat_label_range.json"
+    # Step 1: calculate the label range
+    main_label_range(input_path, energy_path, label_range_file, meta_info)
+
+    # Step 2: load the label range: {mat_file: {background: [list of range], cpa: [list of range]}}
     with open(label_range_file, "r") as f:
         label_range = json.load(f)
 
@@ -237,12 +243,13 @@ if __name__ == "__main__":
             args_list.append([e, meta_info[e], input_path, output_path, label_range[e]])
     print(f"Valid mat file count: {len(args_list)}")
 
+    # Step 3: extract individual samples
     start = time.time()
     pool = Pool(max_workers=cpu_count())
     pool.map(process_one_mat_wrapper, args_list, chunksize=1)
     pool.shutdown()
 
-    # Synchronize the data from INCAS --> Eugene
+    # [Optional] Step 4: Synchronize the data from INCAS --> Eugene
     cmd = f"rsync -av {output_path}/ eugene:{output_path}/"
     print(cmd)
     os.system(cmd)

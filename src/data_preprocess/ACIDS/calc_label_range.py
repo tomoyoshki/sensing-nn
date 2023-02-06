@@ -111,11 +111,10 @@ def calc_label_ranges(energy_path, json_output, upper_db_threshold, lower_db_thr
         f.write(json.dumps(label_ranges, indent=4))
 
 
-if __name__ == "__main__":
-    input_path = "/home/sl29/data/ACIDS/ACIDSData_public_testset-mat"
-    energy_path = "/home/sl29/data/ACIDS/mat_segment_energies"
-    label_range_file = "/home/sl29/data/ACIDS/global_mat_label_range.json"
-    meta_info = load_meta()
+def main_label_range(input_path, energy_path, label_range_file, meta_info):
+    """
+    Calculate the label range with energy based threshold.
+    """
     upper_db_threshold = -3
     lower_db_threshold = -10
 
@@ -126,10 +125,18 @@ if __name__ == "__main__":
             args_list.append([e, meta_info[e], input_path, energy_path])
     print(f"Valid mat file count: {len(args_list)}")
 
-    start = time.time()
     pool = Pool(max_workers=cpu_count())
     pool.map(process_one_mat_wrapper, args_list, chunksize=1)
     pool.shutdown()
 
     # generate the label ranges
     calc_label_ranges(energy_path, label_range_file, upper_db_threshold, lower_db_threshold)
+
+
+if __name__ == "__main__":
+    input_path = "/home/sl29/data/ACIDS/ACIDSData_public_testset-mat"
+    energy_path = "/home/sl29/data/ACIDS/mat_segment_energies"
+    label_range_file = "/home/sl29/data/ACIDS/global_mat_label_range.json"
+    meta_info = load_meta()
+
+    main_label_range(input_path, energy_path, label_range_file, meta_info)
