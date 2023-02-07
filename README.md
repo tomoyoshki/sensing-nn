@@ -82,31 +82,31 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 #### 1. Vehicle Classification
 |  Date       | Model |  Accuracy  | User | Weight Checkpoint   | Comment |
 | :---:       |    :----:     |   :----:   |      :---: |  :--- | :--- |
-| 20230201    | DeepSense (Supervised)     |  92.90%   | sl29 | ACIDS_DeepSense/exp2_supervised_vehicle_classification_1.0 | no augmentations |
-| 20230201    | TransformerV4 (Supervised) |  77.05%   | sl29 | ACIDS_TransformerV4/exp0_supervised_vehicle_classification_1.0 | no augmentations |
-| 20230201    | DeepSense + SimCLR    |  81.15%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR | no augmentations |
-| 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 |  | |
+| 20230201    | DeepSense (Supervised)     |  93.61%   | sl29 | ACIDS_DeepSense/exp5_supervised_vehicle_classification_1.0 | channel_shuffle, mixup, phase_shift |
+| 20230201    | TransformerV4 (Supervised) |  91.14%   | sl29 | ACIDS_TransformerV4/exp0_supervised_vehicle_classification_1.0 | channel_shuffle, mixup, phase_shift |
+| 20230201    | DeepSense + SimCLR    |  72.82%   | sl29 | ACIDS_DeepSense/exp2_contrastive_SimCLR |  |
+| 20230201    | TransformerV4 + SimCLR |  88.91%   | sl29 | ACIDS_TransformerV4/exp0_contrastive_SimCLR |  |
 
 #### 2. Terrain Classification
 |  Date       | Model |  Accuracy  | User | Weight Checkpoint   | Comment |
 | :---:       |    :----:     |   :----:   |      :---: |  :--- | :--- |
-| 20230201    | DeepSense (Supervised)     |  85.97%   | sl29 | ACIDS_DeepSense/exp0_supervised_terrain_classification_1.0 | no augmentations |
-| 20230201    | TransformerV4 (Supervised) |  90.76%   | sl29 | ACIDS_TransformerV4/exp0_supervised_terrain_classification_1.0 | no augmentations |
-| 20230201    | DeepSense + SimCLR    |  69.29%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR | no augmentations |
-| 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 |  | |
+| 20230201    | DeepSense (Supervised)     |  xx.xx%   | sl29 | ACIDS_DeepSense/exp0_supervised_terrain_classification_1.0 | channel_shuffle, mixup, phase_shift |
+| 20230201    | TransformerV4 (Supervised) |  90.76%   | sl29 | ACIDS_TransformerV4/exp0_supervised_terrain_classification_1.0 | channel_shuffle, mixup, phase_shift |
+| 20230201    | DeepSense + SimCLR    |  xx.xx%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR |  |
+| 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 | ACIDS_TransformerV4/exp0_contrastive_SimCLR | |
 
 #### 3. Distance Classification
 |  Date       | Model |  Accuracy  | User | Weight Checkpoint   | Comment |
 | :---:       |    :----:     |   :----:   |      :---: |  :--- | :--- |
-| 20230201    | DeepSense (Supervised)     |  81.52%   | sl29 | ACIDS_DeepSense/exp0_supervised_speed_classification_1.0 | no augmentations |
-| 20230201    | TransformerV4 (Supervised) |  82.22%  | sl29 | ACIDS_DeepSense/exp0_supervised_distance_classification_1.0 | no augmentation |
-| 20230201    | DeepSense + SimCLR    |  64.34%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR | no augmentations |
+| 20230201    | DeepSense (Supervised)     |  xx.xx%   | sl29 | ACIDS_DeepSense/exp0_supervised_speed_classification_1.0 | channel_shuffle, mixup, phase_shift |
+| 20230201    | TransformerV4 (Supervised) |  xx.xx%  | sl29 | ACIDS_DeepSense/exp0_supervised_distance_classification_1.0 | channel_shuffle, mixup, phase_shift |
+| 20230201    | DeepSense + SimCLR    |  xx.xx%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR | no augmentations |
 | 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 |  |  |
 
 #### 4. Speed Classification
 |  Date       | Model |  Accuracy  | User | Weight Checkpoint   | Comment |
 | :---:       |    :----:     |   :----:   |      :---: |  :--- | :--- |
-| 20230201    | DeepSense (Supervised)     |  68.27%   | sl29 | ACIDS_DeepSense/exp0_supervised_speed_classification_1.0 | no augmentations |
+| 20230201    | DeepSense (Supervised)     |  xx.xx%   | sl29 | ACIDS_DeepSense/exp0_supervised_speed_classification_1.0 | no augmentations |
 | 20230201    | TransformerV4 (Supervised) |  xx.xx%   | sl29 |  | |
-| 20230201    | DeepSense + SimCLR    |  52.98%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR | no augmentations |
+| 20230201    | DeepSense + SimCLR    |  xx.xx%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR | no augmentations |
 | 20230201    | TransformerV4 + SimCLR |  xx.xx%   | sl29 |  | |
