@@ -84,9 +84,10 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 | :---:       |    :----:     |   :----:   |      :---: |  :--- | :--- |
 | 20230206    | DeepSense (Supervised)     |  93.61%   | sl29 | ACIDS_DeepSense/exp5_supervised_vehicle_classification_1.0 | channel_shuffle, mixup, phase_shift |
 | 20230206    | DeepSense + SimCLR    |  73.57%   | sl29 | ACIDS_DeepSense/exp2_contrastive_SimCLR |  |
+| 20230207    | DeepSense + MoCo |  76.25%   | sl29 | ACIDS_DeepSense/exp0_contrastive_MoCo | temperature 0.2 |
 | 20230206    | TransformerV4 (Supervised) |  91.14%   | sl29 | ACIDS_TransformerV4/exp0_supervised_vehicle_classification_1.0 | channel_shuffle, mixup, phase_shift |
 | 20230206    | TransformerV4 + SimCLR |  88.91%   | sl29 | ACIDS_TransformerV4/exp0_contrastive_SimCLR |  |
-| 20230207    | TransformerV4 + MoCo |  86.58%   | sl29 | ACIDS_TransformerV4/exp1_contrastive_MoCo |  |
+| 20230207    | TransformerV4 + MoCo |  86.58%   | sl29 | ACIDS_TransformerV4/exp1_contrastive_MoCo | temperature 0.2 |
 
 #### 2. Terrain Classification
 |  Date       | Model |  Accuracy  | User | Weight Checkpoint   | Comment |
