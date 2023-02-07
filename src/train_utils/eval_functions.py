@@ -76,6 +76,9 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
 def eval_contrastive_model(args, model, estimator, augmenter, data_loader, loss_func):
     """Evaluate the performance with KNN estimator."""
     model.eval()
+    if args.contrastive_framework == "CMC":
+        # the critic h_theta
+        loss_func.contrast.eval()
 
     sample_embeddings = []
     labels = []
@@ -84,13 +87,23 @@ def eval_contrastive_model(args, model, estimator, augmenter, data_loader, loss_
         for time_loc_inputs, label, index in tqdm(data_loader, total=len(data_loader)):
             """Eval contrastive loss."""
             index = index.to(args.device)
-            aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
-            aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
-            feature1, feature2 = model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
+            if args.contrastive_framework == "CMC":
+                aug_freq_loc_inputs_1, _ = augmenter.forward("fixed", time_loc_inputs)
+                feature1, feature2 = model(aug_freq_loc_inputs_1)
+            else:
+                aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
+                aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
+                feature1, feature2 = model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
 
             """Eval KNN estimator."""
             aug_freq_loc_inputs = augmenter.forward("no", time_loc_inputs)
-            sample_embeddings.append(model.backbone(aug_freq_loc_inputs, class_head=False).detach().cpu().numpy())
+
+            if args.contrastive_framework == "CMC":
+                knn_feature1, knn_feature2 = model(aug_freq_loc_inputs)
+                feat = torch.cat((knn_feature1.detach(), knn_feature2.detach()), dim=1)
+            else:
+                feat = model.backbone(aug_freq_loc_inputs, class_head=False)
+            sample_embeddings.append(feat.detach().cpu().numpy())
             if label.dim() > 1:
                 label = label.argmax(dim=1, keepdim=False)
 

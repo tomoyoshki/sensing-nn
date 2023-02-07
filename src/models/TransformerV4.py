@@ -32,7 +32,7 @@ class TransformerV4(nn.Module):
         The square of `x`
     """
 
-    def __init__(self, args) -> None:
+    def __init__(self, args, cmc_modality=None) -> None:
         """
         SWIN Transformer model constructor
 
@@ -201,9 +201,10 @@ class TransformerV4(nn.Module):
             nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
+        self.cmc_modality = cmc_modality 
+
     def forward(self, freq_x, class_head=True):
         args = self.args
-
         # Step 1: Feature extractions on time interval (i) and spectrum (s) domains
         loc_mod_features = dict()
         for loc in self.locations:
@@ -247,10 +248,12 @@ class TransformerV4(nn.Module):
                 # Unify the input channels for each modality
                 freq_interval_output = self.mod_in_layers[loc][mod](freq_interval_output.reshape([b, -1]))
                 freq_interval_output = freq_interval_output.reshape(b, 1, -1)
-
-                # Append the result
-                loc_mod_features[loc].append(freq_interval_output)
-
+                
+                if self.cmc_modality is None or self.cmc_modality == mod:
+                    """if CMC, only extract features of this modality"""
+                    sample_features = freq_interval_output.flatten(start_dim=1)
+                    sample_features = self.sample_embd_layer(sample_features)
+                    return sample_features
             # Stack results from different modalities, [b, 1, s, c]
             loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=2)
 

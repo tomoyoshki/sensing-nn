@@ -368,13 +368,12 @@ DINO:
 
 CMC:
         emb_dim: 512
-        nce_k: 4096
+        nce_k: 16384
         nce_t: 0.07
         nce_momentum: 0.5
         softmax: True
 
         input_size: 512
-        output_size: 5842
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"

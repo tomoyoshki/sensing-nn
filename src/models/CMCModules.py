@@ -10,9 +10,9 @@ import torch.nn as nn
 
 class CMC(nn.Module):
     """
-    Build a MoCo model with a base encoder, a momentum encoder, and two MLPs
     https://arxiv.org/abs/1911.05722
     """
+
     def __init__(self, args, backbone):
         """
         dim: feature dimension (default: 256)
@@ -20,17 +20,17 @@ class CMC(nn.Module):
         T: softmax temperature (default: 1.0)
         """
         super(CMC, self).__init__()
-        
+
         self.args = args
         self.config = args.dataset_config["CMC"]
 
         # build encoders
-        self.backbone = backbone(args)
-        self.decoder = backbone(args)
-        
+        self.backbone = backbone(args, cmc_modality="seismic")
+        self.audio_backbone = backbone(args, cmc_modality="audio")
+
         self.backbone_config = self.backbone.config
 
-    def forward(self, x1, x2):
+    def forward(self, freq_input):
         """
         Input:
             x1: first views of images
@@ -39,8 +39,7 @@ class CMC(nn.Module):
             features
         """
         # compute features
-        q1 = self.backbone(x1, class_head=False)
-        q2 = self.decoder(x2, class_head=False)
-        
-        return q1, q2
-    
+        seismic_features = self.backbone(freq_input, class_head=False)
+        audio_features = self.audio_backbone(freq_input, class_head=False)
+
+        return seismic_features, audio_features

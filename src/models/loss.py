@@ -47,7 +47,7 @@ class DINOLoss(nn.Module):
         # centering vector
         self.register_buffer("center", torch.zeros(1, self.config["emb_dim"]))
 
-    def forward(self, student_output, teacher_output):
+    def forward(self, student_output, teacher_output, idx=None):
         """Evaluate loss.
         Parameters
         ----------
@@ -129,7 +129,7 @@ class SimCLRLoss(nn.Module):
             mask[batch_size + i, i] = 0
         return mask
 
-    def forward(self, z_i, z_j):
+    def forward(self, z_i, z_j, idx=None):
         """
         We do not sample negative examples explicitly.
         Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1) augmented examples within a minibatch as negative examples.
@@ -175,7 +175,7 @@ class MoCoLoss(nn.Module):
         labels = (torch.arange(N, dtype=torch.long)).to(self.args.device)
         return nn.CrossEntropyLoss()(logits, labels) * (2 * self.T)
 
-    def forward(self, q, k):
+    def forward(self, q, k, idx=None):
         q1, q2 = q
         k1, k2 = k
         loss = self.contrastive_loss(q1, k2) + self.contrastive_loss(q2, k1)
@@ -188,26 +188,26 @@ class CMCLoss(nn.Module):
         self.args = args
         self.config = args.dataset_config["CMC"]
 
+        # h(x) in paper
         self.contrast = NCEAverage(args, N)
-        self.criterion_l = NCESoftmaxLoss() if self.config["softmax"] else NCECriterion(N)
-        self.criterion_ab = NCESoftmaxLoss() if self.config["softmax"] else NCECriterion(N)
 
-        self.contrast = self.contrast.to(args.device)
-        self.criterion_l = self.criterion_l.to(args.device)
-        self.criterion_ab = self.criterion_ab.to(args.device)
+        # Softmaxs
+        self.criterion_seismic = NCESoftmaxLoss() if self.config["softmax"] else NCECriterion(N)
+        self.criterion_audio = NCESoftmaxLoss() if self.config["softmax"] else NCECriterion(N)
 
-    def forward(self, z_i, z_j, index):
-        out_l, out_ab = self.contrast(z_i, z_j, index)
-        l_loss = self.criterion_l(out_l)
-        ab_loss = self.criterion_ab(out_ab)
-        loss = l_loss + ab_loss
+    def forward(self, seismic_features, audio_features, index):
+        out_seismic, out_audio = self.contrast(seismic_features, audio_features, index)
+        seismic_loss = self.criterion_seismic(out_seismic)
+        audio_loss = self.criterion_audio(out_audio)
+        loss = seismic_loss + audio_loss
 
         return loss
 
 
 class NCECriterion(nn.Module):
     """
-    Eq. (12): L_{NCE}
+    Eq. (11): L_{NCE}
+    https://github.com/HobbitLong/CMC/tree/master/NCE
     """
 
     def __init__(self, n_data):
@@ -251,8 +251,9 @@ class NCESoftmaxLoss(nn.Module):
 
 
 class NCEAverage(nn.Module):
-    def __init__(self, args, output_size):
+    """https://github.com/HobbitLong/CMC/tree/master/NCE"""
 
+    def __init__(self, args, output_size):
         super(NCEAverage, self).__init__()
 
         self.args = args
@@ -263,7 +264,9 @@ class NCEAverage(nn.Module):
         self.momentum = self.config["nce_momentum"]
         self.use_softmax = self.config["softmax"]
 
+        # embed_dim
         self.input_size = self.config["input_size"]
+        # length of the dataset
         self.output_size = output_size
 
         self.nLem = self.output_size
@@ -291,11 +294,11 @@ class NCEAverage(nn.Module):
 
         # score computation
         if idx is None:
-            idx = self.multinomial.draw(batchSize * (K + 1)).view(batchSize, -1)
+            idx = self.multinomial.draw(batchSize * (self.K + 1)).view(batchSize, -1)
             idx.select(1, 0).copy_(y.data)
             idx = idx.to(self.args.device)
         # sample
-        weight_l = torch.index_select(self.memory_l, 0, idx.view(-1))
+        weight_l = torch.index_select(self.memory_l, 0, idx.view(-1)).detach()
         weight_l = weight_l.view(batchSize, K + 1, inputSize)
 
         ab_view = ab.view(batchSize, inputSize, 1)
@@ -304,7 +307,6 @@ class NCEAverage(nn.Module):
         weight_ab = torch.index_select(self.memory_ab, 0, idx.view(-1)).detach()
         weight_ab = weight_ab.view(batchSize, K + 1, inputSize)
         l_view = l.view(batchSize, inputSize, 1)
-
         out_l = torch.bmm(weight_ab, l_view)
 
         if self.use_softmax:
@@ -320,11 +322,9 @@ class NCEAverage(nn.Module):
             if Z_l < 0:
                 self.params[2] = out_l.mean() * outputSize
                 Z_l = self.params[2].clone().detach().item()
-                # print("normalization constant Z_l is set to {:.1f}".format(Z_l))
             if Z_ab < 0:
                 self.params[3] = out_ab.mean() * outputSize
                 Z_ab = self.params[3].clone().detach().item()
-                # print("normalization constant Z_ab is set to {:.1f}".format(Z_ab))
             # compute out_l, out_ab
             out_l = torch.div(out_l, Z_l).contiguous()
             out_ab = torch.div(out_ab, Z_ab).contiguous()
