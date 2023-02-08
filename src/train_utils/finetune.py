@@ -62,7 +62,7 @@ def finetune(
 
         # training loop
         train_loss_list = []
-        for i, (time_loc_inputs, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
+        for i, (time_loc_inputs, labels, _) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
             aug_freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
 

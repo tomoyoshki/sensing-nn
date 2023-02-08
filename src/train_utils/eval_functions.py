@@ -24,7 +24,7 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
     all_predictions = []
     all_labels = []
     with torch.no_grad():
-        for i, (time_loc_inputs, labels) in tqdm(enumerate(dataloader), total=num_batches):
+        for i, (time_loc_inputs, labels, index) in tqdm(enumerate(dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
             freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
 
@@ -76,20 +76,34 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
 def eval_contrastive_model(args, model, estimator, augmenter, data_loader, loss_func):
     """Evaluate the performance with KNN estimator."""
     model.eval()
+    if args.contrastive_framework == "CMC":
+        # the critic h_theta
+        loss_func.contrast.eval()
 
     sample_embeddings = []
     labels = []
     loss_list = []
     with torch.no_grad():
-        for time_loc_inputs, label in tqdm(data_loader, total=len(data_loader)):
+        for time_loc_inputs, label, index in tqdm(data_loader, total=len(data_loader)):
             """Eval contrastive loss."""
-            aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
-            aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
-            feature1, feature2 = model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
+            index = index.to(args.device)
+            if args.contrastive_framework == "CMC":
+                aug_freq_loc_inputs_1, _ = augmenter.forward("fixed", time_loc_inputs)
+                feature1, feature2 = model(aug_freq_loc_inputs_1)
+            else:
+                aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
+                aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
+                feature1, feature2 = model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
 
             """Eval KNN estimator."""
             aug_freq_loc_inputs = augmenter.forward("no", time_loc_inputs)
-            sample_embeddings.append(model.backbone(aug_freq_loc_inputs, class_head=False).detach().cpu().numpy())
+
+            if args.contrastive_framework == "CMC":
+                knn_feature1, knn_feature2 = model(aug_freq_loc_inputs)
+                feat = torch.cat((knn_feature1.detach(), knn_feature2.detach()), dim=1)
+            else:
+                feat = model.backbone(aug_freq_loc_inputs, class_head=False)
+            sample_embeddings.append(feat.detach().cpu().numpy())
             if label.dim() > 1:
                 label = label.argmax(dim=1, keepdim=False)
 
@@ -97,7 +111,7 @@ def eval_contrastive_model(args, model, estimator, augmenter, data_loader, loss_
             labels.append(saved_labels)
 
             # forward pass
-            loss = loss_func(feature1, feature2).item()
+            loss = loss_func(feature1, feature2, index).item()
             loss_list.append(loss)
 
     sample_embeddings = np.concatenate(sample_embeddings)

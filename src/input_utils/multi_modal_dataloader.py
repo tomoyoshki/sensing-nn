@@ -20,7 +20,7 @@ def create_dataloader(option, args, batch_size=64, workers=5):
     label_ratio = 1
     if option == "train":
         if args.train_mode != "supervised" and args.stage == "pretrain":
-            "self-supervised training"
+            """self-supervised training"""
             index_file = args.dataset_config["pretrain_index_file"]
         else:
             """supervised training"""
