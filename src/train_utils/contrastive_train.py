@@ -89,12 +89,10 @@ def contrastive_pretrain(
                 feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
 
             loss = loss_func(feature1, feature2, idx)
-
-            optimizer.zero_grad()
+            
             # back propagation
-            loss.backward()
-
             optimizer.step()
+            loss.backward()
 
             train_loss_list.append(loss.item())
 

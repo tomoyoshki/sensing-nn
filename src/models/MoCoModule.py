@@ -13,6 +13,7 @@ class MoCo(nn.Module):
     Build a MoCo model with a base encoder, a momentum encoder, and two MLPs
     https://arxiv.org/abs/1911.05722
     """
+
     def __init__(self, args, backbone):
         """
         dim: feature dimension (default: 256)
@@ -20,19 +21,16 @@ class MoCo(nn.Module):
         T: softmax temperature (default: 1.0)
         """
         super(MoCo, self).__init__()
-        
+
         self.args = args
         self.config = args.dataset_config["MoCo"]
-
         self.T = self.config["temperature"]
         self.m = self.config["momentum"]
 
         # build encoders
         self.backbone = backbone(args)
         self.momentum_encoder = backbone(args)
-        
         self.backbone_config = self.backbone.config
-
         self._build_projector_and_predictor_mlps(self.backbone_config["fc_dim"], self.config["emb_dim"])
 
         for param_b, param_m in zip(self.backbone.parameters(), self.momentum_encoder.parameters()):
@@ -64,7 +62,7 @@ class MoCo(nn.Module):
     def _update_momentum_encoder(self):
         """Momentum update of the momentum encoder"""
         for param_b, param_m in zip(self.backbone.parameters(), self.momentum_encoder.parameters()):
-            param_m.data = param_m.data * self.m + param_b.data * (1. - self.m)
+            param_m.data = param_m.data * self.m + param_b.data * (1.0 - self.m)
 
     def forward(self, x1, x2, m=0.99):
         """
@@ -85,8 +83,9 @@ class MoCo(nn.Module):
             # compute momentum features as targets
             k1 = self.momentum_encoder_projector(self.momentum_encoder(x1, class_head=False))
             k2 = self.momentum_encoder_projector(self.momentum_encoder(x2, class_head=False))
-        
+
         return (q1, q2), (k1, k2)
+
 
 class MoCoWrapper(MoCo):
     def _build_projector_and_predictor_mlps(self, dim, mlp_dim):
@@ -96,4 +95,3 @@ class MoCoWrapper(MoCo):
 
         # predictor
         self.predictor = self._build_mlp(2, dim, mlp_dim, dim, False)
-    

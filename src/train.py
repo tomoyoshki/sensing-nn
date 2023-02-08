@@ -9,9 +9,6 @@ import numpy as np
 
 from tqdm import tqdm
 
-# from test import eval_given_model
-from train_utils.eval_functions import eval_supervised_model
-
 # import models
 from data_augmenter.Augmenter import Augmenter
 from models.ResNet import ResNet
@@ -22,6 +19,7 @@ from models.TransformerV3 import TransformerV3
 from models.TransformerV4 import TransformerV4
 
 # train utils
+from train_utils.eval_functions import eval_supervised_model
 from train_utils.supervised_train import supervised_train
 from train_utils.contrastive_train import contrastive_pretrain
 from train_utils.finetune import finetune
@@ -33,11 +31,15 @@ from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss
 from torch.utils.tensorboard import SummaryWriter
 from params.train_params import parse_train_params
 from input_utils.multi_modal_dataloader import create_dataloader, preprocess_triplet_batch
+from input_utils.time_input_utils import count_range
 
 
 def init_model(args):
     if args.model == "DeepSense":
-        classifier = DeepSense(args, self_attention=False)
+        if args.stage == "pretrain" and args.contrastive_framework in {"MoCo", "CMC"}:
+            return DeepSense
+        else:
+            classifier = DeepSense(args, self_attention=False)
     elif args.model == "Transformer":
         classifier = Transformer(args)
     elif args.model == "TransformerV2":
@@ -46,8 +48,7 @@ def init_model(args):
         classifier = TransformerV3(args)
     elif args.model == "TransformerV4":
         if args.stage == "pretrain" and args.contrastive_framework in {"MoCo", "CMC"}:
-            classifier = TransformerV4
-            return classifier
+            return TransformerV4
         else:
             classifier = TransformerV4(args)
     elif args.model == "ResNet":
@@ -86,6 +87,11 @@ def train(args):
     # Init the Tensorboard summary writer
     tb_writer = SummaryWriter(args.tensorboard_log)
     logging.info(f"=\tTensorboard loaded")
+
+    # Optional range counting for training data
+    if args.count_range:
+        logging.info("=\tCounting range for training data")
+        count_range(args, train_dataloader)
 
     # define the loss function
     if args.multi_class:

@@ -5,7 +5,6 @@ import torch.nn.functional as F
 
 from models.ConvModules import ConvBlock
 from models.FusionModules import MeanFusionBlock
-from input_utils.fft_utils import fft_preprocess
 
 
 class ResNet(nn.Module):

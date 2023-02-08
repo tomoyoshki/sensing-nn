@@ -45,9 +45,14 @@ def finetune(
     logging.info("---------------------------Start Fine Tuning-------------------------------")
     start = time_sync()
     best_val_acc = 0
-    best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_finetune_best.pt")
-    latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_finetune_latest.pt")
+    best_weight = os.path.join(
+        args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_best.pt"
+    )
+    latest_weight = os.path.join(
+        args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_latest.pt"
+    )
 
+    val_epochs = 5 if args.dataset == "Parkland" else 3
     for epoch in range(args.dataset_config[args.contrastive_framework]["finetune_lr_scheduler"]["train_epochs"]):
         if epoch > 0:
             logging.info("-" * 40 + f"Epoch {epoch}" + "-" * 40)
@@ -79,26 +84,27 @@ def finetune(
                 tb_writer.add_scalar("Train/Train loss", loss.item(), epoch * num_batches + i)
 
         # validation and logging
-        train_loss = np.mean(train_loss_list)
-        val_acc, val_loss = val_and_logging(
-            args,
-            epoch,
-            tb_writer,
-            classifier,
-            augmenter,
-            val_dataloader,
-            test_dataloader,
-            classifier_loss_func,
-            train_loss,
-        )
+        if epoch % val_epochs == 0:
+            train_loss = np.mean(train_loss_list)
+            val_acc, val_loss = val_and_logging(
+                args,
+                epoch,
+                tb_writer,
+                classifier,
+                augmenter,
+                val_dataloader,
+                test_dataloader,
+                classifier_loss_func,
+                train_loss,
+            )
 
-        # Save the latest model
-        torch.save(classifier.state_dict(), latest_weight)
+            # Save the latest model
+            torch.save(classifier.state_dict(), latest_weight)
 
-        # Save the best model according to validation result
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            torch.save(classifier.state_dict(), best_weight)
+            # Save the best model according to validation result
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                torch.save(classifier.state_dict(), best_weight)
 
         # Update the learning rate scheduler
         lr_scheduler.step(epoch)

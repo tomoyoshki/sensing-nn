@@ -23,17 +23,16 @@ def parse_base_args(option="train"):
         help="Dataset to evaluate.",
     )
     parser.add_argument(
+        "-task",
+        type=str,
+        default="vehicle_classification",
+        help="Dataset to evaluate.",
+    )
+    parser.add_argument(
         "-model",
         type=str,
         default="TransformerV3",
         help="The backbone classification model to use.",
-    )
-
-    parser.add_argument(
-        "-contrastive_framework",
-        type=str,
-        default="SimCLR",
-        help="Contrastive learning framework to use",
     )
 
     # training and inference mode
@@ -41,7 +40,13 @@ def parse_base_args(option="train"):
         "-train_mode",
         type=str,
         default="supervised",
-        help="The used mode for model training (supervised/original/contrastive/...).",
+        help="The used mode for model training (supervised/contrastive/...).",
+    )
+    parser.add_argument(
+        "-contrastive_framework",
+        type=str,
+        default="SimCLR",
+        help="Contrastive learning framework to use",
     )
     parser.add_argument(
         "-inference_mode",
@@ -54,6 +59,12 @@ def parse_base_args(option="train"):
         type=str,
         default="pretrain",
         help="The pretrain/finetune, used for foundation model only.",
+    )
+    parser.add_argument(
+        "-label_ratio",
+        type=float,
+        default=1.0,
+        help="Only used in supervised training or finetune stage, specify the ratio of labeled data.",
     )
 
     # used for separate training and inference
@@ -76,13 +87,13 @@ def parse_base_args(option="train"):
     parser.add_argument(
         "-batch_size",
         type=int,
-        default=64,
+        default=128,
         help="Specify the batch size for training.",
     )
     parser.add_argument(
         "-gpu",
         type=int,
-        default=3,
+        default=0,
         help="Specify which GPU to use.",
     )
 
@@ -92,6 +103,20 @@ def parse_base_args(option="train"):
         type=str,
         default="false",
         help="Whether to show detailed logs.",
+    )
+    parser.add_argument(
+        "-count_range",
+        type=str,
+        default="false",
+        help="Whether to count value range.",
+    )
+
+    # balanced sampling for the training data
+    parser.add_argument(
+        "-balanced_sample",
+        type=str,
+        default="true",
+        help="Whether to perform balanced sampling on classes.",
     )
 
     args = parser.parse_args()

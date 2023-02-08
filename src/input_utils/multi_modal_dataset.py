@@ -3,10 +3,11 @@ import torch
 import numpy as np
 
 from torch.utils.data import Dataset
+from random import shuffle
 
 
 class MultiModalDataset(Dataset):
-    def __init__(self, index_file, batch_path):
+    def __init__(self, args, index_file, label_ratio=1, balanced_sample=False):
         """
         Args:
             modalities (_type_): The list of modalities
@@ -25,20 +26,50 @@ class MultiModalDataset(Dataset):
                     - audio: Tensor
                     - acc: Tensor
         """
-        self.sample_files = list(np.loadtxt(os.path.join(batch_path, index_file), dtype=str))
-        self.base_path = batch_path
+        self.args = args
+        self.sample_files = list(np.loadtxt(index_file, dtype=str))
+
+        if label_ratio < 1:
+            shuffle(self.sample_files)
+            self.sample_files = self.sample_files[: round(len(self.sample_files) * label_ratio)]
+
+        if balanced_sample:
+            self.load_sample_labels()
+
+    def load_sample_labels(self):
+        sample_labels = []
+        label_count = [0 for i in range(self.args.dataset_config[self.args.task]["num_classes"])]
+
+        for idx in range(len(self.sample_files)):
+            _, label = self.__getitem__(idx)
+            label = torch.argmax(label).item() if label.numel() > 1 else label.item()
+            sample_labels.append(label)
+            label_count[label] += 1
+
+        self.sample_weights = []
+        self.epoch_len = int(np.max(label_count) * len(label_count))
+        for sample_label in sample_labels:
+            self.sample_weights.append(1 / label_count[sample_label])
 
     def __len__(self):
         return len(self.sample_files)
 
     def __getitem__(self, idx):
-        sample_file = os.path.join(self.base_path, self.sample_files[idx])
-        sample = torch.load(sample_file)
+        sample = torch.load(self.sample_files[idx])
         data = sample["data"]
 
         # ACIDS
         if isinstance(sample["label"], dict):
-            label = sample["label"]["vehicle_type"]
+            if self.args.task == "vehicle_classification":
+                label = sample["label"]["vehicle_type"]
+            elif self.args.task == "distance_classification":
+                label = sample["label"]["distance"]
+            elif self.args.task == "speed_classification":
+                label = sample["label"]["speed"]
+            elif self.args.task == "terrain_classification":
+                label = sample["label"]["terrain"]
+            else:
+                raise ValueError(f"Unknown task: {self.args.task}")
         else:
             label = sample["label"]
 

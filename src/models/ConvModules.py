@@ -57,14 +57,8 @@ class ConvLayer2D(nn.Module):
         Args:
             x (_type_): _description_
         """
-
-        # print("in c: ", self.inc)
-        # print("Out c: ", self.out)
-        # print("Before conv: ", x.shape)
         conv_out = self.conv(x)
-        # print("After conv: ", x.shape)
         conv_out = self.batch_norm(conv_out)
-        # print("After norm: ", x.shape)
         conv_out = self.activation(conv_out)
         conv_out = self.dropout(conv_out)
 
@@ -222,7 +216,7 @@ class ConvBlock(nn.Module):
 
         # inter conv layers
         for conv_layer in self.conv_layers_inter:
-            conv_out = conv_layer(conv_out)
+            conv_out = conv_out + conv_layer(conv_out)
 
         # reshape the output to (N, C_out, intervals)
         conv_out = conv_out.permute(0, 1, 3, 2)

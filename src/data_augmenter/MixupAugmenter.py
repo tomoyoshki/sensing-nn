@@ -9,6 +9,8 @@ class MixupAugmenter(nn.Module):
         """mixup and cutmix augmentation, does nothing if both has alpha 0"""
         super().__init__()
         self.args = args
+        self.config = args.dataset_config["mixup"]
+        self.config["num_classes"] = args.dataset_config[args.task]["num_classes"]
         self.mixup_func = Mixup(**args.dataset_config["mixup"])
 
     def forward(self, org_loc_inputs, labels=None):

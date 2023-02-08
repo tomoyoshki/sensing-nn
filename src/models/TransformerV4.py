@@ -4,7 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.nn import TransformerEncoderLayer
-from input_utils.fft_utils import fft_preprocess
 from input_utils.padding_utils import get_padded_size
 from models.FusionModules import TransformerFusionBlock
 
@@ -68,7 +67,6 @@ class TransformerV4(nn.Module):
             self.mod_in_layers[loc] = nn.ModuleDict()
 
             for mod in self.modalities:
-
                 # Decide the spatial size for "image"
                 stride = self.config["in_stride"][mod]
                 spectrum_len = args.dataset_config["loc_mod_spectrum_len"][loc][mod]
@@ -189,17 +187,27 @@ class TransformerV4(nn.Module):
             self.config["dropout_ratio"],
         )
 
-        # Classification layer
+        # Sample embedding layer
         self.sample_embd_layer = nn.Sequential(
             nn.Linear(self.config["loc_out_channels"], self.config["fc_dim"]),
             nn.GELU(),
         )
-        self.class_layer = nn.Sequential(
-            nn.Linear(self.config["fc_dim"], int(self.config["fc_dim"] / 2)),
-            nn.GELU(),
-            nn.Linear(int(self.config["fc_dim"] / 2), args.dataset_config["num_classes"]),
-            nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
-        )
+
+        # Classification layer
+        if args.train_mode == "supervised" or self.config["pretrained_head"] == "linear":
+            """Linear classification layers for supervised learning or finetuning."""
+            self.class_layer = nn.Sequential(
+                nn.Linear(self.config["fc_dim"], args.dataset_config[args.task]["num_classes"]),
+                nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
+            )
+        else:
+            """Non-linear classification layers for self-supervised learning."""
+            self.class_layer = nn.Sequential(
+                nn.Linear(self.config["fc_dim"], self.config["fc_dim"] // 2),
+                nn.GELU(),
+                nn.Linear(self.config["fc_dim"] // 2, args.dataset_config[args.task]["num_classes"]),
+                nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
+            )
 
         self.cmc_modality = cmc_modality 
 

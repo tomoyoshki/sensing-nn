@@ -91,15 +91,14 @@ def set_auto_params(args):
 
     # verbose
     args.verbose = str_to_bool(args.verbose)
+    args.count_range = str_to_bool(args.count_range)
+    args.balanced_sample = str_to_bool(args.balanced_sample) and args.dataset == "ACIDS"
 
     # threshold
     args.threshold = 0.5
 
     # dataloader config
     args.workers = 10
-
-    # count values for noise generator
-    args.count_range = False
 
     # triplet batch size
     # args.triplet_batch_size = int(args.batch_size / 3)
