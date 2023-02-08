@@ -25,10 +25,7 @@ class CMC(nn.Module):
         self.config = args.dataset_config["CMC"]
 
         # build encoders
-        self.backbone = backbone(args, cmc_modality="seismic")
-        self.audio_backbone = backbone(args, cmc_modality="audio")
-
-        self.backbone_config = self.backbone.config
+        self.backbone = backbone
 
     def forward(self, freq_input):
         """
@@ -39,7 +36,6 @@ class CMC(nn.Module):
             features
         """
         # compute features
-        seismic_features = self.backbone(freq_input, class_head=False)
-        audio_features = self.audio_backbone(freq_input, class_head=False)
+        mod_features = self.backbone(freq_input, class_head=False)
 
-        return seismic_features, audio_features
+        return mod_features["seismic"], mod_features["audio"]

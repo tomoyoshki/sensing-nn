@@ -16,7 +16,6 @@ def cross_entropy_loss(logits, labels):
         logits (_type_): _description_
         labels (_type_): _description_
     """
-
     pass
 
 
@@ -266,6 +265,7 @@ class NCEAverage(nn.Module):
 
         # embed_dim
         self.input_size = self.config["input_size"]
+
         # length of the dataset
         self.output_size = output_size
 

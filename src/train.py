@@ -17,6 +17,8 @@ from models.Transformer import Transformer
 from models.TransformerV2 import TransformerV2
 from models.TransformerV3 import TransformerV3
 from models.TransformerV4 import TransformerV4
+from models.TransformerV4_CMC import TransformerV4_CMC
+from models.DeepSense_CMC import DeepSense_CMC
 
 # train utils
 from train_utils.eval_functions import eval_supervised_model
@@ -36,26 +38,27 @@ from input_utils.time_input_utils import count_range
 
 def init_model(args):
     if args.model == "DeepSense":
-        if args.stage == "pretrain" and args.contrastive_framework in {"MoCo", "CMC"}:
+        if args.train_mode == "contrastive" and args.stage == "pretrain" and args.contrastive_framework in {"MoCo"}:
             return DeepSense
+        elif args.train_mode == "contrastive" and args.contrastive_framework == "CMC":
+            classifier = DeepSense_CMC(args)
         else:
             classifier = DeepSense(args, self_attention=False)
-    elif args.model == "Transformer":
-        classifier = Transformer(args)
-    elif args.model == "TransformerV2":
-        classifier = TransformerV2(args)
-    elif args.model == "TransformerV3":
-        classifier = TransformerV3(args)
     elif args.model == "TransformerV4":
-        if args.stage == "pretrain" and args.contrastive_framework in {"MoCo", "CMC"}:
+        if args.train_mode == "contrastive" and args.stage == "pretrain" and args.contrastive_framework in {"MoCo"}:
             return TransformerV4
+        elif args.train_mode == "contrastive" and args.contrastive_framework == "CMC":
+            classifier = TransformerV4_CMC(args)
         else:
             classifier = TransformerV4(args)
     elif args.model == "ResNet":
         classifier = ResNet(args)
     else:
         raise Exception(f"Invalid model provided: {args.model}")
+
+    # move the model to the device
     classifier = classifier.to(args.device)
+
     return classifier
 
 
@@ -101,7 +104,6 @@ def train(args):
             loss_func = nn.CrossEntropyLoss()
         elif args.train_mode == "contrastive":
             """Contrastive pretraining only."""
-            # TODO: Setup argument in data yaml file
             if args.contrastive_framework == "DINO":
                 loss_func = DINOLoss(args).to(args.device)
             elif args.contrastive_framework == "MoCo":

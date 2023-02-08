@@ -26,14 +26,17 @@ def compute_knn(args, classifier, augmenter, data_loader_train):
     sample_embeddings = []
     labels = []
     for time_loc_inputs, y, _ in data_loader_train:
+        # FFT and move to target device
         aug_freq_loc_inputs, _ = augmenter.forward("no", time_loc_inputs, y)
-        if args.contrastive_framework == "CMC":
-            knn_feature1, knn_feature2 = classifier(aug_freq_loc_inputs)
-            feat = torch.cat((knn_feature1.detach(), knn_feature2.detach()), dim=1)
-        else:
-            feat = classifier(aug_freq_loc_inputs)
-        sample_embeddings.append(feat.detach().cpu().numpy())
 
+        # feature extraction
+        if args.contrastive_framework == "CMC":
+            mod_features = classifier(aug_freq_loc_inputs, class_head=False)
+            seismic_feature, audio_feature = mod_features["seismic"], mod_features["audio"]
+            features = torch.cat((seismic_feature.detach(), audio_feature.detach()), dim=1)
+        else:
+            features = classifier(aug_freq_loc_inputs, class_head=False)
+        sample_embeddings.append(features.detach().cpu().numpy())
         labels.append(y.detach().cpu().numpy())
 
     sample_embeddings = np.concatenate(sample_embeddings)
@@ -70,13 +73,19 @@ def compute_embedding(args, classifier, augmenter, data_loader):
     classes = args.dataset_config[args.task]["class_names"]
 
     for time_loc_inputs, labels, _ in data_loader:
-        aug_freq_loc_inputs, y = augmenter.forward("no", time_loc_inputs, labels)
+        # FFT and move to target device
+        aug_freq_loc_inputs, _ = augmenter.forward("no", time_loc_inputs, labels)
+
+        # Feature extraction
         if args.contrastive_framework == "CMC":
-            seismic_feature, audio_feature = classifier(aug_freq_loc_inputs)
+            mod_features = classifier(aug_freq_loc_inputs, class_head=False)
+            seismic_feature, audio_feature = mod_features["seismic"], mod_features["audio"]
             features = torch.cat((seismic_feature.detach(), audio_feature.detach()), dim=1)
         else:
-            features = classifier(aug_freq_loc_inputs)
+            features = classifier(aug_freq_loc_inputs, class_head=False)
         embs_l.append(features.detach().cpu())
+
+        # Label extraction
         if labels.dim() > 1:
             labels = labels.argmax(dim=1, keepdim=False)
         all_labels.append([classes[i] for i in labels])

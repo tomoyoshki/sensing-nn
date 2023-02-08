@@ -62,38 +62,41 @@ def contrastive_pretrain(
     logging.info("---------------------------Start Pretraining Classifier-------------------------------")
     start = time_sync()
     best_val_loss = np.inf
-
     best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_best.pt")
     latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_latest.pt")
+
     for epoch in range(args.dataset_config[args.contrastive_framework]["pretrain_lr_scheduler"]["train_epochs"]):
         if epoch > 0:
             logging.info("-" * 40 + f"Epoch {epoch}" + "-" * 40)
 
         # set model to train mode
         default_model.train()
-        # loss_func.contrast.train()
 
         # training loop
         train_loss_list = []
 
         # regularization configuration
         for i, (time_loc_inputs, _, idx) in tqdm(enumerate(train_dataloader), total=num_batches):
-            # move to target device, FFT, and augmentations
+            # clear the gradients
+            optimizer.zero_grad()
             idx = idx.to(args.device)
+
+            # move to target device, FFT, and augmentations
             if args.contrastive_framework == "CMC":
-                aug_time_loc_inputs, _ = augmenter.forward("fixed", time_loc_inputs)
-                feature1, feature2 = default_model(aug_time_loc_inputs)
+                aug_freq_loc_inputs = augmenter.forward("random", time_loc_inputs)
+                feature1, feature2 = default_model(aug_freq_loc_inputs)
             else:
                 aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
                 aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
                 feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
 
             loss = loss_func(feature1, feature2, idx)
-            
+
             # back propagation
-            optimizer.step()
             loss.backward()
 
+            # update
+            optimizer.step()
             train_loss_list.append(loss.item())
 
             # Write train log
@@ -102,9 +105,7 @@ def contrastive_pretrain(
 
         if epoch % 10 == 0:
             # compute embedding for the validation dataloader
-
-            eval_backbone = default_model if args.contrastive_framework == "CMC" else default_model.backbone
-            embs, imgs, labels_ = compute_embedding(args, eval_backbone, augmenter, val_dataloader)
+            embs, imgs, labels_ = compute_embedding(args, default_model.backbone, augmenter, val_dataloader)
             tb_writer.add_embedding(
                 embs,
                 metadata=labels_,
@@ -114,7 +115,7 @@ def contrastive_pretrain(
             )
 
             # Use KNN classifier for validation
-            knn_estimator = compute_knn(args, eval_backbone, augmenter, train_dataloader)
+            knn_estimator = compute_knn(args, default_model.backbone, augmenter, train_dataloader)
 
             # validation and logging
             train_loss = np.mean(train_loss_list)
@@ -131,7 +132,7 @@ def contrastive_pretrain(
                 estimator=knn_estimator,
             )
 
-            # Save the latest model
+            # Save the latest model, only the backbone parameters are saved
             torch.save(default_model.backbone.state_dict(), latest_weight)
 
             # Save the best model according to validation result

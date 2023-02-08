@@ -28,8 +28,8 @@ class MoCo(nn.Module):
         self.m = self.config["momentum"]
 
         # build encoders
-        self.backbone = backbone(args)
-        self.momentum_encoder = backbone(args)
+        self.backbone = backbone(args).to(args.device)
+        self.momentum_encoder = backbone(args).to(args.device)
         self.backbone_config = self.backbone.config
         self._build_projector_and_predictor_mlps(self.backbone_config["fc_dim"], self.config["emb_dim"])
 
