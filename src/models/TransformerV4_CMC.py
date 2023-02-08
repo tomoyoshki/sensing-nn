@@ -18,7 +18,7 @@ from models.SwinModules import (
 )
 
 
-class TransformerV4(nn.Module):
+class TransformerV4_CMC(nn.Module):
     """
     SWIN Transformer model
 
@@ -40,6 +40,7 @@ class TransformerV4(nn.Module):
         args:
             list of configuration
         """
+
         super().__init__()
         self.args = args
         self.config = args.dataset_config["TransformerV4"]
@@ -139,82 +140,62 @@ class TransformerV4(nn.Module):
                 # Unify the input channels for each modality
                 self.mod_in_layers[loc][mod] = nn.Linear(
                     (patches_resolution[0] // down_ratio) * (patches_resolution[1] // down_ratio) * layer_dim,
-                    self.config["mod_out_channels"],
+                    self.config["loc_out_channels"],
                 )
 
-        # Mod fusion, [b, i, c], mod contextual feature extraction + mod fusion
-        self.mod_context_layers = nn.ModuleDict()
-        self.mod_fusion_layer = nn.ModuleDict()
-        for loc in self.locations:
+        # Loc fusion, [b, i, c], loc contextual feature extraction + loc fusion
+        self.loc_context_layers = nn.ModuleDict()
+        self.loc_fusion_layer = nn.ModuleDict()
+        for mod in self.modalities:
             """Single mod contextual feature extraction"""
             module_list = [
                 TransformerEncoderLayer(
-                    d_model=self.config["mod_out_channels"],
-                    nhead=self.config["mod_head_num"],
-                    dim_feedforward=self.config["mod_out_channels"],
+                    d_model=self.config["loc_out_channels"],
+                    nhead=self.config["loc_head_num"],
+                    dim_feedforward=self.config["loc_out_channels"],
                     dropout=self.config["dropout_ratio"],
                     batch_first=True,
                 )
-                for _ in range(self.config["mod_block_num"])
+                for _ in range(self.config["loc_block_num"])
             ]
-            self.mod_context_layers[loc] = nn.Sequential(*module_list)
+            self.loc_context_layers[mod] = nn.Sequential(*module_list)
 
             """Mod fusion layer for each loc"""
-            self.mod_fusion_layer[loc] = TransformerFusionBlock(
-                self.config["mod_out_channels"],
-                self.config["mod_head_num"],
+            self.loc_fusion_layer[mod] = TransformerFusionBlock(
+                self.config["loc_out_channels"],
+                self.config["loc_head_num"],
                 self.config["dropout_ratio"],
                 self.config["dropout_ratio"],
             )
-
-        # Loc fusion, [b, i, c], loc contextual feature extraction + loc fusion
-        module_list = [
-            TransformerEncoderLayer(
-                d_model=self.config["loc_out_channels"],
-                nhead=self.config["loc_head_num"],
-                dim_feedforward=self.config["loc_out_channels"],
-                dropout=self.config["dropout_ratio"],
-                batch_first=True,
-            )
-            for _ in range(self.config["loc_block_num"])
-        ]
-        self.loc_context_layer = nn.Sequential(*module_list)
-        self.loc_fusion_layer = TransformerFusionBlock(
-            self.config["loc_out_channels"],
-            self.config["loc_head_num"],
-            self.config["dropout_ratio"],
-            self.config["dropout_ratio"],
-        )
-
-        # Sample embedding layer
-        self.sample_embd_layer = nn.Sequential(
-            nn.Linear(self.config["loc_out_channels"], self.config["fc_dim"]),
-            nn.GELU(),
-        )
 
         # Classification layer
         if args.train_mode == "supervised" or self.config["pretrained_head"] == "linear":
             """Linear classification layers for supervised learning or finetuning."""
             self.class_layer = nn.Sequential(
-                nn.Linear(self.config["fc_dim"], args.dataset_config[args.task]["num_classes"]),
+                nn.Linear(
+                    self.config["loc_out_channels"] * len(self.modalities),
+                    args.dataset_config[args.task]["num_classes"],
+                ),
                 nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
             )
         else:
             """Non-linear classification layers for self-supervised learning."""
             self.class_layer = nn.Sequential(
-                nn.Linear(self.config["fc_dim"], self.config["fc_dim"] // 2),
+                nn.Linear(self.config["loc_out_channels"] * len(self.modalities), self.config["fc_dim"]),
                 nn.GELU(),
-                nn.Linear(self.config["fc_dim"] // 2, args.dataset_config[args.task]["num_classes"]),
+                nn.Linear(self.config["fc_dim"], args.dataset_config[args.task]["num_classes"]),
                 nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
             )
 
     def forward(self, freq_x, class_head=True):
+        """
+        If class_head is False, we return the modality features; otherwise, we return the classification results.
+        time-freq feature extraction --> loc fusion --> mod concatenation --> class layer
+        """
         args = self.args
-
         # Step 1: Feature extractions on time interval (i) and spectrum (s) domains
-        loc_mod_features = dict()
+        mod_loc_features = {mod: [] for mod in self.modalities}
         for loc in self.locations:
-            loc_mod_features[loc] = []
             for mod in self.modalities:
                 stride = self.config["in_stride"][mod]
                 spectrum_len = args.dataset_config["loc_mod_spectrum_len"][loc][mod]
@@ -255,43 +236,34 @@ class TransformerV4(nn.Module):
                 freq_interval_output = self.mod_in_layers[loc][mod](freq_interval_output.reshape([b, -1]))
                 freq_interval_output = freq_interval_output.reshape(b, 1, -1)
 
-                # Append the result
-                loc_mod_features[loc].append(freq_interval_output)
+                # Append the modality feature to the list
+                mod_loc_features[mod].append(freq_interval_output)
 
-            # Stack results from different modalities, [b, 1, s, c]
-            loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=2)
+        # Concatenate the location features, [b, i, location, c]
+        for mod in self.modalities:
+            mod_loc_features[mod] = torch.stack(mod_loc_features[mod], dim=2)
 
-        # Step 2: Loc mod feature extraction, [b, i, location, c]
-        loc_features = []
-        for loc in loc_mod_features:
-            """Extract mod feature with peer-feature context"""
-            b, i, mods, c = loc_mod_features[loc].shape
-            loc_mod_input = loc_mod_features[loc].reshape([b * i, mods, c])
-            loc_mod_context_feature = self.mod_context_layers[loc](loc_mod_input)
-            loc_mod_context_feature = loc_mod_context_feature.reshape([b, i, mods, c])
+        # Step 2: Loc feature fusion and extraction for each mod, [b, i, location, c]
+        mod_features = []
+        for mod in mod_loc_features:
+            if len(self.locations) > 1:
+                """Extract mod feature with peer-feature context"""
+                b, i, locs, c = mod_loc_features[mod].shape
+                mod_loc_input = mod_loc_features[mod].reshape([b * i, locs, c])
+                mod_loc_context_feature = self.loc_context_layers[mod](mod_loc_input)
+                mod_loc_context_feature = mod_loc_context_feature.reshape([b, i, locs, c])
 
-            """Mod feature fusion, [b, 1, 1, c]"""
-            loc_feature = self.mod_fusion_layer[loc](loc_mod_context_feature)
-            loc_features.append(loc_feature)
-        loc_features = torch.stack(loc_features, dim=2)
+                """Mod feature fusion, [b, 1, 1, c] -- > [b, c]"""
+                mod_feature = self.loc_fusion_layer[mod](mod_loc_context_feature)
+                mod_feature = mod_feature.flatten(start_dim=1)
+                mod_features.append(mod_feature)
+            else:
+                mod_features.append(mod_loc_features[mod].flatten(start_dim=1))
 
-        # Step 3: Location-level fusion, [b, 1, l, c]
-        if len(self.locations) > 1:
-            b, i, l, c = loc_features.shape
-            loc_input = loc_features.reshape([b * i, l, c])
-            loc_context_feature = self.loc_context_layer(loc_input)
-            loc_context_feature = loc_context_feature.reshape([b, i, l, c])
-            sample_features = self.loc_fusion_layer(loc_context_feature)
+        # Step 3: Mod concatenation, [b, 1, mod, c]
+        if not class_head:
+            return dict(zip(self.modalities, mod_features))
         else:
-            sample_features = loc_features.squeeze(dim=2)
-
-        # Step 4: Classification Layers
-        sample_features = sample_features.flatten(start_dim=1)
-        sample_features = self.sample_embd_layer(sample_features)
-
-        if class_head:
+            sample_features = torch.cat(mod_features, dim=1)
             logits = self.class_layer(sample_features)
             return logits
-        else:
-            """Self-supervised pre-training"""
-            return sample_features

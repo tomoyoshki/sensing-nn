@@ -63,7 +63,7 @@ def supervised_train(
         train_loss_list = []
 
         # regularization configuration
-        for i, (time_loc_inputs, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
+        for i, (time_loc_inputs, labels, _) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
             aug_freq_loc_inputs, labels = augmenter.forward("fixed", time_loc_inputs, labels)
 

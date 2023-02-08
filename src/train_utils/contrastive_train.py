@@ -20,6 +20,7 @@ from general_utils.time_utils import time_sync
 from models.DINOModules import DINO
 from models.SimCLRModules import SimCLR
 from models.MoCoModule import MoCoWrapper
+from models.CMCModules import CMC
 
 
 def contrastive_pretrain(
@@ -61,9 +62,9 @@ def contrastive_pretrain(
     logging.info("---------------------------Start Pretraining Classifier-------------------------------")
     start = time_sync()
     best_val_loss = np.inf
-
     best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_best.pt")
     latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_latest.pt")
+
     for epoch in range(args.dataset_config[args.contrastive_framework]["pretrain_lr_scheduler"]["train_epochs"]):
         if epoch > 0:
             logging.info("-" * 40 + f"Epoch {epoch}" + "-" * 40)
@@ -75,33 +76,27 @@ def contrastive_pretrain(
         train_loss_list = []
 
         # regularization configuration
-        for i, (time_loc_inputs, _) in tqdm(enumerate(train_dataloader), total=num_batches):
-            # move to target device, FFT, and augmentations
+        for i, (time_loc_inputs, _, idx) in tqdm(enumerate(train_dataloader), total=num_batches):
+            # clear the gradients
             optimizer.zero_grad()
-            aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
-            aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
-            feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
+            idx = idx.to(args.device)
 
-            # forward pass
-            loss = loss_func(feature1, feature2)
+            # move to target device, FFT, and augmentations
+            if args.contrastive_framework == "CMC":
+                aug_freq_loc_inputs = augmenter.forward("random", time_loc_inputs)
+                feature1, feature2 = default_model(aug_freq_loc_inputs)
+            else:
+                aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
+                aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
+                feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
+
+            loss = loss_func(feature1, feature2, idx)
 
             # back propagation
             loss.backward()
 
-            # clip gradient and update
-            # torch.nn.utils.clip_grad_norm(
-            #     default_model.backbone.parameters(), classifier_config["optimizer"]["clip_grad"]
-            # )
+            # update
             optimizer.step()
-
-            if args.contrastive_framework == "DINO":
-                with torch.no_grad():
-                    for backbone_ps, teacher_ps in zip(
-                        default_model.backbone.parameters(), default_model.teacher.parameters()
-                    ):
-                        teacher_ps.data.mul_(default_model.config["momentum_teacher"])
-                        teacher_ps.data.add_((1 - default_model.config["momentum_teacher"]) * backbone_ps.detach().data)
-
             train_loss_list.append(loss.item())
 
             # Write train log
@@ -137,7 +132,7 @@ def contrastive_pretrain(
                 estimator=knn_estimator,
             )
 
-            # Save the latest model
+            # Save the latest model, only the backbone parameters are saved
             torch.save(default_model.backbone.state_dict(), latest_weight)
 
             # Save the best model according to validation result
@@ -165,6 +160,8 @@ def init_contrastive_framework(args, backbone_model):
         default_model = DINO(args, backbone_model)
     elif args.contrastive_framework == "MoCo":
         default_model = MoCoWrapper(args, backbone_model)
+    elif args.contrastive_framework == "CMC":
+        default_model = CMC(args, backbone_model)
     else:
         raise NotImplementedError
     default_model = default_model.to(args.device)

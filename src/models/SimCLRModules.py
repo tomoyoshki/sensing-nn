@@ -12,7 +12,6 @@ class SimCLR(nn.Module):
 
         # components
         self.backbone = backbone
-        # self.backbone.class_layer = nn.Identity()
         self.projector = nn.Sequential(
             nn.Linear(self.backbone_config["fc_dim"], self.backbone_config["fc_dim"]),
             nn.ReLU(),

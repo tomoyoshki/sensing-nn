@@ -3,11 +3,40 @@
 Tommy Kimura (tkimura4@illinois.edu)
 
 ## Table of Contents  
+[02/06/2023 - Contrastive Multiviews Coding](#February-6th-2023)
 [01/22/2023 - Tune loss temperature](#january-22nd-2023)
 [01/09/2023 - Added Mixup](#january-9th-2023)
 [01/05/2023 - Added Drop Path Rate and Absolute Positional Embedding](#january-5th-2023)
 [01/03/2023 - Added Padding and Flexible Image size](#january-3rd-2023)  
 [12/27/2022 - Initialized TransformerV4](#december-27th-2022) 
+
+## February-6th-2023
+
+### Major changes
+```bash
+├── data
+│   └── Parkland.yaml # SimCLR temperature parameters
+├── src
+│   ├── input_utils
+│       └── multi_modal_dataset.py # Add index as another return value for NCE Average computation
+│   └── models
+│       ├── CMCModules.py # Add CMC wrapper class
+│       ├── loss.py # Add CMC loss class and helper functions, NCEAverage, NCECriterion, NCESoftMaxLoss, all taken from CMC paper code
+│       └── TransformerV4.py # added CMC modality, if set, only extract feature for that specific modality
+│   ├── train_utils
+│       ├── eval_functions.py # Add CMC framework support, (only one fixed augementation and multi_view features concatnation)
+|       ├── knn.py # add CMC framework support
+│       └── contrastive_train.py # Add CMC framework support, (only one fixed augmentation)
+```
+
+### Notes
+
+- Potential issues and causes
+    -  Loss functions
+        - Maybe messed up the loss functions
+    - TransformerV4
+        - Incorrectly set up feature extractions for specific modality
+- Only started on two views first. Wanted to first complete two views and then work on general multiple views. 
 
 ## January 22nd 2023
 
