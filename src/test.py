@@ -33,21 +33,6 @@ def test(args):
     args.augmenter = augmenter
 
     # Init the classifier model
-    # if args.model == "DeepSense":
-    #     classifier = DeepSense(args, self_attention=False)
-    # elif args.model == "Transformer":
-    #     classifier = Transformer(args)
-    # elif args.model == "TransformerV2":
-    #     classifier = TransformerV2(args)
-    # elif args.model == "TransformerV3":
-    #     classifier = TransformerV3(args)
-    # elif args.model == "TransformerV4":
-    #     classifier = TransformerV4(args)
-    # elif args.model == "ResNet":
-    #     classifier = ResNet(args)
-    # else:
-    #     raise Exception(f"Invalid model provided: {args.model}")
-    # classifier = classifier.to(args.device)
     classifier = init_model(args)
     classifier = load_model_weight(classifier, args.classifier_weight)
     args.classifier = classifier
