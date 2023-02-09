@@ -37,6 +37,8 @@ def set_model_weight_folder(args):
             suffix = f"supervised_{args.task}_{args.label_ratio}"
         elif args.train_mode == "contrastive":
             suffix = f"contrastive_{args.contrastive_framework}"
+        elif args.train_mode == "MAE":
+            suffix = f"mae_{args.model}"
         else:
             raise Exception(f"Unknown train mode: {args.train_mode}")
 
@@ -119,6 +121,11 @@ def set_model_weight_file(args):
                 args.weight_folder,
                 f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_best.pt",
             )
+    elif args.train_mode == "MAE":
+        args.classifier_weight = os.path.join(
+            args.weight_folder,
+            f"{args.dataset}_{args.model}_{args.task}_best.pt",
+        )
     else:
         raise Exception(f"Invalid training mode provided: {args.stage}")
 

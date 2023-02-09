@@ -17,11 +17,12 @@ from models.Transformer import Transformer
 from models.TransformerV2 import TransformerV2
 from models.TransformerV3 import TransformerV3
 from models.TransformerV4 import TransformerV4
+from models.MAETransformer import MAETransformer
 
 # train utils
-from train_utils.eval_functions import eval_supervised_model
 from train_utils.supervised_train import supervised_train
 from train_utils.contrastive_train import contrastive_pretrain
+from train_utils.mae_train import mae_train
 from train_utils.finetune import finetune
 
 # loss functions
@@ -54,6 +55,8 @@ def init_model(args):
             classifier = TransformerV4(args)
     elif args.model == "ResNet":
         classifier = ResNet(args)
+    elif args.model == "MAETransformer":
+        classifier = MAETransformer(args)
     else:
         raise Exception(f"Invalid model provided: {args.model}")
     classifier = classifier.to(args.device)
@@ -112,6 +115,8 @@ def train(args):
                     args.batch_size,
                     temperature=args.dataset_config["SimCLR"]["temperature"],
                 ).to(args.device)
+        elif args.train_mode == "MAE":
+            loss_func = nn.CrossEntropyLoss()
         else:
             raise Exception(f"Invalid train mode provided: {args.train_mode}")
     logging.info("=\tLoss function defined")
@@ -155,6 +160,18 @@ def train(args):
             )
         else:
             raise Exception(f"Invalid stage provided: {args.stage}")
+    elif args.train_mode == "MAE":
+        mae_train(
+            args,
+            classifier,
+            augmenter,
+            train_dataloader,
+            val_dataloader,
+            test_dataloader,
+            loss_func,
+            tb_writer,
+            num_batches,
+        )
     else:
         pass
 
