@@ -335,7 +335,7 @@ CMC:
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.00001
+                start_lr: 0.0001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
@@ -351,7 +351,7 @@ CMC:
         # Fine tuning 
         finetune_optimizer:
                 name: "AdamW"
-                start_lr: 0.0001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
