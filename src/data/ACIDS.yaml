@@ -250,7 +250,7 @@ SimCLR:
 
 MoCo:
         emb_dim: 512
-        temperature: 0.5
+        temperature: 0.2
         momentum: 0.99
         # Pre training  
         pretrain_optimizer:
