@@ -6,12 +6,6 @@ import torch.nn as nn
 
 # import models
 from data_augmenter.Augmenter import Augmenter
-from models.ResNet import ResNet
-from models.DeepSense import DeepSense
-from models.Transformer import Transformer
-from models.TransformerV2 import TransformerV2
-from models.TransformerV3 import TransformerV3
-from models.TransformerV4 import TransformerV4
 
 # utils
 from general_utils.time_utils import time_sync

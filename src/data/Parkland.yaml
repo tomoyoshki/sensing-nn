@@ -63,15 +63,15 @@ DeepSense:
         loc_mod_conv_lens: 
                 audio: [[1, 80], [1, 5], [1, 5]]
                 seismic: [[1, 3], [1, 3], [1, 3]]
-        loc_mod_out_channels: 256
+        loc_mod_out_channels: 128
         loc_mod_conv_inter_layers: 4
         # single interval + location
         loc_conv_lens: [[1, 4], [1, 4], [1, 4]]
         loc_out_channels: 256
-        loc_conv_inter_layers: 4
+        loc_conv_inter_layers: 3
         # recurrent layer
         recurrent_dim: 256
-        recurrent_layers: 3
+        recurrent_layers: 2
         # FC layer
         fc_dim: 512
         pretrained_head: "mlp"
@@ -154,11 +154,11 @@ TransformerV4:
                 audio: 1
                 seismic: 1
         # single modality
-        time_freq_out_channels: 128
+        time_freq_out_channels: 64
         time_freq_head_num: 4
         time_freq_block_num: 
-                audio: [4, 4]
-                seismic: [4, 4]
+                audio: [2, 2, 4]
+                seismic: [2, 2, 4]
         # modality fusion
         mod_out_channels: 256
         mod_head_num: 4
@@ -178,7 +178,7 @@ TransformerV4:
         patch_size:
                 freq:
                         audio: [1, 40]
-                        seismic: [1, 2]
+                        seismic: [1, 1]
         # FC layer
         fc_dim: 512
         pretrained_head: "mlp"
@@ -201,8 +201,8 @@ TransformerV4:
                 decay_rate: 0.2
         # Data Augmenters:
         random_augmenters:
-                time_augmenters: ["permutation"]
-                freq_augmenters: ["no"]
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
+                freq_augmenters: ["phase_shift"]
         fixed_augmenters:
                 time_augmenters: ["mixup"]
                 freq_augmenters: ["no"]

@@ -131,7 +131,8 @@ class SimCLRLoss(nn.Module):
     def forward(self, z_i, z_j, idx=None):
         """
         We do not sample negative examples explicitly.
-        Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1) augmented examples within a minibatch as negative examples.
+        Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1)
+        augmented examples within a minibatch as negative examples.
         """
         batch_size = z_i.shape[0]
         N = 2 * batch_size
@@ -168,10 +169,12 @@ class MoCoLoss(nn.Module):
         # normalize
         q = nn.functional.normalize(q, dim=1)
         k = nn.functional.normalize(k, dim=1)
+
         # Einstein sum is more intuitive
         logits = torch.einsum("nc,mc->nm", [q, k]) / self.T
         N = logits.shape[0]  # batch size per GPU
         labels = (torch.arange(N, dtype=torch.long)).to(self.args.device)
+
         return nn.CrossEntropyLoss()(logits, labels) * (2 * self.T)
 
     def forward(self, q, k, idx=None):

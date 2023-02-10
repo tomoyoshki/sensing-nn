@@ -16,6 +16,7 @@ from data_augmenter.Augmenter import Augmenter
 from train_utils.eval_functions import eval_supervised_model
 from train_utils.supervised_train import supervised_train
 from train_utils.contrastive_train import contrastive_pretrain
+from train_utils.predictive_train import predictive_pretrain
 from train_utils.finetune import finetune
 
 # loss functions
@@ -32,7 +33,7 @@ from train_utils.model_selection import init_model
 def train(args):
     """The specific function for training."""
     # Init data loaders
-    train_dataloader, triplet_flag = create_dataloader("train", args, batch_size=args.batch_size, workers=args.workers)
+    train_dataloader, _ = create_dataloader("train", args, batch_size=args.batch_size, workers=args.workers)
     val_dataloader, _ = create_dataloader("val", args, batch_size=args.batch_size, workers=args.workers)
     test_dataloader, _ = create_dataloader("test", args, batch_size=args.batch_size, workers=args.workers)
     num_batches = len(train_dataloader)
@@ -50,7 +51,6 @@ def train(args):
 
     # Init the classifier model
     classifier = init_model(args)
-
     args.classifier = classifier
     logging.info(f"=\tClassifier model loaded")
 
@@ -77,10 +77,10 @@ def train(args):
                 loss_func = MoCoLoss(args).to(args.device)
             elif args.contrastive_framework == "CMC":
                 loss_func = CMCLoss(args, len(train_dataloader.dataset)).to(args.device)
-            elif args.contrastive_framework == "SimCLR":
+            elif args.contrastive_framework in {"SimCLR", "Cosmo"}:
                 loss_func = SimCLRLoss(
                     args.batch_size,
-                    temperature=args.dataset_config["SimCLR"]["temperature"],
+                    temperature=args.dataset_config[args.contrastive_framework]["temperature"],
                 ).to(args.device)
             else:
                 raise NotImplementedError(f"Loss function for {args.contrastive_framework} yet implemented")

@@ -90,6 +90,9 @@ def eval_contrastive_model(args, model, estimator, augmenter, data_loader, loss_
             if args.contrastive_framework == "CMC":
                 aug_freq_loc_inputs_1, _ = augmenter.forward("fixed", time_loc_inputs)
                 feature1, feature2 = model(aug_freq_loc_inputs_1)
+            elif args.contrastive_framework == "Cosmo":
+                aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
+                feature1, feature2 = model(aug_freq_loc_inputs_1)
             else:
                 aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
                 aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
@@ -97,10 +100,13 @@ def eval_contrastive_model(args, model, estimator, augmenter, data_loader, loss_
 
             """Eval KNN estimator."""
             aug_freq_loc_inputs = augmenter.forward("no", time_loc_inputs)
-
-            if args.contrastive_framework == "CMC":
+            if args.contrastive_framework in {"CMC"}:
                 knn_feature1, knn_feature2 = model(aug_freq_loc_inputs)
                 feat = torch.cat((knn_feature1.detach(), knn_feature2.detach()), dim=1)
+            elif args.contrastive_framework in {"Cosmo"}:
+                mod_features = model.backbone(aug_freq_loc_inputs, class_head=False)
+                mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
+                feat = torch.mean(torch.stack(mod_features, dim=1), dim=1)
             else:
                 feat = model.backbone(aug_freq_loc_inputs, class_head=False)
             sample_embeddings.append(feat.detach().cpu().numpy())
