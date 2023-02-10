@@ -41,7 +41,7 @@ class MultiModalDataset(Dataset):
         label_count = [0 for i in range(self.args.dataset_config[self.args.task]["num_classes"])]
 
         for idx in range(len(self.sample_files)):
-            _, label = self.__getitem__(idx)
+            _, label, _ = self.__getitem__(idx)
             label = torch.argmax(label).item() if label.numel() > 1 else label.item()
             sample_labels.append(label)
             label_count[label] += 1
@@ -73,7 +73,7 @@ class MultiModalDataset(Dataset):
         else:
             label = sample["label"]
 
-        return data, label
+        return data, label, idx
 
 
 class TripletMultiModalDataset(Dataset):

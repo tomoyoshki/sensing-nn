@@ -6,12 +6,6 @@ import torch.nn as nn
 
 # import models
 from data_augmenter.Augmenter import Augmenter
-from models.ResNet import ResNet
-from models.DeepSense import DeepSense
-from models.Transformer import Transformer
-from models.TransformerV2 import TransformerV2
-from models.TransformerV3 import TransformerV3
-from models.TransformerV4 import TransformerV4
 
 # utils
 from general_utils.time_utils import time_sync
@@ -19,6 +13,7 @@ from general_utils.weight_utils import load_model_weight
 from params.test_params import parse_test_params
 from input_utils.multi_modal_dataloader import create_dataloader
 from train_utils.eval_functions import eval_supervised_model
+from train_utils.model_selection import init_model
 
 
 def test(args):
@@ -32,21 +27,7 @@ def test(args):
     args.augmenter = augmenter
 
     # Init the classifier model
-    if args.model == "DeepSense":
-        classifier = DeepSense(args, self_attention=False)
-    elif args.model == "Transformer":
-        classifier = Transformer(args)
-    elif args.model == "TransformerV2":
-        classifier = TransformerV2(args)
-    elif args.model == "TransformerV3":
-        classifier = TransformerV3(args)
-    elif args.model == "TransformerV4":
-        classifier = TransformerV4(args)
-    elif args.model == "ResNet":
-        classifier = ResNet(args)
-    else:
-        raise Exception(f"Invalid model provided: {args.model}")
-    classifier = classifier.to(args.device)
+    classifier = init_model(args)
     classifier = load_model_weight(classifier, args.classifier_weight)
     args.classifier = classifier
 

@@ -12,13 +12,18 @@ from train_utils.eval_functions import val_and_logging
 from train_utils.optimizer import define_optimizer
 from train_utils.lr_scheduler import define_lr_scheduler
 from train_utils.knn import compute_embedding, compute_knn
-from train_utils.model_selection import init_contrastive_framework
 
 # utils
 from general_utils.time_utils import time_sync
 
+# Contrastive Learning utils
+from models.DINOModules import DINO
+from models.SimCLRModules import SimCLR
+from models.MoCoModule import MoCoWrapper
+from models.CMCModules import CMC
 
-def contrastive_pretrain(
+
+def predictive_pretrain(
     args,
     backbone_model,
     augmenter,
@@ -77,7 +82,7 @@ def contrastive_pretrain(
             idx = idx.to(args.device)
 
             # move to target device, FFT, and augmentations
-            if args.contrastive_framework in {"CMC", "Cosmo"}:
+            if args.contrastive_framework == "CMC":
                 aug_freq_loc_inputs = augmenter.forward("random", time_loc_inputs)
                 feature1, feature2 = default_model(aug_freq_loc_inputs)
             else:
@@ -145,3 +150,19 @@ def contrastive_pretrain(
     end = time_sync()
     logging.info("------------------------------------------------------------------------")
     logging.info(f"Total processing time: {(end - start): .3f} s")
+
+
+def init_contrastive_framework(args, backbone_model):
+    # model config
+    if args.contrastive_framework == "SimCLR":
+        default_model = SimCLR(args, backbone_model)
+    elif args.contrastive_framework == "DINO":
+        default_model = DINO(args, backbone_model)
+    elif args.contrastive_framework == "MoCo":
+        default_model = MoCoWrapper(args, backbone_model)
+    elif args.contrastive_framework == "CMC":
+        default_model = CMC(args, backbone_model)
+    else:
+        raise NotImplementedError
+    default_model = default_model.to(args.device)
+    return default_model

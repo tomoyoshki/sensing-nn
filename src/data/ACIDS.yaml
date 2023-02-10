@@ -68,18 +68,18 @@ DeepSense:
         loc_mod_conv_lens: 
                 audio: [[1, 4], [1, 4], [1, 4]]
                 seismic: [[1, 4], [1, 4], [1, 4]]
-        loc_mod_out_channels: 256 #128
-        loc_mod_conv_inter_layers: 6 # 4
+        loc_mod_out_channels: 128
+        loc_mod_conv_inter_layers: 4
         # single interval + location
         loc_conv_lens: [[1, 4], [1, 4], [1, 4]]
-        loc_out_channels: 256 #128
-        loc_conv_inter_layers: 4 #3
+        loc_out_channels: 128
+        loc_conv_inter_layers: 3
         # recurrent layer
-        recurrent_dim: 256 # 128
+        recurrent_dim: 128
         recurrent_layers: 2
         # FC layer
-        fc_dim: 512 # 256
-        pretrained_head: "linear"
+        fc_dim: 256
+        pretrained_head: "mlp"
         # Optimizer config
         optimizer:
                 name: "AdamW"
@@ -99,8 +99,8 @@ DeepSense:
                 decay_rate: 0.2
         # Data Augmenters:
         random_augmenters:
-                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
-                 freq_augmenters: ["phase_shift"]
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
+                freq_augmenters: ["phase_shift"]
         fixed_augmenters:
                 time_augmenters: ["channel_shuffle", "mixup"]
                 freq_augmenters: ["phase_shift"]
@@ -186,7 +186,7 @@ TransformerV4:
                         seismic: [1, 8]
         # FC layer
         fc_dim: 512
-        pretrained_head: "linear"
+        pretrained_head: "mlp"
         # Optimizer config
         optimizer:
                 name: "AdamW"
@@ -214,7 +214,7 @@ TransformerV4:
 
 SimCLR:
         emb_dim: 512
-        temperature: 0.07
+        temperature: 0.2
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
@@ -250,7 +250,7 @@ SimCLR:
 
 MoCo:
         emb_dim: 512
-        temperature: 0.07
+        temperature: 0.2
         momentum: 0.99
         # Pre training  
         pretrain_optimizer:
@@ -282,7 +282,7 @@ MoCo:
                 warmup_epochs: 0
                 train_epochs: 500
                 start_epoch: 0
-                decay_epochs: 150
+                decay_epochs: 100
                 decay_rate: 0.2
 
 DINO:
@@ -312,6 +312,81 @@ DINO:
         finetune_optimizer:
                 name: "AdamW"
                 start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        finetune_lr_scheduler:
+                name: "step"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 200
+                start_epoch: 0
+                decay_epochs: 50
+                decay_rate: 0.2
+
+CMC:
+        emb_dim: 512
+        nce_k: 1000
+        nce_t: 0.2
+        nce_momentum: 0.5
+        softmax: True
+        input_size: 256
+        # Pre training  
+        pretrain_optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        pretrain_lr_scheduler:
+                name: "cosine"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 2000
+                start_epoch: 0
+                decay_epochs: 500
+                decay_rate: 0.2
+        # Fine tuning 
+        finetune_optimizer:
+                name: "AdamW"
+                start_lr: 0.001
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        finetune_lr_scheduler:
+                name: "step"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 200
+                start_epoch: 0
+                decay_epochs: 50
+                decay_rate: 0.2
+
+Cosmo:
+        temperature: 0.2
+        # Pre training  
+        pretrain_optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        pretrain_lr_scheduler:
+                name: "cosine"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 2000
+                start_epoch: 0
+                decay_epochs: 500
+                decay_rate: 0.2
+        # Fine tuning 
+        finetune_optimizer:
+                name: "AdamW"
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0

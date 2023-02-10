@@ -25,9 +25,22 @@ def compute_knn(args, classifier, augmenter, data_loader_train):
 
     sample_embeddings = []
     labels = []
-    for time_loc_inputs, y in data_loader_train:
+    for time_loc_inputs, y, _ in data_loader_train:
+        # FFT and move to target device
         aug_freq_loc_inputs, _ = augmenter.forward("no", time_loc_inputs, y)
-        sample_embeddings.append(classifier(aug_freq_loc_inputs, class_head=False).detach().cpu().numpy())
+
+        # feature extraction
+        if args.contrastive_framework == "CMC":
+            mod_features = classifier(aug_freq_loc_inputs, class_head=False)
+            mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
+            features = torch.cat(mod_features, dim=1)
+        elif args.contrastive_framework == "Cosmo":
+            mod_features = classifier(aug_freq_loc_inputs, class_head=False)
+            mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
+            features = torch.mean(torch.stack(mod_features, dim=1), dim=1)
+        else:
+            features = classifier(aug_freq_loc_inputs, class_head=False)
+        sample_embeddings.append(features.detach().cpu().numpy())
         labels.append(y.detach().cpu().numpy())
 
     sample_embeddings = np.concatenate(sample_embeddings)
@@ -63,9 +76,24 @@ def compute_embedding(args, classifier, augmenter, data_loader):
     all_labels = []
     classes = args.dataset_config[args.task]["class_names"]
 
-    for time_loc_inputs, labels in data_loader:
-        aug_freq_loc_inputs, y = augmenter.forward("no", time_loc_inputs, labels)
-        embs_l.append(classifier(aug_freq_loc_inputs, class_head=False).detach().cpu())
+    for time_loc_inputs, labels, _ in data_loader:
+        # FFT and move to target device
+        aug_freq_loc_inputs, _ = augmenter.forward("no", time_loc_inputs, labels)
+
+        # Feature extraction
+        if args.contrastive_framework == "CMC":
+            mod_features = classifier(aug_freq_loc_inputs, class_head=False)
+            mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
+            features = torch.cat(mod_features, dim=1)
+        elif args.contrastive_framework == "Cosmo":
+            mod_features = classifier(aug_freq_loc_inputs, class_head=False)
+            mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
+            features = torch.mean(torch.stack(mod_features, dim=1), dim=1)
+        else:
+            features = classifier(aug_freq_loc_inputs, class_head=False)
+        embs_l.append(features.detach().cpu())
+
+        # Label extraction
         if labels.dim() > 1:
             labels = labels.argmax(dim=1, keepdim=False)
         all_labels.append([classes[i] for i in labels])

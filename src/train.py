@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 # import models
 from data_augmenter.Augmenter import Augmenter
+<<<<<<< HEAD
 from models.ResNet import ResNet
 from models.DeepSense import DeepSense
 from models.Transformer import Transformer
@@ -18,21 +19,28 @@ from models.TransformerV2 import TransformerV2
 from models.TransformerV3 import TransformerV3
 from models.TransformerV4 import TransformerV4
 from models.MAETransformer import MAETransformer
+=======
+>>>>>>> 26d3bc53a85a43d3efd72c42809f6f64d34adfa3
 
 # train utils
 from train_utils.supervised_train import supervised_train
 from train_utils.contrastive_train import contrastive_pretrain
+<<<<<<< HEAD
 from train_utils.mae_train import mae_train
+=======
+from train_utils.predictive_train import predictive_pretrain
+>>>>>>> 26d3bc53a85a43d3efd72c42809f6f64d34adfa3
 from train_utils.finetune import finetune
 
 # loss functions
-from models.loss import DINOLoss, SimCLRLoss, MoCoLoss
+from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss
 
 # utils
 from torch.utils.tensorboard import SummaryWriter
 from params.train_params import parse_train_params
 from input_utils.multi_modal_dataloader import create_dataloader, preprocess_triplet_batch
 from input_utils.time_input_utils import count_range
+<<<<<<< HEAD
 
 
 def init_model(args):
@@ -61,12 +69,15 @@ def init_model(args):
         raise Exception(f"Invalid model provided: {args.model}")
     classifier = classifier.to(args.device)
     return classifier
+=======
+from train_utils.model_selection import init_model
+>>>>>>> 26d3bc53a85a43d3efd72c42809f6f64d34adfa3
 
 
 def train(args):
     """The specific function for training."""
     # Init data loaders
-    train_dataloader, triplet_flag = create_dataloader("train", args, batch_size=args.batch_size, workers=args.workers)
+    train_dataloader, _ = create_dataloader("train", args, batch_size=args.batch_size, workers=args.workers)
     val_dataloader, _ = create_dataloader("val", args, batch_size=args.batch_size, workers=args.workers)
     test_dataloader, _ = create_dataloader("test", args, batch_size=args.batch_size, workers=args.workers)
     num_batches = len(train_dataloader)
@@ -84,7 +95,6 @@ def train(args):
 
     # Init the classifier model
     classifier = init_model(args)
-
     args.classifier = classifier
     logging.info(f"=\tClassifier model loaded")
 
@@ -105,18 +115,24 @@ def train(args):
             loss_func = nn.CrossEntropyLoss()
         elif args.train_mode == "contrastive":
             """Contrastive pretraining only."""
-            # TODO: Setup argument in data yaml file
             if args.contrastive_framework == "DINO":
                 loss_func = DINOLoss(args).to(args.device)
             elif args.contrastive_framework == "MoCo":
                 loss_func = MoCoLoss(args).to(args.device)
-            else:
+            elif args.contrastive_framework == "CMC":
+                loss_func = CMCLoss(args, len(train_dataloader.dataset)).to(args.device)
+            elif args.contrastive_framework in {"SimCLR", "Cosmo"}:
                 loss_func = SimCLRLoss(
                     args.batch_size,
-                    temperature=args.dataset_config["SimCLR"]["temperature"],
+                    temperature=args.dataset_config[args.contrastive_framework]["temperature"],
                 ).to(args.device)
+<<<<<<< HEAD
         elif args.train_mode == "MAE":
             loss_func = nn.CrossEntropyLoss()
+=======
+            else:
+                raise NotImplementedError(f"Loss function for {args.contrastive_framework} yet implemented")
+>>>>>>> 26d3bc53a85a43d3efd72c42809f6f64d34adfa3
         else:
             raise Exception(f"Invalid train mode provided: {args.train_mode}")
     logging.info("=\tLoss function defined")
