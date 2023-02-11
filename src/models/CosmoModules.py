@@ -22,7 +22,7 @@ class Cosmo(nn.Module):
         super(Cosmo, self).__init__()
 
         self.args = args
-        self.config = args.dataset_config["CMC"]
+        self.config = args.dataset_config["Cosmo"]
         self.modalities = args.dataset_config["modality_names"]
 
         # build encoders

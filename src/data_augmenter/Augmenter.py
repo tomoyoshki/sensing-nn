@@ -38,7 +38,7 @@ class Augmenter:
         # setup the augmenters
         self.load_augmenters(args)
 
-    def forward(self, option, time_loc_inputs, labels=None):
+    def forward(self, option, time_loc_inputs, labels=None, return_aug_id=False, return_aug_mods=False):
         """General interface for the forward function."""
         # move to target device
         time_loc_inputs, labels = self.move_to_target_device(time_loc_inputs, labels)
@@ -46,7 +46,7 @@ class Augmenter:
         if option == "fixed":
             return self.forward_fixed(time_loc_inputs, labels)
         elif option == "random":
-            return self.forward_random(time_loc_inputs, labels)
+            return self.forward_random(time_loc_inputs, labels, return_aug_id, return_aug_mods)
         elif option == "no":
             return self.forward_noaug(time_loc_inputs, labels)
         else:
@@ -58,21 +58,21 @@ class Augmenter:
         We only add noise to the time domeain, but not the feature level.
         """
         # time-domain augmentation
-        aug_time_loc_inputs, aug_labels = time_loc_inputs, labels
+        augmented_time_loc_inputs, augmented_labels = time_loc_inputs, labels
         for augmenter in self.time_augmenters:
-            aug_time_loc_inputs, aug_labels = augmenter(aug_time_loc_inputs, aug_labels)
+            augmented_time_loc_inputs, augmented_labels = augmenter(augmented_time_loc_inputs, augmented_labels)
 
         # time --> freq domain with FFT
-        freq_loc_inputs = self.fft_preprocess(aug_time_loc_inputs)
+        freq_loc_inputs = self.fft_preprocess(augmented_time_loc_inputs)
 
         # freq-domain augmentation
-        aug_freq_loc_inputs, aug_labels = freq_loc_inputs, labels
+        augmented_freq_loc_inputs, augmented_labels = freq_loc_inputs, labels
         for augmenter in self.freq_augmenters:
-            aug_freq_loc_inputs, aug_labels = augmenter(aug_freq_loc_inputs, aug_labels)
+            augmented_freq_loc_inputs, augmented_labels = augmenter(augmented_freq_loc_inputs, augmented_labels)
 
-        return aug_freq_loc_inputs, aug_labels
+        return augmented_freq_loc_inputs, augmented_labels
 
-    def forward_random(self, time_loc_inputs, labels=None):
+    def forward_random(self, time_loc_inputs, labels=None, return_aug_id=False, return_aug_mods=False):
         """Randomly select one augmenter from both (time, freq) augmenter pool and apply it to the input."""
         # select a random augmenter
         rand_aug_id = np.random.randint(len(self.aug_names))
@@ -80,22 +80,29 @@ class Augmenter:
         rand_augmenter = self.augmenters[rand_aug_id]
 
         # time-domain augmentation
-        aug_time_loc_inputs, aug_labels = time_loc_inputs, labels
+        augmented_time_loc_inputs, augmented_labels = time_loc_inputs, labels
         if rand_aug_name in self.time_augmenter_pool:
-            aug_time_loc_inputs, aug_labels = rand_augmenter(aug_time_loc_inputs, aug_labels)
+            augmented_time_loc_inputs, augmented_labels = rand_augmenter(augmented_time_loc_inputs, augmented_labels)
 
         # time --> freq domain with FFT
-        freq_loc_inputs = self.fft_preprocess(aug_time_loc_inputs)
+        freq_loc_inputs = self.fft_preprocess(augmented_time_loc_inputs)
 
         # freq-domain augmentation
-        aug_freq_loc_inputs, aug_labels = freq_loc_inputs, labels
+        augmented_freq_loc_inputs, augmented_labels = freq_loc_inputs, labels
         if rand_aug_name in self.freq_augmenter_pool:
-            aug_freq_loc_inputs, aug_labels = rand_augmenter(aug_freq_loc_inputs, aug_labels)
+            augmented_freq_loc_inputs, augmented_labels = rand_augmenter(augmented_freq_loc_inputs, augmented_labels)
 
-        if labels is None:
-            return aug_freq_loc_inputs
+        if return_aug_id:
+            b = time_loc_inputs[self.locations[0]][self.modalities[0]].shape[0]
+            augmenter_labels = torch.Tensor([rand_aug_id]).to(self.args.device).tile([b]).long()
+            return augmented_freq_loc_inputs, augmenter_labels
+        elif return_aug_mods:
+            pass
+        elif labels is not None:
+            """Return both the augmented data and the downstream task labels"""
+            return augmented_freq_loc_inputs, augmented_labels
         else:
-            return aug_freq_loc_inputs, aug_labels
+            return augmented_freq_loc_inputs
 
     def forward_noaug(self, time_loc_inputs, labels=None):
         """
@@ -175,7 +182,7 @@ class Augmenter:
             "mag_warp": MagWarpAugmenter,
             "time_mask": TimeMaskAugmenter,
         }
-        if args.train_mode in {"contrastive"} and args.stage == "pretrain":
+        if args.train_mode in {"contrastive", "predictive"} and args.stage == "pretrain":
             self.time_aug_names = args.dataset_config[args.model]["random_augmenters"]["time_augmenters"]
         else:
             self.time_aug_names = args.dataset_config[args.model]["fixed_augmenters"]["time_augmenters"]

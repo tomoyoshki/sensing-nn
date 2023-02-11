@@ -8,19 +8,14 @@ import numpy as np
 from tqdm import tqdm
 
 # train utils
-from train_utils.eval_functions import val_and_logging
+from train_utils.eval_functions import val_and_logging, eval_predictive_loss
 from train_utils.optimizer import define_optimizer
 from train_utils.lr_scheduler import define_lr_scheduler
 from train_utils.knn import compute_embedding, compute_knn
+from train_utils.model_selection import init_predictive_framework
 
 # utils
 from general_utils.time_utils import time_sync
-
-# Contrastive Learning utils
-from models.DINOModules import DINO
-from models.SimCLRModules import SimCLR
-from models.MoCoModule import MoCoWrapper
-from models.CMCModules import CMC
 
 
 def predictive_pretrain(
@@ -38,16 +33,14 @@ def predictive_pretrain(
     The supervised training function for tbe backbone network,
     used in train of supervised mode or fine-tune of foundation models.
     """
-    classifier_config = args.dataset_config[args.model]
-
     # Initialize contrastive model
-    default_model = init_contrastive_framework(args, backbone_model)
+    default_model = init_predictive_framework(args, backbone_model)
 
     # Define the optimizer and learning rate scheduler
     optimizer = define_optimizer(args, default_model.parameters())
     lr_scheduler = define_lr_scheduler(args, optimizer)
 
-    # Fix the patch embedding layer, from MOCOv3
+    # Fix the patch embedding layer of TransformerV4, from MOCOv3
     for name, param in default_model.backbone.named_parameters():
         if "patch_embed" in name:
             param.requires_grad = False
@@ -82,15 +75,7 @@ def predictive_pretrain(
             idx = idx.to(args.device)
 
             # move to target device, FFT, and augmentations
-            if args.contrastive_framework == "CMC":
-                aug_freq_loc_inputs = augmenter.forward("random", time_loc_inputs)
-                feature1, feature2 = default_model(aug_freq_loc_inputs)
-            else:
-                aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
-                aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
-                feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
-
-            loss = loss_func(feature1, feature2, idx)
+            loss = eval_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs)
 
             # back propagation
             loss.backward()
@@ -150,19 +135,3 @@ def predictive_pretrain(
     end = time_sync()
     logging.info("------------------------------------------------------------------------")
     logging.info(f"Total processing time: {(end - start): .3f} s")
-
-
-def init_contrastive_framework(args, backbone_model):
-    # model config
-    if args.contrastive_framework == "SimCLR":
-        default_model = SimCLR(args, backbone_model)
-    elif args.contrastive_framework == "DINO":
-        default_model = DINO(args, backbone_model)
-    elif args.contrastive_framework == "MoCo":
-        default_model = MoCoWrapper(args, backbone_model)
-    elif args.contrastive_framework == "CMC":
-        default_model = CMC(args, backbone_model)
-    else:
-        raise NotImplementedError
-    default_model = default_model.to(args.device)
-    return default_model

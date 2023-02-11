@@ -14,6 +14,9 @@ from models.MoCoModule import MoCoWrapper
 from models.CMCModules import CMC
 from models.CosmoModules import Cosmo
 
+# Predictive Learning utils
+from models.MTSSModules import MTSS
+
 
 def init_model(args):
     """Automatically select the model according to args."""
@@ -56,5 +59,18 @@ def init_contrastive_framework(args, backbone_model):
         default_model = Cosmo(args, backbone_model)
     else:
         raise NotImplementedError
+    default_model = default_model.to(args.device)
+    return default_model
+
+
+def init_predictive_framework(args, backbone_model):
+    """
+    Initialize the predictive framework according to args.
+    """
+    if args.predictive_framework == "MTSS":
+        default_model = MTSS(args, backbone_model)
+    else:
+        raise NotImplementedError
+
     default_model = default_model.to(args.device)
     return default_model

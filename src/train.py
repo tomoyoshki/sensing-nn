@@ -69,19 +69,20 @@ def train(args):
     else:
         if args.train_mode == "supervised" or args.stage == "finetune":
             loss_func = nn.CrossEntropyLoss()
+        elif args.train_mode == "predictive":
+            """Predictive pretraining only."""
+            if args.predictive_framework == "MTSS":
+                loss_func = nn.CrossEntropyLoss()
         elif args.train_mode == "contrastive":
             """Contrastive pretraining only."""
             if args.contrastive_framework == "DINO":
                 loss_func = DINOLoss(args).to(args.device)
             elif args.contrastive_framework == "MoCo":
                 loss_func = MoCoLoss(args).to(args.device)
-            elif args.contrastive_framework == "CMC":
+            elif args.contrastive_framework in {"CMC", "Cosmo"}:
                 loss_func = CMCLoss(args, len(train_dataloader.dataset)).to(args.device)
-            elif args.contrastive_framework in {"SimCLR", "Cosmo"}:
-                loss_func = SimCLRLoss(
-                    args.batch_size,
-                    temperature=args.dataset_config[args.contrastive_framework]["temperature"],
-                ).to(args.device)
+            elif args.contrastive_framework in {"SimCLR"}:
+                loss_func = SimCLRLoss(args).to(args.device)
             else:
                 raise NotImplementedError(f"Loss function for {args.contrastive_framework} yet implemented")
         else:
@@ -100,33 +101,43 @@ def train(args):
             tb_writer,
             num_batches,
         )
-    elif args.train_mode in {"contrastive"}:
-        if args.stage == "pretrain":
-            contrastive_pretrain(
-                args,
-                classifier,
-                augmenter,
-                train_dataloader,
-                val_dataloader,
-                test_dataloader,
-                loss_func,
-                tb_writer,
-                num_batches,
-            )
-        elif args.stage == "finetune":
-            finetune(
-                args,
-                classifier,
-                augmenter,
-                train_dataloader,
-                val_dataloader,
-                test_dataloader,
-                loss_func,
-                tb_writer,
-                num_batches,
-            )
-        else:
-            raise Exception(f"Invalid stage provided: {args.stage}")
+    elif args.train_mode == "contrastive" and args.stage == "pretrain":
+        contrastive_pretrain(
+            args,
+            classifier,
+            augmenter,
+            train_dataloader,
+            val_dataloader,
+            test_dataloader,
+            loss_func,
+            tb_writer,
+            num_batches,
+        )
+
+    elif args.train_mode == "predictive" and args.stage == "pretrain":
+        predictive_pretrain(
+            args,
+            classifier,
+            augmenter,
+            train_dataloader,
+            val_dataloader,
+            test_dataloader,
+            loss_func,
+            tb_writer,
+            num_batches,
+        )
+    elif args.stage == "finetune":
+        finetune(
+            args,
+            classifier,
+            augmenter,
+            train_dataloader,
+            val_dataloader,
+            test_dataloader,
+            loss_func,
+            tb_writer,
+            num_batches,
+        )
     else:
         pass
 

@@ -49,6 +49,12 @@ def parse_base_args(option="train"):
         help="Contrastive learning framework to use",
     )
     parser.add_argument(
+        "-predictive_framework",
+        type=str,
+        default="MTSS",
+        help="Contrastive learning framework to use",
+    )
+    parser.add_argument(
         "-inference_mode",
         type=str,
         default="original",
