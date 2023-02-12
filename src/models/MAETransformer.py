@@ -94,7 +94,6 @@ class MAETransformer(nn.Module):
             self.mod_in_layers[loc] = nn.ModuleDict()
 
             self.patch_expand[loc] = nn.ModuleDict()
-
             self.mask_token[loc] = nn.ParameterDict()
             self.decoder_blocks[loc] = nn.ModuleDict()
             self.decoder_pred[loc] = nn.ModuleDict()

@@ -27,7 +27,9 @@ def init_model(args):
     elif args.model == "TransformerV4":
         if args.train_mode == "contrastive" and args.stage == "pretrain" and args.contrastive_framework in {"MoCo"}:
             return TransformerV4
-        elif args.train_mode == "contrastive" and args.contrastive_framework in {"CMC", "Cosmo"}:
+        elif (
+            args.train_mode == "contrastive" and args.contrastive_framework in {"CMC", "Cosmo"}
+        ) or args.train_mode == "MAE":
             classifier = TransformerV4_CMC(args)
         else:
             classifier = TransformerV4(args)

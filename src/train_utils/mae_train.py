@@ -68,12 +68,13 @@ def mae_train(
         train_loss_list = []
 
         # regularization configuration
-        for i, (time_loc_inputs, labels) in tqdm(enumerate(train_dataloader), total=num_batches):
+        for i, (time_loc_inputs, labels, index) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
-            aug_freq_loc_inputs, labels = augmenter.forward("fixed", time_loc_inputs, labels)
+            aug_freq_loc_inputs, labels = augmenter.forward("random", time_loc_inputs, labels)
 
             # forward pass
             loss = classifier(aug_freq_loc_inputs)
+            exit(1)
             # loss = loss_func(logits, labels)
 
             # back propagation

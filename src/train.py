@@ -11,25 +11,12 @@ from tqdm import tqdm
 
 # import models
 from data_augmenter.Augmenter import Augmenter
-<<<<<<< HEAD
-from models.ResNet import ResNet
-from models.DeepSense import DeepSense
-from models.Transformer import Transformer
-from models.TransformerV2 import TransformerV2
-from models.TransformerV3 import TransformerV3
-from models.TransformerV4 import TransformerV4
-from models.MAETransformer import MAETransformer
-=======
->>>>>>> 26d3bc53a85a43d3efd72c42809f6f64d34adfa3
 
 # train utils
 from train_utils.supervised_train import supervised_train
 from train_utils.contrastive_train import contrastive_pretrain
-<<<<<<< HEAD
 from train_utils.mae_train import mae_train
-=======
 from train_utils.predictive_train import predictive_pretrain
->>>>>>> 26d3bc53a85a43d3efd72c42809f6f64d34adfa3
 from train_utils.finetune import finetune
 
 # loss functions
@@ -40,38 +27,7 @@ from torch.utils.tensorboard import SummaryWriter
 from params.train_params import parse_train_params
 from input_utils.multi_modal_dataloader import create_dataloader, preprocess_triplet_batch
 from input_utils.time_input_utils import count_range
-<<<<<<< HEAD
-
-
-def init_model(args):
-    if args.model == "DeepSense":
-        if args.stage == "pretrain" and args.contrastive_framework == "MoCo":
-            return DeepSense
-        else:
-            classifier = DeepSense(args, self_attention=False)
-    elif args.model == "Transformer":
-        classifier = Transformer(args)
-    elif args.model == "TransformerV2":
-        classifier = TransformerV2(args)
-    elif args.model == "TransformerV3":
-        classifier = TransformerV3(args)
-    elif args.model == "TransformerV4":
-        # TODO: generalization
-        if args.stage == "pretrain" and args.contrastive_framework == "MoCo":
-            return TransformerV4
-        else:
-            classifier = TransformerV4(args)
-    elif args.model == "ResNet":
-        classifier = ResNet(args)
-    elif args.model == "MAETransformer":
-        classifier = MAETransformer(args)
-    else:
-        raise Exception(f"Invalid model provided: {args.model}")
-    classifier = classifier.to(args.device)
-    return classifier
-=======
 from train_utils.model_selection import init_model
->>>>>>> 26d3bc53a85a43d3efd72c42809f6f64d34adfa3
 
 
 def train(args):
@@ -126,13 +82,8 @@ def train(args):
                     args.batch_size,
                     temperature=args.dataset_config[args.contrastive_framework]["temperature"],
                 ).to(args.device)
-<<<<<<< HEAD
         elif args.train_mode == "MAE":
             loss_func = nn.CrossEntropyLoss()
-=======
-            else:
-                raise NotImplementedError(f"Loss function for {args.contrastive_framework} yet implemented")
->>>>>>> 26d3bc53a85a43d3efd72c42809f6f64d34adfa3
         else:
             raise Exception(f"Invalid train mode provided: {args.train_mode}")
     logging.info("=\tLoss function defined")
