@@ -60,7 +60,9 @@ class Augmenter:
         # time-domain augmentation
         augmented_time_loc_inputs, augmented_labels = time_loc_inputs, labels
         for augmenter in self.time_augmenters:
-            augmented_time_loc_inputs, augmented_labels = augmenter(augmented_time_loc_inputs, augmented_labels)
+            augmented_time_loc_inputs, augmented_mod_labels, augmented_labels = augmenter(
+                augmented_time_loc_inputs, augmented_labels
+            )
 
         # time --> freq domain with FFT
         freq_loc_inputs = self.fft_preprocess(augmented_time_loc_inputs)
@@ -68,12 +70,17 @@ class Augmenter:
         # freq-domain augmentation
         augmented_freq_loc_inputs, augmented_labels = freq_loc_inputs, labels
         for augmenter in self.freq_augmenters:
-            augmented_freq_loc_inputs, augmented_labels = augmenter(augmented_freq_loc_inputs, augmented_labels)
+            augmented_freq_loc_inputs, augmented_mod_labels, augmented_labels = augmenter(
+                augmented_freq_loc_inputs, augmented_labels
+            )
 
         return augmented_freq_loc_inputs, augmented_labels
 
     def forward_random(self, time_loc_inputs, labels=None, return_aug_id=False, return_aug_mods=False):
-        """Randomly select one augmenter from both (time, freq) augmenter pool and apply it to the input."""
+        """
+        Randomly select one augmenter from both (time, freq) augmenter pool and apply it to the input.
+        For the augmented_mod_labels, since we only perform one augmentation in each batch, we have a unique label.
+        """
         # select a random augmenter
         rand_aug_id = np.random.randint(len(self.aug_names))
         rand_aug_name = self.aug_names[rand_aug_id]
@@ -82,7 +89,9 @@ class Augmenter:
         # time-domain augmentation
         augmented_time_loc_inputs, augmented_labels = time_loc_inputs, labels
         if rand_aug_name in self.time_augmenter_pool:
-            augmented_time_loc_inputs, augmented_labels = rand_augmenter(augmented_time_loc_inputs, augmented_labels)
+            augmented_time_loc_inputs, augmented_mod_labels, augmented_labels = rand_augmenter(
+                augmented_time_loc_inputs, augmented_labels
+            )
 
         # time --> freq domain with FFT
         freq_loc_inputs = self.fft_preprocess(augmented_time_loc_inputs)
@@ -90,14 +99,16 @@ class Augmenter:
         # freq-domain augmentation
         augmented_freq_loc_inputs, augmented_labels = freq_loc_inputs, labels
         if rand_aug_name in self.freq_augmenter_pool:
-            augmented_freq_loc_inputs, augmented_labels = rand_augmenter(augmented_freq_loc_inputs, augmented_labels)
+            augmented_freq_loc_inputs, augmented_mod_labels, augmented_labels = rand_augmenter(
+                augmented_freq_loc_inputs, augmented_labels
+            )
 
         if return_aug_id:
             b = time_loc_inputs[self.locations[0]][self.modalities[0]].shape[0]
             augmenter_labels = torch.Tensor([rand_aug_id]).to(self.args.device).tile([b]).long()
             return augmented_freq_loc_inputs, augmenter_labels
         elif return_aug_mods:
-            pass
+            return augmented_freq_loc_inputs, augmented_mod_labels
         elif labels is not None:
             """Return both the augmented data and the downstream task labels"""
             return augmented_freq_loc_inputs, augmented_labels

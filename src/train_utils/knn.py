@@ -39,7 +39,7 @@ def compute_knn(args, classifier, augmenter, data_loader_train):
             mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
             features = torch.mean(torch.stack(mod_features, dim=1), dim=1)
         else:
-            "Predictive fraworks and other contrastive frameworks"
+            "Predictive frameworks and other contrastive frameworks"
             features = classifier(aug_freq_loc_inputs, class_head=False)
         sample_embeddings.append(features.detach().cpu().numpy())
         labels.append(y.detach().cpu().numpy())

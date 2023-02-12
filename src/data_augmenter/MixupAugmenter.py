@@ -22,4 +22,4 @@ class MixupAugmenter(nn.Module):
         # TODO: Contrastive learning mixup, mixup function with no labels
         aug_loc_inputs, aug_labels = self.mixup_func(org_loc_inputs, labels, self.args.dataset_config)
 
-        return aug_loc_inputs, aug_labels
+        return aug_loc_inputs, None, aug_labels

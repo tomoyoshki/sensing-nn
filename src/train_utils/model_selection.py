@@ -1,3 +1,5 @@
+import torch.nn as nn
+
 from models.ResNet import ResNet
 from models.DeepSense import DeepSense
 from models.Transformer import Transformer
@@ -16,6 +18,10 @@ from models.CosmoModules import Cosmo
 
 # Predictive Learning utils
 from models.MTSSModules import MTSS
+from models.ModPredModules import ModPred
+
+# loss functions
+from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss
 
 
 def init_model(args):
@@ -69,8 +75,43 @@ def init_predictive_framework(args, backbone_model):
     """
     if args.predictive_framework == "MTSS":
         default_model = MTSS(args, backbone_model)
+    elif args.predictive_framework == "ModPred":
+        default_model = ModPred(args, backbone_model)
     else:
         raise NotImplementedError
 
     default_model = default_model.to(args.device)
     return default_model
+
+
+def init_loss_func(args, train_dataloader):
+    """Initialize the loss function according to the config."""
+    if args.multi_class:
+        loss_func = nn.BCELoss()
+    else:
+        if args.train_mode == "supervised" or args.stage == "finetune":
+            loss_func = nn.CrossEntropyLoss()
+        elif args.train_mode == "predictive":
+            """Predictive pretraining only."""
+            if args.predictive_framework == "MTSS":
+                loss_func = nn.CrossEntropyLoss()
+            elif args.predictive_framework == "ModPred":
+                loss_func = nn.CrossEntropyLoss()
+            else:
+                raise NotImplementedError(f"Loss function for {args.predictive_framework} yet implemented")
+        elif args.train_mode == "contrastive":
+            """Contrastive pretraining only."""
+            if args.contrastive_framework == "DINO":
+                loss_func = DINOLoss(args).to(args.device)
+            elif args.contrastive_framework == "MoCo":
+                loss_func = MoCoLoss(args).to(args.device)
+            elif args.contrastive_framework in {"CMC", "Cosmo"}:
+                loss_func = CMCLoss(args, len(train_dataloader.dataset)).to(args.device)
+            elif args.contrastive_framework in {"SimCLR"}:
+                loss_func = SimCLRLoss(args).to(args.device)
+            else:
+                raise NotImplementedError(f"Loss function for {args.contrastive_framework} yet implemented")
+        else:
+            raise Exception(f"Invalid train mode provided: {args.train_mode}")
+
+    return loss_func

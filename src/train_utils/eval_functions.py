@@ -31,6 +31,9 @@ def eval_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inp
     if args.predictive_framework == "MTSS":
         aug_freq_loc_inputs, pretrain_labels = augmenter.forward("random", time_loc_inputs, return_aug_id=True)
         pretrain_predictions = default_model(aug_freq_loc_inputs)
+    elif args.predictive_framework == "ModPred":
+        aug_freq_loc_inputs, pretrain_labels = augmenter.forward("random", time_loc_inputs, return_aug_mods=True)
+        pretrain_predictions = default_model(aug_freq_loc_inputs)
     else:
         raise NotImplementedError(f"Predictive framwork {args.predictive_framework} yet implemented")
 
@@ -184,8 +187,8 @@ def val_and_logging(
         classifier_dataloader (_type_): _description_
         classifier_loss_func (_type_): _description_
     """
-    if args.train_mode in {"contrastive"} and args.stage == "pretrain":
-        logging.info(f"Train contrastive loss: {train_loss: .5f} \n")
+    if args.train_mode in {"contrastive", "predictive"} and args.stage == "pretrain":
+        logging.info(f"Train {args.train_mode} loss: {train_loss: .5f} \n")
     else:
         logging.info(f"Train classifier loss: {train_loss: .5f} \n")
 

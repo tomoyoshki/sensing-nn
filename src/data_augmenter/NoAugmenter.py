@@ -16,4 +16,4 @@ class NoAugmenter(nn.Module):
         x: loc --> mod --> [b, c, i, s]
         Return: Same shape as x, 1 means available, 0 means missing.
         """
-        return loc_inputs, labels
+        return loc_inputs, None, labels

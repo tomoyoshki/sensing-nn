@@ -19,15 +19,13 @@ from train_utils.contrastive_train import contrastive_pretrain
 from train_utils.predictive_train import predictive_pretrain
 from train_utils.finetune import finetune
 
-# loss functions
-from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss
 
 # utils
 from torch.utils.tensorboard import SummaryWriter
 from params.train_params import parse_train_params
 from input_utils.multi_modal_dataloader import create_dataloader, preprocess_triplet_batch
 from input_utils.time_input_utils import count_range
-from train_utils.model_selection import init_model
+from train_utils.model_selection import init_model, init_loss_func
 
 
 def train(args):
@@ -64,29 +62,7 @@ def train(args):
         count_range(args, train_dataloader)
 
     # define the loss function
-    if args.multi_class:
-        loss_func = nn.BCELoss()
-    else:
-        if args.train_mode == "supervised" or args.stage == "finetune":
-            loss_func = nn.CrossEntropyLoss()
-        elif args.train_mode == "predictive":
-            """Predictive pretraining only."""
-            if args.predictive_framework == "MTSS":
-                loss_func = nn.CrossEntropyLoss()
-        elif args.train_mode == "contrastive":
-            """Contrastive pretraining only."""
-            if args.contrastive_framework == "DINO":
-                loss_func = DINOLoss(args).to(args.device)
-            elif args.contrastive_framework == "MoCo":
-                loss_func = MoCoLoss(args).to(args.device)
-            elif args.contrastive_framework in {"CMC", "Cosmo"}:
-                loss_func = CMCLoss(args, len(train_dataloader.dataset)).to(args.device)
-            elif args.contrastive_framework in {"SimCLR"}:
-                loss_func = SimCLRLoss(args).to(args.device)
-            else:
-                raise NotImplementedError(f"Loss function for {args.contrastive_framework} yet implemented")
-        else:
-            raise Exception(f"Invalid train mode provided: {args.train_mode}")
+    loss_func = init_loss_func(args, train_dataloader)
     logging.info("=\tLoss function defined")
 
     if args.train_mode == "supervised":

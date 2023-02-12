@@ -81,6 +81,10 @@ def predictive_pretrain(
             loss.backward()
 
             # update
+            # torch.nn.utils.clip_grad_norm(
+            #     backbone_model.parameters(),
+            #     args.dataset_config[args.model]["optimizer"]["clip_grad"],
+            # )
             optimizer.step()
             train_loss_list.append(loss.item())
 
