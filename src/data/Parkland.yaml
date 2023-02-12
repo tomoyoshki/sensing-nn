@@ -154,7 +154,7 @@ TransformerV4:
                 audio: 1
                 seismic: 1
         # single modality
-        time_freq_out_channels: 64
+        time_freq_out_channels: 128
         time_freq_head_num: 4
         time_freq_block_num: 
                 audio: [4, 4]
@@ -210,7 +210,7 @@ TransformerV4:
         # MAE
         fusion: "concat"
         # decoders
-        decoder_channels: 128
+        decoder_channels: 256
         masked_ratio: 0.75
         decoder_time_freq_block_num: 
                 audio: [4, 4]

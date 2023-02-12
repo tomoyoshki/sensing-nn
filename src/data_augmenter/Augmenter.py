@@ -175,7 +175,7 @@ class Augmenter:
             "mag_warp": MagWarpAugmenter,
             "time_mask": TimeMaskAugmenter,
         }
-        if args.train_mode in {"contrastive"} and args.stage == "pretrain":
+        if args.train_mode in {"contrastive", "MAE"} and args.stage == "pretrain":
             self.time_aug_names = args.dataset_config[args.model]["random_augmenters"]["time_augmenters"]
         else:
             self.time_aug_names = args.dataset_config[args.model]["fixed_augmenters"]["time_augmenters"]

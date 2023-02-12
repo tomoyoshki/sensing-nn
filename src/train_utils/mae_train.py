@@ -73,7 +73,7 @@ def mae_train(
             aug_freq_loc_inputs, labels = augmenter.forward("random", time_loc_inputs, labels)
 
             # forward pass
-            loss = classifier(aug_freq_loc_inputs)
+            features = classifier.mae_forward(aug_freq_loc_inputs)
             exit(1)
             # loss = loss_func(logits, labels)
 

@@ -64,12 +64,15 @@ class TransformerV4_CMC(nn.Module):
         self.mod_patch_embed = nn.ModuleDict()
         self.mod_in_layers = nn.ModuleDict()
 
+        self.layer_dims = {}
+
         for loc in self.locations:
             self.freq_interval_layers[loc] = nn.ModuleDict()
             self.patch_embed[loc] = nn.ModuleDict()
             self.absolute_pos_embed[loc] = nn.ParameterDict()
             self.mod_in_layers[loc] = nn.ModuleDict()
 
+            self.layer_dims[loc] = {}
             for mod in self.modalities:
                 # Decide the spatial size for "image"
                 stride = self.config["in_stride"][mod]
@@ -141,6 +144,9 @@ class TransformerV4_CMC(nn.Module):
                     )
                     self.freq_interval_layers[loc][mod].append(layer)
 
+                print(
+                    f"{mod} mod in layers {down_ratio} with {(patches_resolution[0] // down_ratio) * (patches_resolution[1] // down_ratio) * layer_dim} -> {self.config['loc_out_channels']}"
+                )
                 # Unify the input channels for each modality
                 self.mod_in_layers[loc][mod] = nn.Linear(
                     (patches_resolution[0] // down_ratio) * (patches_resolution[1] // down_ratio) * layer_dim,
@@ -232,20 +238,23 @@ class TransformerV4_CMC(nn.Module):
         self.decoder_norm = nn.LayerNorm(self.config["decoder_channels"])
         self.masked_ratio = self.config["masked_ratio"]
 
+        self.mod_out_layers = nn.ModuleDict()
+
         for loc in self.locations:
             self.patch_expand[loc] = nn.ModuleDict()
             self.mask_token[loc] = nn.ParameterDict()
             self.decoder_blocks[loc] = nn.ModuleDict()
             self.decoder_pred[loc] = nn.ModuleDict()
+            self.mod_out_layers[loc] = nn.ModuleDict()
 
             for mod in self.modalities:
                 self.mask_token[loc][mod] = nn.Parameter(torch.zeros(1, 1, self.config["time_freq_out_channels"]))
 
-                self.patch_expand[loc][mod] = PatchExpanding(
-                    embed_dim=self.config["time_freq_out_channels"]
-                    * 2 ** (len(self.config["time_freq_block_num"][mod]) - 1),
-                    norm_layer=self.norm_layer,
-                )
+                # self.patch_expand[loc][mod] = PatchExpanding(
+                #     embed_dim=self.config["time_freq_out_channels"]
+                #     * 2 ** (len(self.config["time_freq_block_num"][mod]) - 1),
+                #     norm_layer=self.norm_layer,
+                # )
 
                 self.decoder_blocks[loc][mod] = nn.ModuleList()
 
@@ -262,9 +271,9 @@ class TransformerV4_CMC(nn.Module):
                 for i_layer, block_num in enumerate(
                     self.config["decoder_time_freq_block_num"][mod][:-1]
                 ):  # different downsample ratios
-                    inverse_i_layer = len(self.config["time_freq_block_num"][mod]) - i_layer - 2
+                    inverse_i_layer = len(self.config["time_freq_block_num"][mod]) - i_layer - 1
                     down_ratio = 2**inverse_i_layer
-                    layer_dim = int(self.config["decoder_channels"] * down_ratio)
+                    layer_dim = int(self.config["time_freq_out_channels"] * down_ratio)
                     layer = BasicLayer(
                         dim=layer_dim,  # C in SWIN
                         input_resolution=(
@@ -287,6 +296,18 @@ class TransformerV4_CMC(nn.Module):
                         else None,
                     )
                     self.decoder_blocks[loc][mod].append(layer)
+
+                down_ratio = 2 ** (len(self.config["time_freq_block_num"][mod]) - 1)
+                layer_dim = int(self.config["time_freq_out_channels"] * down_ratio)
+                self.layer_dims[loc][mod] = layer_dim
+                print(
+                    f"{mod} mod out layers with {down_ratio} from {self.config['loc_out_channels']} -> {(patches_resolution[0] // down_ratio) * (patches_resolution[1] // down_ratio) * layer_dim}"
+                )
+                self.mod_out_layers[loc][mod] = nn.Linear(
+                    self.config["loc_out_channels"],
+                    (patches_resolution[0] // down_ratio) * (patches_resolution[1] // down_ratio) * layer_dim,
+                )
+
                 patch_area = self.config["patch_size"]["freq"][mod][0] * self.config["patch_size"]["freq"][mod][1]
                 self.decoder_pred[loc][mod] = nn.Linear(
                     self.config["decoder_channels"],
@@ -318,7 +339,7 @@ class TransformerV4_CMC(nn.Module):
         # test different padding
         freq_input = F.pad(input=freq_input, pad=(0, padded_width, 0, padded_height), mode="constant", value=0)
 
-        return freq_input, padded_img_size
+        return freq_input, padded_img_size, (b, i, s, c)
 
     def forward(self, freq_x, class_head=True):
         """
@@ -331,13 +352,11 @@ class TransformerV4_CMC(nn.Module):
         for loc in self.locations:
             for mod in self.modalities:
                 # Pad the input
-                freq_input, padded_img_size = self.pad_input(freq_x, loc, mod)
+                freq_input, padded_img_size, (b, i, s, c) = self.pad_input(freq_x, loc, mod)
 
                 # Patch Partition and Linear Embedding
                 embeded_input = self.patch_embed[loc][mod](freq_input)
-
                 # for masked auto encoder
-                print(f"masking for {mod}\n\n")
                 if self.args.train_mode == "MAE":
                     window_masking(
                         embeded_input,
@@ -353,21 +372,26 @@ class TransformerV4_CMC(nn.Module):
                 if self.config["APE"]:
                     embeded_input = embeded_input + self.absolute_pos_embed[loc][mod]
 
+                print(f"Original shape: {embeded_input.shape}")
                 # SwinTransformer Layer block
                 for layer in self.freq_interval_layers[loc][mod]:
                     freq_interval_output = layer(embeded_input)
+                    print(f"Swinblock shape: {freq_interval_output.shape}")
                     embeded_input = freq_interval_output
 
                 # Unify the input channels for each modality
                 freq_interval_output = self.mod_in_layers[loc][mod](freq_interval_output.reshape([b, -1]))
-                freq_interval_output = freq_interval_output.reshape(b, 1, -1)
 
+                print(f"Freq interval output shape: ", freq_interval_output.shape)
+                freq_interval_output = freq_interval_output.reshape(b, 1, -1)
+                print(f"Flattened freq interval output shape: ", freq_interval_output.shape)
                 # Append the modality feature to the list
                 mod_loc_features[mod].append(freq_interval_output)
 
         # Concatenate the location features, [b, i, location, c]
         for mod in self.modalities:
             mod_loc_features[mod] = torch.stack(mod_loc_features[mod], dim=2)
+            print(f"{mod} shape; {mod_loc_features[mod].shape}")
 
         # Step 2: Loc feature fusion and extraction for each mod, [b, i, location, c]
         mod_features = []
@@ -402,26 +426,32 @@ class TransformerV4_CMC(nn.Module):
             logits = self.class_layer(sample_features)
             return logits
 
-    def decode(self, mod_features):
+    def decode(self, encoded_features):
         """
         Decode the latent features
         """
-        encoded_features = {mod_features[mod] for mod in self.modalities}
-        decoded_out = {}
+        # encoded_features = {mod: mod_features[mod] for mod in self.modalities}
+        decoded_out = {mod: [] for mod in self.modalities}
         for loc in self.locations:
             decoded_out[loc] = {}
             for mod in self.modalities:
-                encoder_tokens = self.patch_expand[loc][mod](encoded_features[mod])
+                mod_encoded_layer = self.mod_out_layers[loc][mod](encoded_features[mod])
+                mod_encoded_layer = mod_encoded_layer.reshape(mod_encoded_layer.shape[0], -1, self.layer_dims[loc][mod])
+
+                print("Mod encoded layer shape: ", mod_encoded_layer.shape)
+                # encoder_tokens = self.patch_expand[loc][mod](mod_encoded_layer)
 
                 # SwinTransformer Layer block
                 for layer in self.decoder_blocks[loc][mod]:
-                    decoded_tokens = layer(encoder_tokens)
-                    encoder_tokens = decoded_tokens
+                    decoded_tokens = layer(mod_encoded_layer)
+                    mod_encoded_layer = decoded_tokens
+
+                print("Decoded token!: ", decoded_tokens.shape)
 
                 decoded_tokens = self.decoder_norm(decoded_tokens)
                 # predictor projection
                 decoded_tokens = self.decoder_pred[loc][mod](decoded_tokens)
-                decoded_out[loc][mod].append(decoded_tokens)
+                decoded_out[mod].append(decoded_tokens)
 
         return decoded_out
 
@@ -455,8 +485,8 @@ class TransformerV4_CMC(nn.Module):
 
         return dict(zip(self.modalities, mod_features))
 
-    def mae_fowrard(self, freq_x):
+    def mae_forward(self, freq_x):
         mod_features = self.forward(freq_x, False)
         encoded_mod_features = self.encode_features(mod_features)
-        recovered_x = self.decode(freq_x, encoded_mod_features)
+        recovered_x = self.decode(encoded_mod_features)
         return recovered_x

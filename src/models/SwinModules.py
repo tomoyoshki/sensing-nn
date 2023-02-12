@@ -381,7 +381,6 @@ class PatchMerging(nn.Module):
         """
         x: B, H*W, C
         """
-        print(f"Patch mergin called!")
         H, W = self.input_resolution
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
@@ -492,6 +491,8 @@ class BasicLayer(nn.Module):
             self.patch_expanding = None
 
     def forward(self, x):
+        if self.patch_expanding is not None:
+            x = self.patch_expanding(x)
         for blk in self.blocks:
             if self.use_checkpoint:
                 x = checkpoint.checkpoint(blk, x)
@@ -499,9 +500,6 @@ class BasicLayer(nn.Module):
                 x = blk(x)
         if self.downsample is not None:
             x = self.downsample(x)
-
-        if self.patch_expanding is not None:
-            x = self.patch_expanding(x)
         return x
 
     def extra_repr(self) -> str:
@@ -572,6 +570,8 @@ class PatchExpanding(nn.Module):
         self.embed_dim = embed_dim
         self.expand = nn.Linear(embed_dim, 2 * embed_dim, bias=False)
         self.norm = norm_layer(embed_dim // 2)
+
+        print(f"Patch expanding norm: ", embed_dim)
 
     def forward(self, x):
         print(f"Embed dim: {self.embed_dim}")

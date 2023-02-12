@@ -25,16 +25,15 @@ def window_masking(
     mask_len_sparse: Whether the returned mask length is a sparse short length
     """
     B, L, D = x.shape
-
     h, w = input_resolution[0], input_resolution[1]  # padded image h and w
 
-    assert L == h * w
+    # assert L == h * w
     ph, pw = patch_resolution[0], patch_resolution[1]  # num patches h and w
-    dh, dw = int(h // window_size[0]), int(w // window_size[1])  # window_resolution h and w
+    dh, dw = int(ph // window_size[0]), int(pw // window_size[1])  # window_resolution h and w
 
     rh, rw = window_size[0], window_size[1]
 
-    assert dh == h / rh and dw == w / rw
+    # assert dh == h / rh and dw == w / rw
 
     noise = torch.rand(B, dw * dh, device=x.device)
     sparse_shuffle = torch.argsort(noise, dim=1)
@@ -47,7 +46,7 @@ def window_masking(
         for j in range(rw):
             if i == 0 and j == 0:
                 continue
-            index_keep = torch.cat([index_keep, index_keep_part + w * i + j], dim=1)
+            index_keep = torch.cat([index_keep, index_keep_part + pw * i + j], dim=1)
     index_all = np.expand_dims(range(L), axis=0).repeat(B, axis=0)
     index_mask = np.zeros([B, int(L - index_keep.shape[-1])], dtype=np.int)
     for i in range(B):
