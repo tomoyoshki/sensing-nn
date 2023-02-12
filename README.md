@@ -36,17 +36,17 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive
 
 #### Pretraining
 ```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=ACIDS -train_mode=predictive -contrastive_framework=MTSS -stage=pretrain -model=TransformerV4
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=ACIDS -train_mode=predictive -predictive_framework=MTSS -stage=pretrain -model=TransformerV4
 ```
 
 #### Finetuning
 ```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=ACIDS -train_mode=predictive -contrastive_framework=MTSS -stage=finetune -task=vehicle_classification -model=TransformerV4
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=ACIDS -train_mode=predictive -predictive_framework=MTSS -stage=finetune -task=vehicle_classification -model=TransformerV4
 ```
 
 #### Testing 
 ```
-CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -contrastive_framework=MTSS -stage=finetune -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive
+CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -predictive_framework=MTSS -stage=finetune -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive
 ```
 
 ### Parkland Results
