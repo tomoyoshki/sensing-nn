@@ -136,6 +136,11 @@ def eval_contrastive_model(args, model, estimator, augmenter, data_loader, loss_
     return mean_loss, mean_f1, mean_acc, conf_matrix
 
 
+def eval_mae_model(args, model, estimator, augmenter, data_loader, loss_func):
+    """Evaluate the performance with KNN estimator."""
+    model.eval()
+
+
 def val_and_logging(
     args,
     epoch,

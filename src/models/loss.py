@@ -184,6 +184,55 @@ class MoCoLoss(nn.Module):
         return loss
 
 
+class MAELoss(nn.Module):
+    """MAE Loss function
+    https://github.com/facebookresearch/mae/blob/main/models_mae.py
+    """
+
+    def __init__(self, args):
+        super(MAELoss, self).__init__()
+        self.args = args
+        self.modalities = args.dataset_config["modality_names"]
+        self.backbone_config = args.dataset_config[args.model]
+        self.locations = args.dataset_config["location_names"]
+        self.norm_pix_loss = True
+
+    def patchify(self, imgs, patch_size):
+        """
+        imgs: (N, 3, H, W)
+        x: (N, L, patch_size**2 *3)
+        """
+
+        ph, pw = patch_size
+
+        h = imgs.shape[2] // ph
+        w = imgs.shape[3] // pw
+
+        x = imgs.reshape(shape=(imgs.shape[0], 2, h, ph, w, pw))
+        x = torch.einsum("nchpwq->nhwpqc", x)
+        x = x.reshape(imgs.shape[0], h * w, ph * pw * 2)
+        return x
+
+    def forward(self, padded_x, decoded_x, masks):
+        total_loss = 0
+        for loc in self.locations:
+            for mod in self.modalities:
+                target = self.patchify(padded_x[loc][mod], self.backbone_config["patch_size"]["freq"][mod])
+                mask = masks[loc][mod]
+                pred = decoded_x[loc][mod]
+                if self.norm_pix_loss:
+                    mean = target.mean(dim=-1, keepdim=True)
+                    var = target.var(dim=-1, keepdim=True)
+                    target = (target - mean) / (var + 1.0e-6) ** 0.5
+
+                loss = (pred - target) ** 2
+                loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+
+                loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
+                total_loss += loss
+        return total_loss
+
+
 class CMCLoss(nn.Module):
     def __init__(self, args, N):
         super(CMCLoss, self).__init__()

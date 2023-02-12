@@ -248,13 +248,8 @@ class TransformerV4(nn.Module):
 
                 # SwinTransformer Layer block
                 for layer in self.freq_interval_layers[loc][mod]:
-                    print(f"Before layer shape: {embeded_input.shape}")
                     freq_interval_output = layer(embeded_input)
-                    print(f"After layer shape: {freq_interval_output.shape}")
                     embeded_input = freq_interval_output
-
-                print(f"After all: {freq_interval_output.shape}")
-                print()
 
                 # Unify the input channels for each modality
                 freq_interval_output = self.mod_in_layers[loc][mod](freq_interval_output.reshape([b, -1]))

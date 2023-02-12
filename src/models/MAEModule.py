@@ -75,4 +75,4 @@ def window_masking(
         for i in range(B):
             x_masked[i, index_mask.cpu().numpy()[i, :], :] = mask_token
         # x_masked = rearrange(x_masked, "B (H W) C -> B H W C", H=int(x_masked.shape[1] ** 0.5))
-        return (x_masked,)
+        return (x_masked, mask)

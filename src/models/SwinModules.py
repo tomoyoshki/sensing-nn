@@ -491,8 +491,6 @@ class BasicLayer(nn.Module):
             self.patch_expanding = None
 
     def forward(self, x):
-        if self.patch_expanding is not None:
-            x = self.patch_expanding(x)
         for blk in self.blocks:
             if self.use_checkpoint:
                 x = checkpoint.checkpoint(blk, x)
@@ -500,6 +498,8 @@ class BasicLayer(nn.Module):
                 x = blk(x)
         if self.downsample is not None:
             x = self.downsample(x)
+        if self.patch_expanding is not None:
+            x = self.patch_expanding(x)
         return x
 
     def extra_repr(self) -> str:
@@ -565,26 +565,21 @@ class PatchEmbed(nn.Module):
 
 
 class PatchExpanding(nn.Module):
-    def __init__(self, embed_dim, norm_layer=nn.LayerNorm):
+    def __init__(self, input_resolution, embed_dim, norm_layer=nn.LayerNorm):
         super(PatchExpanding, self).__init__()
+        self.input_resolution = input_resolution
         self.embed_dim = embed_dim
         self.expand = nn.Linear(embed_dim, 2 * embed_dim, bias=False)
         self.norm = norm_layer(embed_dim // 2)
 
-        print(f"Patch expanding norm: ", embed_dim)
-
     def forward(self, x):
-        print(f"Embed dim: {self.embed_dim}")
-        print(f"Before expand: {x.shape}")
         x = self.expand(x)
-        print(f"After expand: {x.shape}")
         x = rearrange(
             x,
-            "B (H W) (P1 P2 C) -> B (H P1) (W P2) C",
-            H=int(x.shape[1] ** 0.5),
+            "B (L) (P1 P2 C) -> B (L P1 P2) C",
             P1=2,
             P2=2,
         )
         x = self.norm(x)
-        x = rearrange(x, "B H W C -> B (H W) C")
+        # x = rearrange(x, "B H W C -> B (H W) C")
         return x

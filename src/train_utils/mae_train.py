@@ -70,19 +70,16 @@ def mae_train(
         # regularization configuration
         for i, (time_loc_inputs, labels, index) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
-            aug_freq_loc_inputs, labels = augmenter.forward("random", time_loc_inputs, labels)
+            aug_freq_loc_inputs, _ = augmenter.forward("random", time_loc_inputs)
 
             # forward pass
-            features = classifier.mae_forward(aug_freq_loc_inputs)
-            exit(1)
-            # loss = loss_func(logits, labels)
+            decoded_x, padded_x, masks = classifier.mae_forward(aug_freq_loc_inputs, False)
+            loss = loss_func(padded_x, decoded_x, masks)
 
             # back propagation
             optimizer.zero_grad()
             loss.backward()
 
-            # clip gradient and update
-            # torch.nn.utils.clip_grad_norm(classifier.parameters(), classifier_config["optimizer"]["clip_grad"])
             optimizer.step()
             train_loss_list.append(loss.item())
 
@@ -92,31 +89,31 @@ def mae_train(
 
         train_loss = np.mean(train_loss_list)
         logging.info(f"train loss: {train_loss}")
-        # # validation and logging
-        # if epoch % val_epochs == 0:
-        #     train_loss = np.mean(train_loss_list)
-        #     val_acc, val_loss = val_and_logging(
-        #         args,
-        #         epoch,
-        #         tb_writer,
-        #         classifier,
-        #         augmenter,
-        #         val_dataloader,
-        #         test_dataloader,
-        #         loss_func,
-        #         train_loss,
-        #     )
+        # validation and logging
+        if epoch % val_epochs == 0:
+            train_loss = np.mean(train_loss_list)
+            val_acc, val_loss = val_and_logging(
+                args,
+                epoch,
+                tb_writer,
+                classifier,
+                augmenter,
+                val_dataloader,
+                test_dataloader,
+                loss_func,
+                train_loss,
+            )
 
-        #     # Save the latest model
-        #     torch.save(classifier.state_dict(), latest_weight)
+            # Save the latest model
+            torch.save(classifier.state_dict(), latest_weight)
 
-        #     # Save the best model according to validation result
-        #     if val_acc > best_val_acc:
-        #         best_val_acc = val_acc
-        #         torch.save(classifier.state_dict(), best_weight)
+            # Save the best model according to validation result
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                torch.save(classifier.state_dict(), best_weight)
 
-        # # Update the learning rate scheduler
-        # lr_scheduler.step(epoch)
+        # Update the learning rate scheduler
+        lr_scheduler.step(epoch)
 
     # flush and close the TB writer
     tb_writer.flush()

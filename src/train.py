@@ -20,7 +20,7 @@ from train_utils.predictive_train import predictive_pretrain
 from train_utils.finetune import finetune
 
 # loss functions
-from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss
+from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, MAELoss
 
 # utils
 from torch.utils.tensorboard import SummaryWriter
@@ -83,7 +83,7 @@ def train(args):
                     temperature=args.dataset_config[args.contrastive_framework]["temperature"],
                 ).to(args.device)
         elif args.train_mode == "MAE":
-            loss_func = nn.CrossEntropyLoss()
+            loss_func = MAELoss(args)
         else:
             raise Exception(f"Invalid train mode provided: {args.train_mode}")
     logging.info("=\tLoss function defined")
