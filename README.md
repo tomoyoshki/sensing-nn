@@ -72,7 +72,8 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 | 20230211    | DeepSense + MoCo | 88.34%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 64| 
 | 20230130    | TransformerV4 (Supervised)| 88.74%   |  sl29 | Parkland_TransformerV4/exp63_supervised_vehicle_classification_1.0 | use MixUp augmentation. |
 | 20230130    | TransformerV4 + SimCLR | 93.03%   |  sl29 | Parkland_TransformerV4/exp22_contrastive_SimCLR | use large dataset, batch size 256|
-| 20230130    | TransformerV4 + MoCoV3 | 91.03%   | tkimura4 | Parkland_TransformerV4/exp10_contrastive | small dataaset, batch size 64|
+| 20230130    | TransformerV4 + MoCo | 91.03%   | tkimura4 | Parkland_TransformerV4/exp10_contrastive | small dataaset, batch size 64|
+| 20230212    | TransformerV4 + MoCo | 91.09%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large datasets, batch size 64|
 
 #### 3. Speed classification 
 
@@ -83,6 +84,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 | 20230211    | DeepSense + MoCo | 96.87%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 64| 
 | 20230131    | TransformerV4 (Supervised)| 56.25%   |  sl29 | Parkland_TransformerV4/exp0_supervised_speed_classification_1.0 | use MixUp augmentation. |
 | 20230131    | TransformerV4 + SimCLR | 93.75%   |  sl29 | Parkland_TransformerV4/exp22_contrastive_SimCLR | use large datasets, batch size 256|
+| 20230212    | TransformerV4 + MoCo | 93.60%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large datasets, batch size 64|
 
 #### 4. Distance classification 
 
@@ -93,6 +95,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 | 20230211    | DeepSense + MoCo | 84.84%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 64| 
 | 20230131    | TransformerV4 (Supervised)| 54.54%   |  sl29 | Parkland_TransformerV4/exp1_supervised_distance_classification_1.0 | no augmentation. |
 | 20230131    | TransformerV4 + SimCLR | 75.76%   |  sl29 | Parkland_TransformerV4/exp22_contrastive_SimCLR | use large datasets, batch size 256|
+| 20230212    | TransformerV4 + MoCo | 76.01%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large datasets, batch size 64|
 
 
 ### ACIDS Results
