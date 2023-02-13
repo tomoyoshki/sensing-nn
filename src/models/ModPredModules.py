@@ -36,7 +36,7 @@ class ModPred(nn.Module):
             predicted augmentations
         """
         sample_emb = self.backbone(freq_input, class_head=False)
-        predicted_aug = self.class_layer(sample_emb)
+        predicted_aug_mods = self.class_layer(sample_emb)
         
-        return predicted_aug
+        return predicted_aug_mods
         

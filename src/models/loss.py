@@ -113,7 +113,7 @@ class SimCLRLoss(nn.Module):
     def __init__(self, args):
         super(SimCLRLoss, self).__init__()
         self.batch_size = args.batch_size
-        self.temperature = (args.dataset_config[args.contrastive_framework]["temperature"],)
+        self.temperature = args.dataset_config[args.contrastive_framework]["temperature"]
 
         self.mask = self.mask_correlated_samples(self.batch_size)
         self.criterion = nn.CrossEntropyLoss(reduction="sum")

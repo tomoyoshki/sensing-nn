@@ -30,10 +30,8 @@ class Augmenter:
             model (_type_): _description_
         """
         self.args = args
-        self.mode = self.args.train_mode if self.args.option == "train" else self.args.inference_mode
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
-        logging.info(f"=\t[Option]: {args.option}, mode: {self.mode}, stage: {args.stage}")
 
         # setup the augmenters
         self.load_augmenters(args)
@@ -193,10 +191,17 @@ class Augmenter:
             "mag_warp": MagWarpAugmenter,
             "time_mask": TimeMaskAugmenter,
         }
-        if args.train_mode in {"contrastive", "predictive"} and args.stage == "pretrain":
-            self.time_aug_names = args.dataset_config[args.model]["random_augmenters"]["time_augmenters"]
+
+        if args.train_mode == "contrastive" and args.stage == "pretrain":
+            self.time_aug_names = args.dataset_config[args.contrastive_framework]["random_augmenters"][
+                "time_augmenters"
+            ]
+        elif args.train_mode == "predictive" and args.stage == "pretrain":
+            self.time_aug_names = args.dataset_config[args.predictive_framework]["random_augmenters"]["time_augmenters"]
         else:
+            """Supervised training and fine-tuning"""
             self.time_aug_names = args.dataset_config[args.model]["fixed_augmenters"]["time_augmenters"]
+
         self.time_augmenters = []
         for aug_name in self.time_aug_names:
             if aug_name not in self.time_augmenter_pool:
@@ -212,10 +217,17 @@ class Augmenter:
             "freq_mask": FreqMaskAugmenter,
             "phase_shift": PhaseShiftAugmenter,
         }
-        if args.train_mode in {"contrastive"} and args.stage == "pretrain":
-            self.freq_aug_names = args.dataset_config[args.model]["random_augmenters"]["freq_augmenters"]
+
+        if args.train_mode == "contrastive" and args.stage == "pretrain":
+            self.freq_aug_names = args.dataset_config[args.contrastive_framework]["random_augmenters"][
+                "freq_augmenters"
+            ]
+        elif args.train_mode == "predictive" and args.stage == "pretrain":
+            self.freq_aug_names = args.dataset_config[args.predictive_framework]["random_augmenters"]["freq_augmenters"]
         else:
+            """Supervised training and fine-tuning"""
             self.freq_aug_names = args.dataset_config[args.model]["fixed_augmenters"]["freq_augmenters"]
+
         self.freq_augmenters = []
         for aug_name in self.freq_aug_names:
             if aug_name not in self.freq_augmenter_pool:

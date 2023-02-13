@@ -247,6 +247,10 @@ SimCLR:
                 start_epoch: 0
                 decay_epochs: 100
                 decay_rate: 0.2
+        # data augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
+                freq_augmenters: ["phase_shift"]
 
 MoCo:
         emb_dim: 512
@@ -284,6 +288,10 @@ MoCo:
                 start_epoch: 0
                 decay_epochs: 100
                 decay_rate: 0.2
+        # data augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
+                freq_augmenters: ["phase_shift"]
 
 DINO:
         emb_dim: 512
@@ -363,10 +371,13 @@ CMC:
                 train_epochs: 200
                 start_epoch: 0
                 decay_epochs: 50
-                decay_rate: 0.2
+        # data augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
+                freq_augmenters: ["phase_shift"]
 
 Cosmo:
-        temperature: 0.2
+        temperature: 0.07
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
@@ -386,7 +397,7 @@ Cosmo:
         # Fine tuning 
         finetune_optimizer:
                 name: "AdamW"
-                start_lr: 0.001
+                start_lr: 0.0001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
@@ -399,6 +410,10 @@ Cosmo:
                 start_epoch: 0
                 decay_epochs: 50
                 decay_rate: 0.2
+        # data augmenters
+        random_augmenters:
+                time_augmenters: ["jitter"]
+                freq_augmenters: []
 
 MTSS:
         # Pre training  
@@ -433,12 +448,16 @@ MTSS:
                 start_epoch: 0
                 decay_epochs: 50
                 decay_rate: 0.2
+        # data augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
+                freq_augmenters: ["phase_shift"]
 
 ModPred:
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.00003
+                start_lr: 0.003
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
@@ -467,6 +486,10 @@ ModPred:
                 start_epoch: 0
                 decay_epochs: 50
                 decay_rate: 0.2
+        # data augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
+                freq_augmenters: ["phase_shift"]
 
 
 # ------------------------------------------- Data Augmenter Configs ------------------------------------------

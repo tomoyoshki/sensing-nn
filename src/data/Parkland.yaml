@@ -242,6 +242,10 @@ SimCLR:
                 start_epoch: 0
                 decay_epochs: 150
                 decay_rate: 0.2
+        # Augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
+                freq_augmenters: ["phase_shift"]
 
 MoCo:
         emb_dim: 512
@@ -279,6 +283,10 @@ MoCo:
                 start_epoch: 0
                 decay_epochs: 150
                 decay_rate: 0.2
+        # Augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
+                freq_augmenters: ["phase_shift"]
 
 DINO:
         emb_dim: 512
@@ -360,6 +368,10 @@ CMC:
                 start_epoch: 0
                 decay_epochs: 50
                 decay_rate: 0.2
+        # Augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
+                freq_augmenters: ["phase_shift"]
 
 
 # ------------------------------------------- Data Augmenter Configs ------------------------------------------
