@@ -4,6 +4,25 @@ from sklearn.metrics import accuracy_score
 from sklearn.neighbors import KNeighborsClassifier
 
 
+def extract_sample_features(args, classifier, aug_freq_loc_inputs):
+    """
+    Compute the sample features for the given input.
+    """
+    if args.train_mode == "contrastive" and args.contrastive_framework == "CMC":
+        mod_features = classifier(aug_freq_loc_inputs, class_head=False)
+        mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
+        features = torch.cat(mod_features, dim=1)
+    elif args.train_mode == "contrastive" and args.contrastive_framework == "Cosmo":
+        mod_features = classifier(aug_freq_loc_inputs, class_head=False)
+        mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
+        features = torch.mean(torch.stack(mod_features, dim=1), dim=1)
+    else:
+        "Predictive frameworks and other contrastive frameworks"
+        features = classifier(aug_freq_loc_inputs, class_head=False)
+
+    return features
+
+
 def compute_knn(args, classifier, augmenter, data_loader_train):
     """Get CLS embeddings and use KNN classifier on them.
     We load all embeddings in memory and use sklearn. Should
@@ -30,17 +49,7 @@ def compute_knn(args, classifier, augmenter, data_loader_train):
         aug_freq_loc_inputs, _ = augmenter.forward("no", time_loc_inputs, y)
 
         # feature extraction
-        if args.train_mode == "contrastive" and args.contrastive_framework == "CMC":
-            mod_features = classifier(aug_freq_loc_inputs, class_head=False)
-            mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
-            features = torch.cat(mod_features, dim=1)
-        elif args.train_mode == "contrastive" and args.contrastive_framework == "Cosmo":
-            mod_features = classifier(aug_freq_loc_inputs, class_head=False)
-            mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
-            features = torch.mean(torch.stack(mod_features, dim=1), dim=1)
-        else:
-            "Predictive frameworks and other contrastive frameworks"
-            features = classifier(aug_freq_loc_inputs, class_head=False)
+        features = extract_sample_features(args, classifier, aug_freq_loc_inputs)
         sample_embeddings.append(features.detach().cpu().numpy())
         labels.append(y.detach().cpu().numpy())
 
@@ -82,17 +91,7 @@ def compute_embedding(args, classifier, augmenter, data_loader):
         aug_freq_loc_inputs, _ = augmenter.forward("no", time_loc_inputs, labels)
 
         # Feature extraction
-        if args.train_mode == "contrastive" and args.contrastive_framework == "CMC":
-            mod_features = classifier(aug_freq_loc_inputs, class_head=False)
-            mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
-            features = torch.cat(mod_features, dim=1)
-        elif args.train_mode == "contrastive" and args.contrastive_framework == "Cosmo":
-            mod_features = classifier(aug_freq_loc_inputs, class_head=False)
-            mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
-            features = torch.mean(torch.stack(mod_features, dim=1), dim=1)
-        else:
-            """Predictive fraworks and other contrastive frameworks"""
-            features = classifier(aug_freq_loc_inputs, class_head=False)
+        features = extract_sample_features(args, classifier, aug_freq_loc_inputs)
         embs_l.append(features.detach().cpu())
 
         # Label extraction

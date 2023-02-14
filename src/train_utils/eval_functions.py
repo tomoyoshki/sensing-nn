@@ -6,6 +6,7 @@ from tqdm import tqdm
 # utils
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 from sklearn.neighbors import KNeighborsClassifier
+from train_utils.knn import extract_sample_features
 
 
 def eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx):
@@ -141,15 +142,7 @@ def eval_pretrained_model(args, default_model, estimator, augmenter, data_loader
 
             """Eval KNN estimator."""
             aug_freq_loc_inputs = augmenter.forward("no", time_loc_inputs)
-            if args.train_mode == "contrastive" and args.contrastive_framework in {"CMC"}:
-                knn_feature1, knn_feature2 = default_model(aug_freq_loc_inputs)
-                feat = torch.cat((knn_feature1.detach(), knn_feature2.detach()), dim=1)
-            elif args.train_mode == "contrastive" and args.contrastive_framework in {"Cosmo"}:
-                mod_features = default_model.backbone(aug_freq_loc_inputs, class_head=False)
-                mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
-                feat = torch.mean(torch.stack(mod_features, dim=1), dim=1)
-            else:
-                feat = default_model.backbone(aug_freq_loc_inputs, class_head=False)
+            feat = extract_sample_features(args, default_model.backbone, aug_freq_loc_inputs)
             sample_embeddings.append(feat.detach().cpu().numpy())
 
     sample_embeddings = np.concatenate(sample_embeddings)
