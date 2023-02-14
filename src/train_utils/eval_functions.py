@@ -140,6 +140,21 @@ def eval_mae_model(args, model, estimator, augmenter, data_loader, loss_func):
     """Evaluate the performance with KNN estimator."""
     model.eval()
 
+    loss_list = []
+    with torch.no_grad():
+        for time_loc_inputs, label, index in tqdm(data_loader, total=len(data_loader)):
+            """Eval contrastive loss."""
+            aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
+            decoded_x, padded_x, masks = model(aug_freq_loc_inputs_1, False)
+
+            # forward pass
+            loss = loss_func(padded_x, decoded_x, masks).item()
+            loss_list.append(loss)
+
+    mean_loss = np.mean(loss_list)
+
+    return mean_loss, -1, -1, None
+
 
 def val_and_logging(
     args,
@@ -169,22 +184,32 @@ def val_and_logging(
     else:
         logging.info(f"Train classifier loss: {train_loss: .5f} \n")
 
-    if estimator is None:
-        """Self-supervised pre-training"""
+    if args.train_mode == "supervised" or args.stage == "finetune":
+        """Supervised training or fine-tuning"""
         val_loss, val_f1, val_acc, val_conf_matrix = eval_supervised_model(
             args, model, augmenter, val_loader, loss_func
         )
         test_loss, test_f1, test_acc, test_conf_matrix = eval_supervised_model(
             args, model, augmenter, test_loader, loss_func
         )
-    else:
-        """Supervised training or fine-tuning"""
+    elif args.train_mode == "contrastive":
+        """Self-supervised pre-training"""
         val_loss, val_f1, val_acc, val_conf_matrix = eval_contrastive_model(
             args, model, estimator, augmenter, val_loader, loss_func
         )
         test_loss, test_f1, test_acc, test_conf_matrix = eval_contrastive_model(
             args, model, estimator, augmenter, test_loader, loss_func
         )
+    elif args.train_mode == "MAE":
+        """MAE pretraining"""
+        val_loss, val_f1, val_acc, val_conf_matrix = eval_mae_model(
+            args, model, estimator, augmenter, val_loader, loss_func
+        )
+        test_loss, test_f1, test_acc, test_conf_matrix = eval_mae_model(
+            args, model, estimator, augmenter, test_loader, loss_func
+        )
+    else:
+        raise NotImplementedError(f"{args.train_mode} evaluation is yet implemented for {args.stage}")
     logging.info(f"Val loss: {val_loss: .5f}")
     logging.info(f"Val acc: {val_acc: .5f}, val f1: {val_f1: .5f}")
     logging.info(f"Val confusion matrix:\n {val_conf_matrix} \n")

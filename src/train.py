@@ -128,17 +128,33 @@ def train(args):
         else:
             raise Exception(f"Invalid stage provided: {args.stage}")
     elif args.train_mode == "MAE":
-        mae_train(
-            args,
-            classifier,
-            augmenter,
-            train_dataloader,
-            val_dataloader,
-            test_dataloader,
-            loss_func,
-            tb_writer,
-            num_batches,
-        )
+        if args.stage == "pretrain":
+            mae_train(
+                args,
+                classifier,
+                augmenter,
+                train_dataloader,
+                val_dataloader,
+                test_dataloader,
+                loss_func,
+                tb_writer,
+                num_batches,
+            )
+        elif args.stage == "finetune":
+            finetune(
+                args,
+                classifier,
+                augmenter,
+                train_dataloader,
+                val_dataloader,
+                test_dataloader,
+                loss_func,
+                tb_writer,
+                num_batches,
+            )
+        else:
+            raise Exception(f"Invalid stage provided: {args.stage}")
+
     else:
         pass
 

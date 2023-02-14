@@ -330,7 +330,7 @@ CMC:
         nce_k: 1000
         nce_t: 0.2
         nce_momentum: 0.5
-        softmax: True
+        softmax: False
         input_size: 256
         # Pre training  
         pretrain_optimizer:

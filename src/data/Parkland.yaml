@@ -178,14 +178,14 @@ TransformerV4:
         patch_size:
                 freq:
                         audio: [1, 40]
-                        seismic: [1, 1]
+                        seismic: [1, 2]
         # FC layer
         fc_dim: 512
         pretrained_head: "mlp"
         # Optimizer config
         optimizer:
                 name: "AdamW"
-                start_lr: 0.0001
+                start_lr: 0.00001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0

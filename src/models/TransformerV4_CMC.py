@@ -207,8 +207,10 @@ class TransformerV4_CMC(nn.Module):
             for loc in self.locations:
                 self.encoded_mod_extract_layer[loc] = nn.ModuleDict()
                 for mod in self.modalities:
-                    self.encoded_mod_extract_layer[loc][mod] = nn.Linear(
-                        self.config["fc_dim"], self.config["loc_out_channels"]
+                    self.encoded_mod_extract_layer[loc][mod] = nn.Sequential(
+                        nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
+                        nn.GELU(),
+                        nn.Linear(self.config["fc_dim"], self.config["loc_out_channels"]),
                     )
 
             # init decoder layers
@@ -308,11 +310,13 @@ class TransformerV4_CMC(nn.Module):
                 )
 
                 patch_area = self.config["patch_size"]["freq"][mod][0] * self.config["patch_size"]["freq"][mod][1]
-                self.decoder_pred[loc][mod] = nn.Linear(
-                    self.config["time_freq_out_channels"],
-                    patch_area * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod],
-                    bias=True,
-                )  #
+                
+                self.decoder_pred[loc][mod] = nn.Sequential(
+                    nn.Linear(self.config["time_freq_out_channels"], self.config["time_freq_out_channels"]),
+                    nn.GELU(),
+                    nn.Linear(self.config["time_freq_out_channels"], patch_area * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]),
+                )
+
 
     def pad_input(self, freq_x, loc, mod):
         stride = self.config["in_stride"][mod]
@@ -338,9 +342,9 @@ class TransformerV4_CMC(nn.Module):
         # test different padding
         freq_input = F.pad(input=freq_input, pad=(0, padded_width, 0, padded_height), mode="constant", value=0)
 
-        return freq_input, padded_img_size, (b, i, s, c)
+        return freq_input, padded_img_size
 
-    def forward(self, freq_x, class_head=True):
+    def encode(self, patched_input, class_head=True):
         """
         If class_head is False, we return the modality features; otherwise, we return the classification results.
         time-freq feature extraction --> loc fusion --> mod concatenation --> class layer
@@ -348,30 +352,10 @@ class TransformerV4_CMC(nn.Module):
 
         # Step 1: Feature extractions on time interval (i) and spectrum (s) domains
         mod_loc_features = {mod: [] for mod in self.modalities}
-        padded_inputs = {}
-        mod_loc_masks = {}
         for loc in self.locations:
-            padded_inputs[loc] = {}
-            mod_loc_masks[loc] = {}
             for mod in self.modalities:
-                # Pad the input
-                freq_input, padded_img_size, (b, i, s, c) = self.pad_input(freq_x, loc, mod)
-                padded_inputs[loc][mod] = freq_input
-
-                # Patch Partition and Linear Embedding
-                embeded_input = self.patch_embed[loc][mod](freq_input)
-                # for masked auto encoder
-                if self.args.train_mode == "MAE":
-                    embeded_input, mod_loc_mask = window_masking(
-                        embeded_input,
-                        padded_img_size,
-                        self.patch_embed[loc][mod].patches_resolution,
-                        self.config["window_size"][mod],
-                        self.mask_token[loc][mod],
-                        remove=False,
-                        mask_len_sparse=False,
-                    )
-                    mod_loc_masks[loc][mod] = mod_loc_mask
+                embeded_input = patched_input[loc][mod]
+                b = embeded_input.shape[0]
 
                 # Absolute positional embedding
                 if self.config["APE"]:
@@ -412,8 +396,6 @@ class TransformerV4_CMC(nn.Module):
 
         # Step 3: Mod concatenation, [b, 1, mod, c]
         if not class_head:
-            if self.args.train_mode == "MAE":
-                return dict(zip(self.modalities, mod_features)), padded_inputs, mod_loc_masks
             return dict(zip(self.modalities, mod_features))
         else:
             if self.args.train_mode == "contrastive" and self.args.contrastive_framework == "Cosmo":
@@ -483,10 +465,62 @@ class TransformerV4_CMC(nn.Module):
 
         return dict(zip(self.modalities, mod_features))
 
-    def mae_forward(self, freq_x, class_head=True):
-        if class_head:
-            return self.forward(freq_x, class_head)
-        mod_features, padded_inputs, masks = self.forward(freq_x, class_head)
+    def patch_forward(self, freq_x, class_head=True):
+        """Patch the input and mask for MAE pretraining
+
+        Args:
+            freq_x (_type_): [loc][mod] data
+            class_head (bool, optional): whether to include classification layer. Defaults to True.
+
+        Returns:
+            [loc][mod]: patched input
+        """
+        embeded_inputs = {}
+        padded_inputs = {}
+        mod_loc_masks = {}
+        for loc in self.locations:
+            embeded_inputs[loc] = {}
+            padded_inputs[loc] = {}
+            mod_loc_masks[loc] = {}
+            for mod in self.modalities:
+                # Pad the input and store the padded input
+                freq_input, padded_img_size = self.pad_input(freq_x, loc, mod)
+                padded_inputs[loc][mod] = freq_input
+
+                # Patch Partition and Linear Embedding
+                embeded_input = self.patch_embed[loc][mod](freq_input)
+
+                # we only mask images for pretraining
+                if self.args.train_mode == "MAE" and class_head == False:
+                    embeded_input, mod_loc_mask = window_masking(
+                        embeded_input,
+                        padded_img_size,
+                        self.patch_embed[loc][mod].patches_resolution,
+                        self.config["window_size"][mod],
+                        self.mask_token[loc][mod],
+                        remove=False,
+                        mask_len_sparse=False,
+                    )
+                    mod_loc_masks[loc][mod] = mod_loc_mask
+
+                embeded_inputs[loc][mod] = embeded_input
+        return embeded_inputs, padded_inputs, mod_loc_masks
+
+    def forward(self, freq_x, class_head=True):
+        
+        # PatchEmbed the input, window mask if MAE
+        patched_inputs, padded_inputs, masks = self.patch_forward(freq_x, class_head)
+
+        if self.args.train_mode != "MAE" or class_head:
+            return self.encode(patched_inputs, class_head)
+
+        # for MAE
+        mod_features = self.encode(patched_inputs, class_head)
+        
+        # intermediate encodings
         encoded_mod_features = self.encode_features(mod_features)
+        
+        # decide the features
         recovered_x = self.decode(encoded_mod_features)
         return recovered_x, padded_inputs, masks
+        

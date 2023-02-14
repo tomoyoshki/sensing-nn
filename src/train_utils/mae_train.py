@@ -51,10 +51,9 @@ def mae_train(
     # Training loop
     logging.info("---------------------------Start Pretraining Classifier-------------------------------")
     start = time_sync()
-    best_val_acc = 0
-
-    best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_best.pt")
-    latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_latest.pt")
+    best_val_loss = np.inf
+    best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_best.pt")
+    latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_latest.pt")
     val_epochs = 5 if args.dataset == "Parkland" else 3
     for epoch in range(classifier_config["lr_scheduler"]["train_epochs"]):
         if epoch > 0:
@@ -70,10 +69,10 @@ def mae_train(
         # regularization configuration
         for i, (time_loc_inputs, labels, index) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
-            aug_freq_loc_inputs, _ = augmenter.forward("random", time_loc_inputs)
+            aug_freq_loc_inputs = augmenter.forward("random", time_loc_inputs)
 
             # forward pass
-            decoded_x, padded_x, masks = classifier.mae_forward(aug_freq_loc_inputs, False)
+            decoded_x, padded_x, masks = classifier(aug_freq_loc_inputs, False)
             loss = loss_func(padded_x, decoded_x, masks)
 
             # back propagation
@@ -108,8 +107,8 @@ def mae_train(
             torch.save(classifier.state_dict(), latest_weight)
 
             # Save the best model according to validation result
-            if val_acc > best_val_acc:
-                best_val_acc = val_acc
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
                 torch.save(classifier.state_dict(), best_weight)
 
         # Update the learning rate scheduler
