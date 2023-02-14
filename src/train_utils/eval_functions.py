@@ -14,15 +14,17 @@ def eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_in
     if args.contrastive_framework == "CMC":
         aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
         feature1, feature2 = default_model(aug_freq_loc_inputs_1)
+        loss = loss_func(feature1, feature2, idx)
+
     elif args.contrastive_framework == "Cosmo":
         aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
-        feature1, feature2 = default_model(aug_freq_loc_inputs_1)
+        rand_fused_features = default_model(aug_freq_loc_inputs_1)
+        loss = loss_func(rand_fused_features)
     else:
         aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
         aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
         feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
-
-    loss = loss_func(feature1, feature2, idx)
+        loss = loss_func(feature1, feature2, idx)
 
     return loss
 
@@ -120,7 +122,7 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
 def eval_pretrained_model(args, default_model, estimator, augmenter, data_loader, loss_func):
     """Evaluate the performance with KNN estimator."""
     default_model.eval()
-    if args.train_mode == "contrastive" and args.contrastive_framework in {"CMC", "Cosmo"}:
+    if args.train_mode == "contrastive" and args.contrastive_framework in {"CMC"}:
         loss_func.contrast.eval()
 
     sample_embeddings = []

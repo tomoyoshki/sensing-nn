@@ -278,7 +278,8 @@ class NCEAverage(nn.Module):
         self.multinomial.cuda()
 
         self.register_buffer(
-            "params", torch.tensor([self.config["nce_k"], self.config["nce_t"], -1, -1, self.config["nce_momentum"]])
+            "params",
+            torch.tensor([self.config["nce_k"], self.config["nce_t"], -1, -1, self.config["nce_momentum"]]),
         )
         stdv = 1.0 / math.sqrt(self.input_size / 3)
         self.register_buffer("memory_l", torch.rand(self.output_size, self.input_size).mul_(2 * stdv).add_(-stdv))
@@ -300,6 +301,7 @@ class NCEAverage(nn.Module):
             idx = self.multinomial.draw(batchSize * (self.K + 1)).view(batchSize, -1)
             idx.select(1, 0).copy_(y.data)
             idx = idx.to(self.args.device)
+
         # sample
         weight_l = torch.index_select(self.memory_l, 0, idx.view(-1)).detach()
         weight_l = weight_l.view(batchSize, K + 1, inputSize)
@@ -353,3 +355,64 @@ class NCEAverage(nn.Module):
                 self.memory_ab.index_copy_(0, y, updated_ab)
 
         return out_l, out_ab
+
+
+class CosmoLoss(nn.Module):
+    def __init__(self, args):
+        super(CosmoLoss, self).__init__()
+        self.args = args
+        self.config = args.dataset_config["Cosmo"]
+        self.temperature = self.config["temperature"]
+        self.contrast_mode = self.config["contrast_mode"]
+        self.base_temperature = self.config["temperature"]
+
+    def forward(self, features, labels=None, mask=None):
+        """
+        Args:
+            features: hidden vector of shape [bsz, n_views, feat_dim].
+        Returns:
+            A loss scalar.
+        """
+        device = self.args.device
+
+        if len(features.shape) < 3:
+            raise ValueError("`features` needs to be [bsz, n_views, ...]," "at least 3 dimensions are required")
+        if len(features.shape) > 3:
+            features = features.view(features.shape[0], features.shape[1], -1)
+
+        batch_size = features.shape[0]
+
+        mask = torch.eye(batch_size, dtype=torch.float32).to(device)
+
+        contrast_count = features.shape[1]
+        contrast_feature = torch.cat(torch.unbind(features, dim=1), dim=0)  # change to [n_views*bsz, 3168]
+        contrast_feature = F.normalize(contrast_feature, dim=1)
+
+        anchor_feature = contrast_feature
+        anchor_count = contrast_count
+
+        # compute logits, z_i * z_a / T
+        similarity_matrix = torch.div(torch.matmul(anchor_feature, contrast_feature.T), self.temperature)
+
+        # tile mask
+        mask = mask.repeat(anchor_count, contrast_count)  # positive index
+
+        # mask-out self-contrast cases
+        logits_mask = torch.scatter(
+            torch.ones_like(mask), 1, torch.arange(batch_size * anchor_count).view(-1, 1).to(device), 0
+        )  # dig to 0, others to 1 (negative samples)
+
+        mask = mask * logits_mask  # positive samples except itself
+
+        # compute log_prob
+        exp_logits = torch.exp(similarity_matrix) * logits_mask  # exp(z_i * z_a / T)
+
+        # SupCon out
+        log_prob = similarity_matrix - torch.log(exp_logits.sum(1, keepdim=True))
+        mean_log_prob_pos = (mask * log_prob).sum(1) / mask.sum(1)  # sup_out
+
+        # loss
+        loss = -(self.temperature / self.base_temperature) * mean_log_prob_pos
+        loss = loss.view(anchor_count, batch_size).mean()
+
+        return loss
