@@ -1,7 +1,5 @@
-from ast import arg
 import os
 import argparse
-from tkinter.messagebox import NO
 import numpy as np
 
 from params.output_paths import set_model_weight_file, set_output_paths, set_model_weight_folder

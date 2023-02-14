@@ -20,9 +20,9 @@ def set_model_weight_folder(args):
     Args:
         args (_type_): _description_
     """
-    base_path = f"/home/{args.username}/FoundationSense/weights"
+    base_path = f"{os.path.abspath(os.path.join(os.getcwd(), os.pardir))}/weights"
     dataset_model_path = os.path.join(base_path, f"{args.dataset}_{args.model}")
-    check_paths([dataset_model_path])
+    check_paths([base_path, dataset_model_path])
 
     # suffix for different modes, only related to the **train mode**
     if args.train_mode == "supervised" and len(args.miss_modalities) > 0:
@@ -139,8 +139,9 @@ def set_output_paths(args):
     Args:
         args (_type_): _description_
     """
-    log_root_path = f"/home/{args.username}/FoundationSense/result/log"
+    result_root_path = f"{os.path.abspath(os.path.join(os.getcwd(), os.pardir))}/result"
+    log_root_path = os.path.join(result_root_path, "log")
     args.log_path = os.path.join(log_root_path, f"{args.dataset}_{args.model}_{args.train_mode}")
-    check_paths([args.log_path])
+    check_paths([result_root_path, log_root_path, args.log_path])
 
     return args
