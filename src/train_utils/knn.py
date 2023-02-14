@@ -30,11 +30,16 @@ def compute_knn(args, classifier, augmenter, data_loader_train):
         aug_freq_loc_inputs, _ = augmenter.forward("no", time_loc_inputs, y)
 
         # feature extraction
-        if args.contrastive_framework == "CMC":
+        if args.train_mode == "contrastive" and args.contrastive_framework == "CMC":
             mod_features = classifier(aug_freq_loc_inputs, class_head=False)
-            seismic_feature, audio_feature = mod_features["seismic"], mod_features["audio"]
-            features = torch.cat((seismic_feature.detach(), audio_feature.detach()), dim=1)
+            mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
+            features = torch.cat(mod_features, dim=1)
+        elif args.train_mode == "contrastive" and args.contrastive_framework == "Cosmo":
+            mod_features = classifier(aug_freq_loc_inputs, class_head=False)
+            mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
+            features = torch.mean(torch.stack(mod_features, dim=1), dim=1)
         else:
+            "Predictive frameworks and other contrastive frameworks"
             features = classifier(aug_freq_loc_inputs, class_head=False)
         sample_embeddings.append(features.detach().cpu().numpy())
         labels.append(y.detach().cpu().numpy())
@@ -77,11 +82,16 @@ def compute_embedding(args, classifier, augmenter, data_loader):
         aug_freq_loc_inputs, _ = augmenter.forward("no", time_loc_inputs, labels)
 
         # Feature extraction
-        if args.contrastive_framework == "CMC":
+        if args.train_mode == "contrastive" and args.contrastive_framework == "CMC":
             mod_features = classifier(aug_freq_loc_inputs, class_head=False)
-            seismic_feature, audio_feature = mod_features["seismic"], mod_features["audio"]
-            features = torch.cat((seismic_feature.detach(), audio_feature.detach()), dim=1)
+            mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
+            features = torch.cat(mod_features, dim=1)
+        elif args.train_mode == "contrastive" and args.contrastive_framework == "Cosmo":
+            mod_features = classifier(aug_freq_loc_inputs, class_head=False)
+            mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
+            features = torch.mean(torch.stack(mod_features, dim=1), dim=1)
         else:
+            """Predictive fraworks and other contrastive frameworks"""
             features = classifier(aug_freq_loc_inputs, class_head=False)
         embs_l.append(features.detach().cpu())
 

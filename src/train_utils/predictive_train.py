@@ -8,17 +8,17 @@ import numpy as np
 from tqdm import tqdm
 
 # train utils
-from train_utils.eval_functions import val_and_logging, eval_contrastive_loss
+from train_utils.eval_functions import val_and_logging, eval_predictive_loss
 from train_utils.optimizer import define_optimizer
 from train_utils.lr_scheduler import define_lr_scheduler
 from train_utils.knn import compute_embedding, compute_knn
-from train_utils.model_selection import init_contrastive_framework
+from train_utils.model_selection import init_predictive_framework
 
 # utils
 from general_utils.time_utils import time_sync
 
 
-def contrastive_pretrain(
+def predictive_pretrain(
     args,
     backbone_model,
     augmenter,
@@ -33,16 +33,14 @@ def contrastive_pretrain(
     The supervised training function for tbe backbone network,
     used in train of supervised mode or fine-tune of foundation models.
     """
-    classifier_config = args.dataset_config[args.model]
-
     # Initialize contrastive model
-    default_model = init_contrastive_framework(args, backbone_model)
+    default_model = init_predictive_framework(args, backbone_model)
 
     # Define the optimizer and learning rate scheduler
     optimizer = define_optimizer(args, default_model.parameters())
     lr_scheduler = define_lr_scheduler(args, optimizer)
 
-    # Fix the patch embedding layer, from MOCOv3
+    # Fix the patch embedding layer of TransformerV4, from MOCOv3
     for name, param in default_model.backbone.named_parameters():
         if "patch_embed" in name:
             param.requires_grad = False
@@ -77,12 +75,16 @@ def contrastive_pretrain(
             idx = idx.to(args.device)
 
             # move to target device, FFT, and augmentations
-            loss = eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx)
+            loss = eval_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs)
 
             # back propagation
             loss.backward()
 
             # update
+            # torch.nn.utils.clip_grad_norm(
+            #     backbone_model.parameters(),
+            #     args.dataset_config[args.model]["optimizer"]["clip_grad"],
+            # )
             optimizer.step()
             train_loss_list.append(loss.item())
 

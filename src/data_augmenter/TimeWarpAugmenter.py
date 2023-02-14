@@ -26,16 +26,27 @@ class TimeWarpAugmenter(nn.Module):
         Return: Same shape as x. A single random scaling factor for each (loc, mod).
         """
         aug_loc_inputs = {}
+        aug_mod_labels = []
+        b = None  # batch size
+
         for loc in self.locations:
             aug_loc_inputs[loc] = {}
             for mod in self.modalities:
+                # retrieve the batch size first
+                if b is None:
+                    b = org_loc_inputs[loc][mod].shape[0]
+
                 if random() < self.config["prob"]:
                     mod_input = org_loc_inputs[loc][mod].clone()
                     b, c, i, s = mod_input.shape
                     mod_input = torch.reshape(mod_input, (b, c, i * s))
                     aug_loc_inputs[loc][mod] = self.warp_func(TSTensor(mod_input), split_idx=0).reshape(b, c, i, s).data
+                    aug_mod_labels.append(1)
                 else:
                     aug_loc_inputs[loc][mod] = org_loc_inputs[loc][mod]
-                # print((aug_loc_inputs[loc][mod] == org_loc_inputs[loc][mod]).sum().item())
+                    aug_mod_labels.append(0)
 
-        return aug_loc_inputs, labels
+        aug_mod_labels = torch.Tensor(aug_mod_labels).to(self.args.device)
+        aug_mod_labels = aug_mod_labels.unsqueeze(0).tile([b, 1]).float()
+
+        return aug_loc_inputs, aug_mod_labels, labels

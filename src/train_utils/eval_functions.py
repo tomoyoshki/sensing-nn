@@ -8,6 +8,66 @@ from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 from sklearn.neighbors import KNeighborsClassifier
 
 
+def eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx):
+    """Eval the contrastive loss for one batch."""
+    if args.contrastive_framework == "CMC":
+        aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
+        feature1, feature2 = default_model(aug_freq_loc_inputs_1)
+    elif args.contrastive_framework == "Cosmo":
+        aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
+        feature1, feature2 = default_model(aug_freq_loc_inputs_1)
+    else:
+        aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
+        aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
+        feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
+
+    loss = loss_func(feature1, feature2, idx)
+
+    return loss
+
+
+def eval_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs):
+    """Eval the predictive loss for one batch."""
+    if args.predictive_framework == "MTSS":
+        aug_freq_loc_inputs, pretrain_labels = augmenter.forward("random", time_loc_inputs, return_aug_id=True)
+        pretrain_predictions = default_model(aug_freq_loc_inputs)
+    elif args.predictive_framework == "ModPred":
+        aug_freq_loc_inputs, pretrain_labels = augmenter.forward("random", time_loc_inputs, return_aug_mods=True)
+        pretrain_predictions = default_model(aug_freq_loc_inputs)
+    else:
+        raise NotImplementedError(f"Predictive framwork {args.predictive_framework} yet implemented")
+
+    loss = loss_func(pretrain_predictions, pretrain_labels)
+
+    return loss
+
+
+def eval_task_metrics(args, labels, predictions):
+    """Evaluate the downstream task metrics."""
+    acc_scores = []
+    f1_scores = []
+
+    # different acc and f1-score definitions for single-class and multi-class problems
+    if args.multi_class:
+        for i, class_name in enumerate(args.dataset_config["class_names"]):
+            acc = accuracy_score(labels[:, i], predictions[:, i])
+            f1 = f1_score(labels[:, i], predictions[:, i], zero_division=1)
+
+            if acc <= 1 and f1 <= 1:
+                acc_scores.append(acc)
+                f1_scores.append(f1)
+
+            mean_acc = np.mean(acc_scores)
+            mean_f1 = np.mean(f1_scores)
+            conf_matrix = []
+    else:
+        mean_acc = accuracy_score(labels, predictions)
+        mean_f1 = f1_score(labels, predictions, average="macro", zero_division=1)
+        conf_matrix = confusion_matrix(labels, predictions)
+
+    return mean_acc, mean_f1, conf_matrix
+
+
 def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
     """Evaluate the performance on the given dataloader.
 
@@ -49,35 +109,17 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
     mean_classifier_loss = np.mean(classifier_loss_list)
     all_predictions = np.concatenate(all_predictions, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
-    acc_scores = []
-    f1_scores = []
 
-    # different acc and f1-score definitions for single-class and multi-class problems
-    if args.multi_class:
-        for i, class_name in enumerate(args.dataset_config["class_names"]):
-            acc = accuracy_score(all_labels[:, i], all_predictions[:, i])
-            f1 = f1_score(all_labels[:, i], all_predictions[:, i], zero_division=1)
-
-            if acc <= 1 and f1 <= 1:
-                acc_scores.append(acc)
-                f1_scores.append(f1)
-
-            mean_acc = np.mean(acc_scores)
-            mean_f1 = np.mean(f1_scores)
-            conf_matrix = []
-    else:
-        mean_acc = accuracy_score(all_labels, all_predictions)
-        mean_f1 = f1_score(all_labels, all_predictions, average="macro", zero_division=1)
-        conf_matrix = confusion_matrix(all_labels, all_predictions)
+    # calculate the classification metrics
+    mean_f1, mean_acc, conf_matrix = eval_task_metrics(args, all_labels, all_predictions)
 
     return mean_classifier_loss, mean_f1, mean_acc, conf_matrix
 
 
-def eval_contrastive_model(args, model, estimator, augmenter, data_loader, loss_func):
+def eval_pretrained_model(args, default_model, estimator, augmenter, data_loader, loss_func):
     """Evaluate the performance with KNN estimator."""
-    model.eval()
-    if args.contrastive_framework == "CMC":
-        # the critic h_theta
+    default_model.eval()
+    if args.train_mode == "contrastive" and args.contrastive_framework in {"CMC", "Cosmo"}:
         loss_func.contrast.eval()
 
     sample_embeddings = []
@@ -85,47 +127,39 @@ def eval_contrastive_model(args, model, estimator, augmenter, data_loader, loss_
     loss_list = []
     with torch.no_grad():
         for time_loc_inputs, label, index in tqdm(data_loader, total=len(data_loader)):
-            """Eval contrastive loss."""
+            """Move idx to target device, save label"""
             index = index.to(args.device)
-            if args.contrastive_framework == "CMC":
-                aug_freq_loc_inputs_1, _ = augmenter.forward("fixed", time_loc_inputs)
-                feature1, feature2 = model(aug_freq_loc_inputs_1)
-            else:
-                aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
-                aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
-                feature1, feature2 = model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
+            label = label.argmax(dim=1, keepdim=False) if label.dim() > 1 else label
+            labels.append(label.cpu().numpy())
+
+            """Eval pretrain loss."""
+            if args.train_mode == "contrastive":
+                loss = eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, index).item()
+            elif args.train_mode == "predictive":
+                loss = eval_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs).item()
+            loss_list.append(loss)
 
             """Eval KNN estimator."""
             aug_freq_loc_inputs = augmenter.forward("no", time_loc_inputs)
-
-            if args.contrastive_framework == "CMC":
-                knn_feature1, knn_feature2 = model(aug_freq_loc_inputs)
+            if args.train_mode == "contrastive" and args.contrastive_framework in {"CMC"}:
+                knn_feature1, knn_feature2 = default_model(aug_freq_loc_inputs)
                 feat = torch.cat((knn_feature1.detach(), knn_feature2.detach()), dim=1)
+            elif args.train_mode == "contrastive" and args.contrastive_framework in {"Cosmo"}:
+                mod_features = default_model.backbone(aug_freq_loc_inputs, class_head=False)
+                mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
+                feat = torch.mean(torch.stack(mod_features, dim=1), dim=1)
             else:
-                feat = model.backbone(aug_freq_loc_inputs, class_head=False)
+                feat = default_model.backbone(aug_freq_loc_inputs, class_head=False)
             sample_embeddings.append(feat.detach().cpu().numpy())
-            if label.dim() > 1:
-                label = label.argmax(dim=1, keepdim=False)
-
-            saved_labels = label.cpu().numpy()
-            labels.append(saved_labels)
-
-            # forward pass
-            loss = loss_func(feature1, feature2, index).item()
-            loss_list.append(loss)
 
     sample_embeddings = np.concatenate(sample_embeddings)
     labels = np.concatenate(labels)
-    predictions = estimator.predict(sample_embeddings)
-    predictions = torch.Tensor(predictions)
-    if predictions.dim() > 1:
-        predictions = predictions.argmax(dim=1, keepdim=False)
+    predictions = torch.Tensor(estimator.predict(sample_embeddings))
+    predictions = predictions.argmax(dim=1, keepdim=False) if predictions.dim() > 1 else predictions
 
     # compute metrics
-    mean_acc = accuracy_score(labels, predictions)
-    mean_f1 = f1_score(labels, predictions, average="macro", zero_division=1)
-    conf_matrix = confusion_matrix(labels, predictions)
     mean_loss = np.mean(loss_list)
+    mean_f1, mean_acc, conf_matrix = eval_task_metrics(args, labels, predictions)
 
     return mean_loss, mean_f1, mean_acc, conf_matrix
 
@@ -153,13 +187,13 @@ def val_and_logging(
         classifier_dataloader (_type_): _description_
         classifier_loss_func (_type_): _description_
     """
-    if args.train_mode in {"contrastive"} and args.stage == "pretrain":
-        logging.info(f"Train contrastive loss: {train_loss: .5f} \n")
+    if args.train_mode in {"contrastive", "predictive"} and args.stage == "pretrain":
+        logging.info(f"Train {args.train_mode} loss: {train_loss: .5f} \n")
     else:
         logging.info(f"Train classifier loss: {train_loss: .5f} \n")
 
     if estimator is None:
-        """Self-supervised pre-training"""
+        """Supervised training or fine-tuning"""
         val_loss, val_f1, val_acc, val_conf_matrix = eval_supervised_model(
             args, model, augmenter, val_loader, loss_func
         )
@@ -167,11 +201,11 @@ def val_and_logging(
             args, model, augmenter, test_loader, loss_func
         )
     else:
-        """Supervised training or fine-tuning"""
-        val_loss, val_f1, val_acc, val_conf_matrix = eval_contrastive_model(
+        """Self-supervised pre-training"""
+        val_loss, val_f1, val_acc, val_conf_matrix = eval_pretrained_model(
             args, model, estimator, augmenter, val_loader, loss_func
         )
-        test_loss, test_f1, test_acc, test_conf_matrix = eval_contrastive_model(
+        test_loss, test_f1, test_acc, test_conf_matrix = eval_pretrained_model(
             args, model, estimator, augmenter, test_loader, loss_func
         )
     logging.info(f"Val loss: {val_loss: .5f}")

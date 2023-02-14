@@ -168,20 +168,30 @@ class TransformerV4_CMC(nn.Module):
                 self.config["dropout_ratio"],
             )
 
+        # mod fusion layer
+        if args.contrastive_framework == "Cosmo":
+            "Attention fusion for Cosmo"
+            self.mod_fusion_layer = TransformerFusionBlock(
+                self.config["loc_out_channels"],
+                self.config["loc_head_num"],
+                self.config["dropout_ratio"],
+                self.config["dropout_ratio"],
+            )
+            sample_dim = self.config["loc_out_channels"]
+        else:
+            sample_dim = self.config["loc_out_channels"] * len(self.modalities)
+
         # Classification layer
         if args.train_mode == "supervised" or self.config["pretrained_head"] == "linear":
             """Linear classification layers for supervised learning or finetuning."""
             self.class_layer = nn.Sequential(
-                nn.Linear(
-                    self.config["loc_out_channels"] * len(self.modalities),
-                    args.dataset_config[args.task]["num_classes"],
-                ),
+                nn.Linear(sample_dim, args.dataset_config[args.task]["num_classes"]),
                 nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
             )
         else:
             """Non-linear classification layers for self-supervised learning."""
             self.class_layer = nn.Sequential(
-                nn.Linear(self.config["loc_out_channels"] * len(self.modalities), self.config["fc_dim"]),
+                nn.Linear(sample_dim, self.config["fc_dim"]),
                 nn.GELU(),
                 nn.Linear(self.config["fc_dim"], args.dataset_config[args.task]["num_classes"]),
                 nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
@@ -264,6 +274,14 @@ class TransformerV4_CMC(nn.Module):
         if not class_head:
             return dict(zip(self.modalities, mod_features))
         else:
-            sample_features = torch.cat(mod_features, dim=1)
+            if self.args.contrastive_framework == "Cosmo":
+                """Attention-based fusion."""
+                mod_features = torch.stack(mod_features, dim=1)
+                mod_features = mod_features.unsqueeze(dim=1)
+                sample_features = self.mod_fusion_layer(mod_features).flatten(start_dim=1)
+            else:
+                """Concatenation-based fusion."""
+                sample_features = torch.cat(mod_features, dim=1)
+
             logits = self.class_layer(sample_features)
             return logits

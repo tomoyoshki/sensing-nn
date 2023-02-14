@@ -20,9 +20,9 @@ def set_model_weight_folder(args):
     Args:
         args (_type_): _description_
     """
-    base_path = f"/home/{args.username}/FoundationSense/weights"
+    base_path = f"{os.path.abspath(os.path.join(os.getcwd(), os.pardir))}/weights"
     dataset_model_path = os.path.join(base_path, f"{args.dataset}_{args.model}")
-    check_paths([dataset_model_path])
+    check_paths([base_path, dataset_model_path])
 
     # suffix for different modes, only related to the **train mode**
     if args.train_mode == "supervised" and len(args.miss_modalities) > 0:
@@ -32,11 +32,13 @@ def set_model_weight_folder(args):
         for mod in ordered_miss_modalities:
             suffix += f"-{mod}"
     else:
-        """Other modes include: supervised, contrastive, and more..."""
+        """Other modes include: supervised, contrastive, predictive, and more..."""
         if args.train_mode == "supervised":
             suffix = f"supervised_{args.task}_{args.label_ratio}"
         elif args.train_mode == "contrastive":
             suffix = f"contrastive_{args.contrastive_framework}"
+        elif args.train_mode == "predictive":
+            suffix = f"predictive_{args.predictive_framework}"
         else:
             raise Exception(f"Unknown train mode: {args.train_mode}")
 
@@ -70,11 +72,15 @@ def set_model_weight_folder(args):
         weight_folder = os.path.join(dataset_model_path, f"exp{newest_id + 1}") + f"_{suffix}"
         check_paths([weight_folder])
         model_config = args.dataset_config[args.model]
-        contrastive_framework_config = args.dataset_config[args.contrastive_framework]
         with open(os.path.join(weight_folder, "model_config.json"), "w") as f:
             f.write(json.dumps(model_config, indent=4))
-        with open(os.path.join(weight_folder, "contrastive_framework_config.json"), "w") as f:
-            f.write(json.dumps(contrastive_framework_config, indent=4))
+
+        if args.train_mode == "contrastive":
+            with open(os.path.join(weight_folder, "contrastive_framework_config.json"), "w") as f:
+                f.write(json.dumps(args.dataset_config[args.contrastive_framework], indent=4))
+        elif args.train_mode == "predictive":
+            with open(os.path.join(weight_folder, "predictive_framework_config.json"), "w") as f:
+                f.write(json.dumps(args.dataset_config[args.predictive_framework], indent=4))
 
     # set log files
     if args.option == "train":
@@ -108,7 +114,7 @@ def set_model_weight_file(args):
             args.weight_folder,
             f"{args.dataset}_{args.model}_{args.task}_best.pt",
         )
-    elif args.train_mode in {"contrastive"}:
+    elif args.train_mode in {"contrastive", "predictive"}:
         if args.stage == "pretrain":
             args.classifier_weight = os.path.join(
                 args.weight_folder,
@@ -133,8 +139,9 @@ def set_output_paths(args):
     Args:
         args (_type_): _description_
     """
-    log_root_path = f"/home/{args.username}/FoundationSense/result/log"
+    result_root_path = f"{os.path.abspath(os.path.join(os.getcwd(), os.pardir))}/result"
+    log_root_path = os.path.join(result_root_path, "log")
     args.log_path = os.path.join(log_root_path, f"{args.dataset}_{args.model}_{args.train_mode}")
-    check_paths([args.log_path])
+    check_paths([result_root_path, log_root_path, args.log_path])
 
     return args

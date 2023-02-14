@@ -26,16 +26,24 @@ def finetune(
     num_batches,
 ):
     """Fine tune the backbone network with only the class layer."""
-    # Load the pretrained classifier and handler
+    # Load the pretrained feature extractor
     pretrain_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_pretrain_latest.pt")
     classifier = load_model_weight(classifier, pretrain_weight, load_class_layer=False)
     learnable_parameters = []
     for name, param in classifier.named_parameters():
-        if "class_layer" in name:
-            param.requires_grad = True
-            learnable_parameters.append(param)
+        if args.contrastive_framework == "CosMo":
+            if "class_layer" in name or "mod_fusion_layer" in name:
+                param.requires_grad = True
+                learnable_parameters.append(param)
+            else:
+                param.requires_grad = False
         else:
-            param.requires_grad = False
+            """For SimCLR, MoCo, CMC"""
+            if "class_layer" in name:
+                param.requires_grad = True
+                learnable_parameters.append(param)
+            else:
+                param.requires_grad = False
 
     # Init the optimizer
     optimizer = define_optimizer(args, learnable_parameters)
