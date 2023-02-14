@@ -385,7 +385,7 @@ class CosmoLoss(nn.Module):
         mask = torch.eye(batch_size, dtype=torch.float32).to(device)
 
         contrast_count = features.shape[1]
-        contrast_feature = torch.cat(torch.unbind(features, dim=1), dim=0)  # change to [n_views*bsz, 3168]
+        contrast_feature = torch.cat(torch.unbind(features, dim=1), dim=0)  # change to [n_views*bsz, dim]
         contrast_feature = F.normalize(contrast_feature, dim=1)
 
         anchor_feature = contrast_feature
@@ -394,7 +394,7 @@ class CosmoLoss(nn.Module):
         # compute logits, z_i * z_a / T
         similarity_matrix = torch.div(torch.matmul(anchor_feature, contrast_feature.T), self.temperature)
 
-        # tile mask
+        # tile mask, [b * n_views, b * n_views]
         mask = mask.repeat(anchor_count, contrast_count)  # positive index
 
         # mask-out self-contrast cases
