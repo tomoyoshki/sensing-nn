@@ -113,9 +113,9 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
     all_labels = np.concatenate(all_labels, axis=0)
 
     # calculate the classification metrics
-    mean_f1, mean_acc, conf_matrix = eval_task_metrics(args, all_labels, all_predictions)
+    mean_acc, mean_f1, conf_matrix = eval_task_metrics(args, all_labels, all_predictions)
 
-    return mean_classifier_loss, mean_f1, mean_acc, conf_matrix
+    return mean_classifier_loss, mean_acc, mean_f1, conf_matrix
 
 
 def eval_pretrained_model(args, default_model, estimator, augmenter, data_loader, loss_func):
@@ -153,9 +153,9 @@ def eval_pretrained_model(args, default_model, estimator, augmenter, data_loader
 
     # compute metrics
     mean_loss = np.mean(loss_list)
-    mean_f1, mean_acc, conf_matrix = eval_task_metrics(args, labels, predictions)
+    mean_acc, mean_f1, conf_matrix = eval_task_metrics(args, labels, predictions)
 
-    return mean_loss, mean_f1, mean_acc, conf_matrix
+    return mean_loss, mean_acc, mean_f1, conf_matrix
 
 
 def val_and_logging(
