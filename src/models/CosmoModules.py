@@ -6,6 +6,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class Cosmo(nn.Module):
@@ -55,7 +56,8 @@ class Cosmo(nn.Module):
         # project mod features
         proj_mod_features = []
         for mod in self.modalities:
-            proj_mod_features.append(self.mod_proj_head[mod](in_mod_features[mod]))
+            mod_out = F.normalize(self.mod_proj_head[mod](in_mod_features[mod]), dim=1)
+            proj_mod_features.append(mod_out)
 
         # random fusion
         fused_feature = self.cosmo_rand_fusion(proj_mod_features)

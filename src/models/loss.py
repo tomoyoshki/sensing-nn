@@ -359,6 +359,7 @@ class NCEAverage(nn.Module):
 
 class CosmoLoss(nn.Module):
     def __init__(self, args):
+        """Based on SupConLoss from "Supervised Contrastive Loss" paper."""
         super(CosmoLoss, self).__init__()
         self.args = args
         self.config = args.dataset_config["Cosmo"]
@@ -382,36 +383,39 @@ class CosmoLoss(nn.Module):
 
         batch_size = features.shape[0]
 
-        mask = torch.eye(batch_size, dtype=torch.float32).to(device)
-
+        # change to [n_views*bsz, dim]
         contrast_count = features.shape[1]
-        contrast_feature = torch.cat(torch.unbind(features, dim=1), dim=0)  # change to [n_views*bsz, dim]
+        contrast_feature = torch.cat(torch.unbind(features, dim=1), dim=0)
         contrast_feature = F.normalize(contrast_feature, dim=1)
 
         anchor_feature = contrast_feature
         anchor_count = contrast_count
 
         # compute logits, z_i * z_a / T
-        similarity_matrix = torch.div(torch.matmul(anchor_feature, contrast_feature.T), self.temperature)
+        similarity_matrix = torch.matmul(anchor_feature, contrast_feature.T)
+        similarity_matrix = torch.div(similarity_matrix, self.temperature)
 
         # tile mask, [b * n_views, b * n_views]
+        mask = torch.eye(batch_size, dtype=torch.float32).to(device)
         mask = mask.repeat(anchor_count, contrast_count)  # positive index
 
-        # mask-out self-contrast cases
+        # mask-out self-contrast cases in all diagonal positions; dig to 0, others to 1 (negative samples)
         logits_mask = torch.scatter(
-            torch.ones_like(mask), 1, torch.arange(batch_size * anchor_count).view(-1, 1).to(device), 0
-        )  # dig to 0, others to 1 (negative samples)
+            torch.ones_like(mask),
+            1,
+            torch.arange(batch_size * anchor_count).view(-1, 1).to(device),
+            0,
+        )
+        mask = mask * logits_mask  # positive samples except diagonal elements
 
-        mask = mask * logits_mask  # positive samples except itself
-
-        # compute log_prob
+        # compute log_prob, except the diagonal positions, [b * n_views, b * n_views]
         exp_logits = torch.exp(similarity_matrix) * logits_mask  # exp(z_i * z_a / T)
 
         # SupCon out
         log_prob = similarity_matrix - torch.log(exp_logits.sum(1, keepdim=True))
         mean_log_prob_pos = (mask * log_prob).sum(1) / mask.sum(1)  # sup_out
 
-        # loss
+        # loss, [n_views, bsz]
         loss = -(self.temperature / self.base_temperature) * mean_log_prob_pos
         loss = loss.view(anchor_count, batch_size).mean()
 

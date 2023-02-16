@@ -15,7 +15,6 @@ def eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_in
         aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
         feature1, feature2 = default_model(aug_freq_loc_inputs_1)
         loss = loss_func(feature1, feature2, idx)
-
     elif args.contrastive_framework == "Cosmo":
         aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
         rand_fused_features = default_model(aug_freq_loc_inputs_1)

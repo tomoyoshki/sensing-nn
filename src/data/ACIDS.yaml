@@ -378,10 +378,9 @@ CMC:
                 freq_augmenters: ["phase_shift"]
 
 Cosmo:
-        temperature: 0.07
-        num_positive: 9
+        temperature: 0.2
+        num_positive: 10
         emb_dim: 256
-        num_positive: 9
         contrast_mode: all
         # Pre training  
         pretrain_optimizer:
@@ -411,9 +410,9 @@ Cosmo:
                 name: "step"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 200
+                train_epochs: 500
                 start_epoch: 0
-                decay_epochs: 50
+                decay_epochs: 100
                 decay_rate: 0.2
         # data augmenters
         random_augmenters:
