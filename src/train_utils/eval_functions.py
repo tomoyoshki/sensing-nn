@@ -188,18 +188,18 @@ def val_and_logging(
 
     if estimator is None:
         """Supervised training or fine-tuning"""
-        val_loss, val_f1, val_acc, val_conf_matrix = eval_supervised_model(
+        val_loss, val_acc, val_f1, val_conf_matrix = eval_supervised_model(
             args, model, augmenter, val_loader, loss_func
         )
-        test_loss, test_f1, test_acc, test_conf_matrix = eval_supervised_model(
+        test_loss, test_acc, test_f1, test_conf_matrix = eval_supervised_model(
             args, model, augmenter, test_loader, loss_func
         )
     else:
         """Self-supervised pre-training"""
-        val_loss, val_f1, val_acc, val_conf_matrix = eval_pretrained_model(
+        val_loss, val_acc, val_f1, val_conf_matrix = eval_pretrained_model(
             args, model, estimator, augmenter, val_loader, loss_func
         )
-        test_loss, test_f1, test_acc, test_conf_matrix = eval_pretrained_model(
+        test_loss, test_acc, test_f1, test_conf_matrix = eval_pretrained_model(
             args, model, estimator, augmenter, test_loader, loss_func
         )
     logging.info(f"Val loss: {val_loss: .5f}")
