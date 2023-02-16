@@ -8,7 +8,7 @@ from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 from sklearn.neighbors import KNeighborsClassifier
 
 
-def eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx):
+def eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx, verbose=False):
     """Eval the contrastive loss for one batch."""
     if args.contrastive_framework == "CMC":
         aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
@@ -20,6 +20,27 @@ def eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_in
         aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
         aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
         feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
+
+    if verbose:
+
+        def print_stats(feature):
+            fs = feature.cpu().detach().numpy()
+            feature_percentile = np.percentile(fs, [25, 50, 75])
+            avg = np.average(fs)
+            std = np.std(fs)
+            logging.info(f"|\tMIN\t|\t25%\t|\t50%\t|\t75%\t|\tMAX\t|\tAverage\t|\tstd\t|")
+            logging.info(
+                f"|{fs.min(): .3f}|{feature_percentile[0] : .3f}| {feature_percentile[1]: .3f}| {feature_percentile[2]: .3f}| {fs.max(): .3f}|\t{avg : .3f}\t|\t{std :.3f}|"
+            )
+
+        perm = torch.randperm(feature1.size(0)).to(args.device)
+        for perm_idx in perm[:2]:
+            logging.info(f"{'='*20}Feature1{'='*20}")
+            print_stats(feature1[perm_idx])
+            logging.info(f"{'='*20}Feature2{'='*20}")
+            print_stats(feature2[perm_idx])
+            logging.info("\n")
+        logging.info("\n\n")
 
     loss = loss_func(feature1, feature2, idx)
 
@@ -126,15 +147,18 @@ def eval_pretrained_model(args, default_model, estimator, augmenter, data_loader
     labels = []
     loss_list = []
     with torch.no_grad():
+        verbose = True
         for time_loc_inputs, label, index in tqdm(data_loader, total=len(data_loader)):
             """Move idx to target device, save label"""
             index = index.to(args.device)
             label = label.argmax(dim=1, keepdim=False) if label.dim() > 1 else label
             labels.append(label.cpu().numpy())
-
             """Eval pretrain loss."""
             if args.train_mode == "contrastive":
-                loss = eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, index).item()
+                loss = eval_contrastive_loss(
+                    args, default_model, augmenter, loss_func, time_loc_inputs, index, verbose
+                ).item()
+                verbose = False
             elif args.train_mode == "predictive":
                 loss = eval_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs).item()
             loss_list.append(loss)

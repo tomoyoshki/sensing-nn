@@ -76,8 +76,10 @@ def contrastive_pretrain(
             optimizer.zero_grad()
             idx = idx.to(args.device)
 
+
+            verbose = True if epoch % 20 == 0 and i == 0 else False
             # move to target device, FFT, and augmentations
-            loss = eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx)
+            loss = eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx, verbose)
 
             # back propagation
             loss.backward()

@@ -335,7 +335,7 @@ CMC:
         nce_momentum: 0.5
         softmax: True
 
-        input_size: 512
+        input_size: 256
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
