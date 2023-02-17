@@ -107,12 +107,12 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 | 20230206    | DeepSense   | SimCLR | 74.95%   | sl29 | ACIDS_DeepSense/exp3_contrastive_SimCLR |  |
 | 20230207    | DeepSense | MoCo | 78.25%   | sl29 | ACIDS_DeepSense/exp1_contrastive_MoCo | temperature 0.2 |
 | 20230214    | DeepSense | CMC | 72.53%   | sl29 | ACIDS_DeepSense/exp6_contrastive_CMC | temperature 0.2 |
-| 20230213    | DeepSense | Cosmo | 76.22%   | sl29 | ACIDS_DeepSense/exp0_contrastive_CMC | temperature 0.2 |
+| 20230216    | DeepSense | Cosmo | 87.85%   | sl29 | ACIDS_DeepSense/exp0_contrastive_CMC | temperature 0.2, no augmentation |
 | 20230206    | TransformerV4 | Supervised | 91.14%   | sl29 | ACIDS_TransformerV4/exp0_supervised_vehicle_classification_1.0 | channel_shuffle, mixup, phase_shift |
 | 20230206    | TransformerV4 | SimCLR | 88.41%   | sl29 | ACIDS_TransformerV4/exp3_contrastive_SimCLR |  |
 | 20230207    | TransformerV4 | MoCo | 87.67%   | sl29 | ACIDS_TransformerV4/exp1_contrastive_MoCo | temperature 0.2 |
 | 20230208    | TransformerV4 | CMC | xx.xx%   | sl29 | ACIDS_TransformerV4/ACIDS_TransformerV4/exp10_contrastive_CMC | temperature 0.2 |
-| 20230213    | TransformerV4 | Cosmo | 56.83%   | sl29 | ACIDS_DeepSense/exp2_contrastive_Cosmo | temperature 0.2 |
+| 20230216    | TransformerV4 | Cosmo | 52.47%   | sl29 | ACIDS_DeepSense/exp2_contrastive_Cosmo | temperature 0.2, no augmentation |
 
 #### 2. Terrain Classification
 |  Date       | Model | Framework |   Accuracy  | User | Weight | Comment | 
