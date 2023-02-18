@@ -160,7 +160,7 @@ class TransformerV4_CMC(nn.Module):
             ]
             self.loc_context_layers[mod] = nn.Sequential(*module_list)
 
-            """Mod fusion layer for each loc"""
+            """Loc fusion layer for each mod"""
             self.loc_fusion_layer[mod] = TransformerFusionBlock(
                 self.config["loc_out_channels"],
                 self.config["loc_head_num"],
