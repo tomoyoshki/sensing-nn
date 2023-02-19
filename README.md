@@ -70,6 +70,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 | 20230131    | DeepSense| Supervised | 91.22%   | sl29 | Parkland_DeepSense/exp0_supervised_vehicle_classification_1.0 | use MixUp augmentation. |
 | 20230131    | DeepSense | SimCLR | 89.89%   |  sl29 | Parkland_DeepSense/exp0_contrastive_SimCLR | use large dataset, batch size 256|
 | 20230211    | DeepSense | MoCo | 88.34%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 64| 
+| 20230218    | DeepSense | Cosmo | 90.76%   | sl29 | ACIDS_DeepSense/exp0_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
 | 20230130    | TransformerV4 | Supervised | 88.74%   |  sl29 | Parkland_TransformerV4/exp63_supervised_vehicle_classification_1.0 | use MixUp augmentation. |
 | 20230130    | TransformerV4 | SimCLR | 93.03%   |  sl29 | Parkland_TransformerV4/exp22_contrastive_SimCLR | use large dataset, batch size 256|
 | 20230130    | TransformerV4 | MoCo | 91.03%   | tkimura4 | Parkland_TransformerV4/exp10_contrastive | small dataaset, batch size 64|
