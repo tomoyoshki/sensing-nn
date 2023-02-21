@@ -31,7 +31,7 @@ def finetune(
     classifier = load_model_weight(classifier, pretrain_weight, load_class_layer=False)
     learnable_parameters = []
     for name, param in classifier.named_parameters():
-        if args.contrastive_framework == "CosMo":
+        if args.contrastive_framework == "Cosmo":
             if "class_layer" in name or "mod_fusion_layer" in name:
                 param.requires_grad = True
                 learnable_parameters.append(param)

@@ -334,12 +334,13 @@ DINO:
                 decay_rate: 0.2
 
 CMC:
-        emb_dim: 512
-        nce_k: 20000
-        nce_t: 0.2
-        nce_momentum: 0.5
+        emb_dim: 256
+        nce_k: 4096
+        nce_t: 0.07
+        nce_momentum: 0.9
         softmax: True
         input_size: 256
+        temperature: 0.2
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
@@ -379,11 +380,14 @@ CMC:
                 freq_augmenters: ["phase_shift"]
 
 Cosmo:
-        temperature: 0.07
+        temperature: 0.2
+        num_positive: 10
+        emb_dim: 256
+        contrast_mode: all
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.0001
+                start_lr: 0.00001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
@@ -408,13 +412,13 @@ Cosmo:
                 name: "step"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 200
+                train_epochs: 500
                 start_epoch: 0
-                decay_epochs: 50
+                decay_epochs: 100
                 decay_rate: 0.2
         # data augmenters
         random_augmenters:
-                time_augmenters: ["jitter"]
+                time_augmenters: ["no"]
                 freq_augmenters: []
 
 MTSS:

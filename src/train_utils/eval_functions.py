@@ -6,6 +6,7 @@ from tqdm import tqdm
 # utils
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 from sklearn.neighbors import KNeighborsClassifier
+from train_utils.knn import extract_sample_features
 
 
 def eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx, verbose=False):
@@ -13,9 +14,11 @@ def eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_in
     if args.contrastive_framework == "CMC":
         aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
         feature1, feature2 = default_model(aug_freq_loc_inputs_1)
+        loss = loss_func(feature1, feature2, idx)
     elif args.contrastive_framework == "Cosmo":
         aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
-        feature1, feature2 = default_model(aug_freq_loc_inputs_1)
+        rand_fused_features = default_model(aug_freq_loc_inputs_1)
+        loss = loss_func(rand_fused_features)
     else:
         aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
         aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
@@ -132,15 +135,15 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
     all_labels = np.concatenate(all_labels, axis=0)
 
     # calculate the classification metrics
-    mean_f1, mean_acc, conf_matrix = eval_task_metrics(args, all_labels, all_predictions)
+    mean_acc, mean_f1, conf_matrix = eval_task_metrics(args, all_labels, all_predictions)
 
-    return mean_classifier_loss, mean_f1, mean_acc, conf_matrix
+    return mean_classifier_loss, mean_acc, mean_f1, conf_matrix
 
 
 def eval_pretrained_model(args, default_model, estimator, augmenter, data_loader, loss_func):
     """Evaluate the performance with KNN estimator."""
     default_model.eval()
-    if args.train_mode == "contrastive" and args.contrastive_framework in {"CMC", "Cosmo"}:
+    if args.train_mode == "contrastive" and args.contrastive_framework in {"CMC"}:
         loss_func.contrast.eval()
 
     sample_embeddings = []
@@ -165,15 +168,7 @@ def eval_pretrained_model(args, default_model, estimator, augmenter, data_loader
 
             """Eval KNN estimator."""
             aug_freq_loc_inputs = augmenter.forward("no", time_loc_inputs)
-            if args.train_mode == "contrastive" and args.contrastive_framework in {"CMC"}:
-                knn_feature1, knn_feature2 = default_model(aug_freq_loc_inputs)
-                feat = torch.cat((knn_feature1.detach(), knn_feature2.detach()), dim=1)
-            elif args.train_mode == "contrastive" and args.contrastive_framework in {"Cosmo"}:
-                mod_features = default_model.backbone(aug_freq_loc_inputs, class_head=False)
-                mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
-                feat = torch.mean(torch.stack(mod_features, dim=1), dim=1)
-            else:
-                feat = default_model.backbone(aug_freq_loc_inputs, class_head=False)
+            feat = extract_sample_features(args, default_model.backbone, aug_freq_loc_inputs)
             sample_embeddings.append(feat.detach().cpu().numpy())
 
     sample_embeddings = np.concatenate(sample_embeddings)
@@ -183,9 +178,9 @@ def eval_pretrained_model(args, default_model, estimator, augmenter, data_loader
 
     # compute metrics
     mean_loss = np.mean(loss_list)
-    mean_f1, mean_acc, conf_matrix = eval_task_metrics(args, labels, predictions)
+    mean_acc, mean_f1, conf_matrix = eval_task_metrics(args, labels, predictions)
 
-    return mean_loss, mean_f1, mean_acc, conf_matrix
+    return mean_loss, mean_acc, mean_f1, conf_matrix
 
 
 def val_and_logging(
@@ -218,18 +213,18 @@ def val_and_logging(
 
     if estimator is None:
         """Supervised training or fine-tuning"""
-        val_loss, val_f1, val_acc, val_conf_matrix = eval_supervised_model(
+        val_loss, val_acc, val_f1, val_conf_matrix = eval_supervised_model(
             args, model, augmenter, val_loader, loss_func
         )
-        test_loss, test_f1, test_acc, test_conf_matrix = eval_supervised_model(
+        test_loss, test_acc, test_f1, test_conf_matrix = eval_supervised_model(
             args, model, augmenter, test_loader, loss_func
         )
     else:
         """Self-supervised pre-training"""
-        val_loss, val_f1, val_acc, val_conf_matrix = eval_pretrained_model(
+        val_loss, val_acc, val_f1, val_conf_matrix = eval_pretrained_model(
             args, model, estimator, augmenter, val_loader, loss_func
         )
-        test_loss, test_f1, test_acc, test_conf_matrix = eval_pretrained_model(
+        test_loss, test_acc, test_f1, test_conf_matrix = eval_pretrained_model(
             args, model, estimator, augmenter, test_loader, loss_func
         )
     logging.info(f"Val loss: {val_loss: .5f}")

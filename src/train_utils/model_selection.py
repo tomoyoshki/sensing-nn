@@ -21,7 +21,7 @@ from models.MTSSModules import MTSS
 from models.ModPredModules import ModPred
 
 # loss functions
-from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss
+from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss
 
 
 def init_model(args):
@@ -103,12 +103,14 @@ def init_loss_func(args, train_dataloader):
             """Contrastive pretraining only."""
             if args.contrastive_framework == "DINO":
                 loss_func = DINOLoss(args).to(args.device)
-            elif args.contrastive_framework == "MoCo":
+            elif args.contrastive_framework in {"MoCo"}:
                 loss_func = MoCoLoss(args).to(args.device)
-            elif args.contrastive_framework in {"CMC", "Cosmo"}:
+            elif args.contrastive_framework in {"CMC"}:
                 loss_func = CMCLoss(args, len(train_dataloader.dataset)).to(args.device)
             elif args.contrastive_framework in {"SimCLR"}:
                 loss_func = SimCLRLoss(args).to(args.device)
+            elif args.contrastive_framework in {"Cosmo"}:
+                loss_func = CosmoLoss(args).to(args.device)
             else:
                 raise NotImplementedError(f"Loss function for {args.contrastive_framework} yet implemented")
         else:

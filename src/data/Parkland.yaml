@@ -67,13 +67,13 @@ DeepSense:
         loc_mod_conv_inter_layers: 4
         # single interval + location
         loc_conv_lens: [[1, 4], [1, 4], [1, 4]]
-        loc_out_channels: 256
+        loc_out_channels: 128
         loc_conv_inter_layers: 3
         # recurrent layer
-        recurrent_dim: 256
+        recurrent_dim: 128
         recurrent_layers: 2
         # FC layer
-        fc_dim: 512
+        fc_dim: 256
         pretrained_head: "mlp"
         # Optimizer config
         optimizer:
@@ -329,11 +329,12 @@ DINO:
                 decay_rate: 0.2
 
 CMC:
-        emb_dim: 512
+        emb_dim: 256
         nce_k: 16384
         nce_t: 0.07
         nce_momentum: 0.5
         softmax: True
+        temperature: 0.07
 
         input_size: 256
         # Pre training  
