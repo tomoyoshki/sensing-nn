@@ -127,7 +127,10 @@ def train(args):
 def main_train():
     """The main function of training"""
     args = parse_train_params()
-    logging.basicConfig(level=logging.DEBUG, handlers=[logging.FileHandler(args.train_log_file)])
+    logging.basicConfig(
+        level=logging.INFO, handlers=[logging.FileHandler(args.train_log_file), logging.StreamHandler()]
+    )
+    # logging.basicConfig(level=logging.DEBUG, handlers=[logging.FileHandler(args.train_log_file)])
     train(args)
 
 
