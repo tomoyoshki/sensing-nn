@@ -23,7 +23,7 @@ def eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_in
         aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
         aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
         feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
-        loss = loss_func(feature1, feature2, idx)
+    loss = loss_func(feature1, feature2, idx)
 
     return loss
 
@@ -133,10 +133,10 @@ def eval_pretrained_model(args, default_model, estimator, augmenter, data_loader
             index = index.to(args.device)
             label = label.argmax(dim=1, keepdim=False) if label.dim() > 1 else label
             labels.append(label.cpu().numpy())
-
             """Eval pretrain loss."""
             if args.train_mode == "contrastive":
-                loss = eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, index).item()
+                loss = eval_contrastive_loss(
+                    args, default_model, augmenter, loss_func, time_loc_inputs, index).item()
             elif args.train_mode == "predictive":
                 loss = eval_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs).item()
             loss_list.append(loss)

@@ -3,9 +3,15 @@ import warnings
 warnings.simplefilter("ignore", UserWarning)
 
 import logging
+import torch
 import torch.optim as optim
 import torch.nn as nn
 import numpy as np
+
+import sys
+
+np.set_printoptions(threshold=sys.maxsize)
+torch.set_printoptions(threshold=sys.maxsize)
 
 from tqdm import tqdm
 
@@ -124,6 +130,7 @@ def main_train():
     logging.basicConfig(
         level=logging.INFO, handlers=[logging.FileHandler(args.train_log_file), logging.StreamHandler()]
     )
+    # logging.basicConfig(level=logging.DEBUG, handlers=[logging.FileHandler(args.train_log_file)])
     train(args)
 
 
