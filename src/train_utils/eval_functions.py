@@ -135,8 +135,7 @@ def eval_pretrained_model(args, default_model, estimator, augmenter, data_loader
             labels.append(label.cpu().numpy())
             """Eval pretrain loss."""
             if args.train_mode == "contrastive":
-                loss = eval_contrastive_loss(
-                    args, default_model, augmenter, loss_func, time_loc_inputs, index).item()
+                loss = eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, index).item()
             elif args.train_mode == "predictive":
                 loss = eval_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs).item()
             loss_list.append(loss)
