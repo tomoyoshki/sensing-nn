@@ -97,8 +97,8 @@ DeepSense:
                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
                 freq_augmenters: ["phase_shift"]
         fixed_augmenters:
-                time_augmenters: ["no"]
-                freq_augmenters: ["no"]
+                time_augmenters: ["mixup"]
+                freq_augmenters: []
         
 # ResNet config              
 ResNet:

@@ -43,7 +43,7 @@ def test(args):
             if param.requires_grad:
                 print(name)
 
-    test_classifier_loss, test_f1, test_acc, test_conf_matrix = eval_supervised_model(
+    test_classifier_loss, test_acc, test_f1, test_conf_matrix = eval_supervised_model(
         args, classifier, augmenter, test_dataloader, classifier_loss_func
     )
     print(f"Test classifier loss: {test_classifier_loss: .5f}")
