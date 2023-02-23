@@ -33,8 +33,6 @@ def contrastive_pretrain(
     The supervised training function for tbe backbone network,
     used in train of supervised mode or fine-tune of foundation models.
     """
-    classifier_config = args.dataset_config[args.model]
-
     # Initialize contrastive model
     default_model = init_contrastive_framework(args, backbone_model)
 
@@ -83,6 +81,10 @@ def contrastive_pretrain(
             loss.backward()
 
             # update
+            # torch.nn.utils.clip_grad_norm(
+            #     default_model.parameters(),
+            #     args.dataset_config[args.contrastive_framework]["pretrain_optimizer"]["clip_grad"],
+            # )
             optimizer.step()
             train_loss_list.append(loss.item())
 

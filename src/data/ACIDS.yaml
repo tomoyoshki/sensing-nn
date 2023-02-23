@@ -378,7 +378,7 @@ CMC:
                 freq_augmenters: ["phase_shift"]
 
 Cosmo:
-        temperature: 1 # 1 for TransformerV4, 0.2 for DeepSense
+        temperature: 1
         num_positive: 10
         emb_dim: 256
         contrast_mode: all

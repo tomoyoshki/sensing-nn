@@ -12,12 +12,12 @@ from train_utils.knn import extract_sample_features
 def eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx):
     """Eval the contrastive loss for one batch."""
     if args.contrastive_framework == "CMC":
-        aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
-        feature1, feature2 = default_model(aug_freq_loc_inputs_1)
+        aug_freq_loc_inputs = augmenter.forward("random", time_loc_inputs)
+        feature1, feature2 = default_model(aug_freq_loc_inputs)
         loss = loss_func(feature1, feature2, idx)
     elif args.contrastive_framework == "Cosmo":
-        aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
-        rand_fused_features = default_model(aug_freq_loc_inputs_1)
+        aug_freq_loc_inputs = augmenter.forward("random", time_loc_inputs)
+        rand_fused_features = default_model(aug_freq_loc_inputs)
         loss = loss_func(rand_fused_features)
     else:
         aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
