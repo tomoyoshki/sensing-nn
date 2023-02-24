@@ -157,8 +157,8 @@ TransformerV4:
         time_freq_out_channels: 128
         time_freq_head_num: 4
         time_freq_block_num: 
-                audio: [4, 4]
-                seismic: [4, 4]
+                audio: [2, 2, 4]
+                seismic: [2, 2, 4]
         # modality fusion
         mod_out_channels: 256
         mod_head_num: 4
@@ -178,7 +178,7 @@ TransformerV4:
         patch_size:
                 freq:
                         audio: [1, 40]
-                        seismic: [1, 2]
+                        seismic: [1, 1]
         # FC layer
         fc_dim: 512
         pretrained_head: "mlp"
@@ -201,7 +201,7 @@ TransformerV4:
                 decay_rate: 0.2
         # Data Augmenters:
         random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
+                time_augmenters: ["permutation"]
                 freq_augmenters: ["phase_shift"]
         fixed_augmenters:
                 time_augmenters: ["mixup"]
@@ -211,10 +211,10 @@ TransformerV4:
         fusion: "concat"
         # decoders
         decoder_channels: 256
-        masked_ratio: 0.75
+        masked_ratio: 0.50
         decoder_time_freq_block_num: 
-                audio: [4, 4]
-                seismic: [4, 4]
+                audio: [2, 2, 4]
+                seismic: [2, 2, 4]
 
 SimCLR:
         emb_dim: 512

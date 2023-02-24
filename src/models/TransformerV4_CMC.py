@@ -272,7 +272,7 @@ class TransformerV4_CMC(nn.Module):
                 ]  # stochastic depth decay rule
 
                 for i_layer, block_num in enumerate(
-                    self.config["decoder_time_freq_block_num"][mod][:-1]
+                    self.config["time_freq_block_num"][mod][:-1]
                 ):  # different downsample ratios
                     inverse_i_layer = len(self.config["time_freq_block_num"][mod]) - i_layer - 2
                     down_ratio = 2**inverse_i_layer
@@ -466,7 +466,7 @@ class TransformerV4_CMC(nn.Module):
         return dict(zip(self.modalities, mod_features))
 
     def patch_forward(self, freq_x, class_head=True):
-        """Patch the input and mask for MAE pretraining
+        """Patch the input and mask for pretrianing
 
         Args:
             freq_x (_type_): [loc][mod] data
@@ -521,6 +521,6 @@ class TransformerV4_CMC(nn.Module):
         encoded_mod_features = self.encode_features(mod_features)
         
         # decide the features
-        recovered_x = self.decode(encoded_mod_features)
-        return recovered_x, padded_inputs, masks
+        recovered_input = self.decode(encoded_mod_features)
+        return recovered_input, padded_inputs, masks
         
