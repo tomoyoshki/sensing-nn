@@ -8,11 +8,12 @@ import numpy as np
 from tqdm import tqdm
 
 # train utils
-from train_utils.eval_functions import val_and_logging, eval_contrastive_loss
+from train_utils.eval_functions import val_and_logging
 from train_utils.optimizer import define_optimizer
 from train_utils.lr_scheduler import define_lr_scheduler
 from train_utils.knn import compute_embedding, compute_knn
 from train_utils.model_selection import init_contrastive_framework
+from train_utils.loss_calc_utils import calc_contrastive_loss
 
 # utils
 from general_utils.time_utils import time_sync
@@ -75,7 +76,7 @@ def contrastive_pretrain(
             idx = idx.to(args.device)
 
             # move to target device, FFT, and augmentations
-            loss = eval_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx)
+            loss = calc_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx)
 
             # back propagation
             loss.backward()

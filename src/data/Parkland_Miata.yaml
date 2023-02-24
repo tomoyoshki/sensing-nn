@@ -97,115 +97,8 @@ DeepSense:
                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
                 freq_augmenters: ["phase_shift"]
         fixed_augmenters:
-                time_augmenters: ["mixup"]
-                freq_augmenters: []
-        
-# ResNet config              
-ResNet:
-        interval_num: 10
-        dropout_ratio: 0.2
-        # single interval + location + modality
-        loc_mod_in_conv_stride:
-                audio: [1, 80]
-                seismic: 1
-                acc: 1
-        loc_mod_conv_lens: 
-                audio: [[1, 80], [4, 5], [4, 5]]
-                seismic: [[3, 3], [3, 3], [3, 3]]
-        loc_mod_out_channels: 256
-        loc_mod_conv_inter_layers: 4
-        # single interval + location
-        loc_conv_lens: [[4, 4], [4, 4], [4, 4]]
-        loc_out_channels: 256
-        loc_conv_inter_layers: 4
-        # FC layer
-        fc_dim: 512
-        # Optimizer config
-        optimizer:
-                name: "AdamW"
-                start_lr: 0.00003
-                warmup_lr: 0.000001
-                min_lr: 0.0000001
-                clip_grad: 5.0
-                weight_decay: 0.05
-        # LR scheduler
-        lr_scheduler:
-                name: "step"
-                warmup_prefix: True
-                warmup_epochs: 0
-                train_epochs: 1500
-                start_epoch: 0
-                decay_epochs: 300
-                decay_rate: 0.2
-        # Augmenters
-        random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
+                time_augmenters: ["time_warp", "mag_warp"]
                 freq_augmenters: ["phase_shift"]
-        fixed_augmenters:
-                time_augmenters: ["mixup"]
-                freq_augmenters: ["no"]
-
-TransformerV4:
-        dropout_ratio: 0.2
-        drop_path_rate: 0.1
-        attn_drop_rate: 0.2
-        # loc mod freq feature
-        in_stride:
-                audio: 1
-                seismic: 1
-        # single modality
-        time_freq_out_channels: 64
-        time_freq_head_num: 4
-        time_freq_block_num: 
-                audio: [2, 2, 4]
-                seismic: [2, 2, 4]
-        # modality fusion
-        mod_out_channels: 256
-        mod_head_num: 4
-        mod_block_num: 2
-        # location fusion
-        loc_out_channels: 256 # loc_out_channels == mod_out_channels
-        loc_head_num: 4
-        loc_block_num: 2
-        # SwinTransformer configs
-        window_size: 
-                audio: [3, 3] 
-                seismic: [3, 3] 
-        mlp_ratio: 4.
-        qkv_bias: True
-        APE: False
-        patch_norm: True
-        patch_size:
-                freq:
-                        audio: [1, 40]
-                        seismic: [1, 1]
-        # FC layer
-        fc_dim: 512
-        pretrained_head: "mlp"
-        # Optimizer config
-        optimizer:
-                name: "AdamW"
-                start_lr: 0.0001
-                warmup_lr: 0.000001
-                min_lr: 0.0000001
-                clip_grad: 5.0
-                weight_decay: 0.05
-        # LR scheduler
-        lr_scheduler:
-                name: "step"
-                warmup_prefix: True
-                warmup_epochs: 0
-                train_epochs: 1500
-                start_epoch: 0
-                decay_epochs: 300
-                decay_rate: 0.2
-        # Data Augmenters:
-        random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
-                freq_augmenters: ["phase_shift"]
-        fixed_augmenters:
-                time_augmenters: ["mixup"]
-                freq_augmenters: ["no"]
 
 SimCLR:
         emb_dim: 512
@@ -287,47 +180,6 @@ MoCo:
         random_augmenters:
                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
                 freq_augmenters: ["phase_shift"]
-
-DINO:
-        emb_dim: 512
-        momentum_teacher: 0.9995
-        temperature_student: 0.1
-        temperature_teacher: 0.04
-        center_momentum: 0.9
-        temperature: 0.07
-        # Pre training  
-        pretrain_optimizer:
-                name: "AdamW"
-                start_lr: 0.0005
-                warmup_lr: 0.000001
-                min_lr: 0.0000001
-                clip_grad: 5.0
-                weight_decay: 0.05
-        pretrain_lr_scheduler:
-                name: "cosine"
-                warmup_prefix: True
-                warmup_epochs: 0
-                train_epochs: 2000
-                start_epoch: 0
-                decay_epochs: 500
-                decay_rate: 0.2
-        # Fine tuning 
-        finetune_optimizer:
-                name: "AdamW"
-                start_lr: 0.0001
-                warmup_lr: 0.000001
-                min_lr: 0.0000001
-                clip_grad: 5.0
-                weight_decay: 0.05
-        finetune_lr_scheduler:
-                name: "step"
-                warmup_prefix: True
-                warmup_epochs: 0
-                train_epochs: 200
-                start_epoch: 0
-                decay_epochs: 50
-                decay_rate: 0.2
-
 CMC:
         emb_dim: 256
         nce_k: 16384
@@ -365,9 +217,9 @@ CMC:
                 name: "step"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 200
+                train_epochs: 500
                 start_epoch: 0
-                decay_epochs: 50
+                decay_epochs: 100
                 decay_rate: 0.2
         # Augmenters
         random_augmenters:

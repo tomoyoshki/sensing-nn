@@ -22,9 +22,9 @@ class MTSS(nn.Module):
         # define the projection head
         fc_dim = args.dataset_config[args.model]["fc_dim"]
         self.class_layer = nn.Sequential(
-            nn.Linear(fc_dim, fc_dim // 2),
+            nn.Linear(fc_dim, fc_dim),
             nn.GELU(),
-            nn.Linear(fc_dim // 2, self.num_classes),
+            nn.Linear(fc_dim, self.num_classes),
             nn.Softmax(dim=1),
         )
 
