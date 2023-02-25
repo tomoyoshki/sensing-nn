@@ -12,8 +12,8 @@ class MTSS(nn.Module):
         super(MTSS, self).__init__()
         self.args = args
         self.config = args.dataset_config["MTSS"]
-        self.num_classes = len(args.dataset_config[args.model]["random_augmenters"]["time_augmenters"]) + len(
-            args.dataset_config[args.model]["random_augmenters"]["freq_augmenters"]
+        self.num_classes = len(args.dataset_config["MTSS"]["random_augmenters"]["time_augmenters"]) + len(
+            args.dataset_config["MTSS"]["random_augmenters"]["freq_augmenters"]
         )
 
         # build encoders
@@ -25,7 +25,7 @@ class MTSS(nn.Module):
             nn.Linear(fc_dim, fc_dim),
             nn.GELU(),
             nn.Linear(fc_dim, self.num_classes),
-            nn.Sigmoid(),
+            # nn.Sigmoid(),
         )
 
     def forward(self, freq_input):

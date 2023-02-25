@@ -25,7 +25,7 @@ class ModPred(nn.Module):
             nn.Linear(fc_dim, fc_dim // 2),
             nn.GELU(),
             nn.Linear(fc_dim // 2, self.num_classes),
-            nn.Sigmoid(),
+            # nn.Sigmoid(),
         )
 
     def forward(self, freq_input):

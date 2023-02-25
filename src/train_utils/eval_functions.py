@@ -64,8 +64,7 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
                 predictions = (logits > 0.5).float()
             else:
                 predictions = logits.argmax(dim=1, keepdim=False)
-                if labels.dim() > 1:
-                    labels = labels.argmax(dim=1, keepdim=False)
+                labels = labels.argmax(dim=1, keepdim=False) if labels.dim() > 1 else labels
 
             # for future computation of acc or F1 score
             saved_predictions = predictions.cpu().numpy()
@@ -218,6 +217,10 @@ def val_and_logging(
             )
             logging.info(f"Test pretrain acc: {test_pretrain_acc: .5f}, test pretrain f1: {test_pretrain_f1: .5f}")
             logging.info(f"Test pretrain confusion matrix:\n {test_pretrain_conf_matrix} \n")
+
+            if tensorboard_logging:
+                tb_writer.add_scalar("Evaluation/Pretrain Test accuracy", test_pretrain_acc, epoch)
+                tb_writer.add_scalar("Evaluation/Pretrain Test F1 score", test_pretrain_f1, epoch)
 
         """All self-supervised pre-training tasks"""
         val_loss, val_acc, val_f1, val_conf_matrix = eval_pretrained_model(
