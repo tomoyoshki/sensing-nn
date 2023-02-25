@@ -120,8 +120,8 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 | 20230218    | DeepSense | Cosmo | 92.62%   | sl29 | ACIDS_DeepSense/exp13_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
 | 20230221    | DeepSense | CMC | 89.04%   | tkimura4 | ACIDS_DeepSense/exp3_contrastive_CMC | batch size 128 |
 | 20230206    | TransformerV4 | Supervised | 91.14%   | sl29 | ACIDS_TransformerV4/exp0_supervised_vehicle_classification_1.0 | channel_shuffle, mixup, phase_shift |
-| 20230206    | TransformerV4 | SimCLR | 88.41%   | sl29 | ACIDS_TransformerV4/exp3_contrastive_SimCLR |  |
-| 20230207    | TransformerV4 | MoCo | 87.67%   | sl29 | ACIDS_TransformerV4/exp0_contrastive_MoCo | temperature 0.2 |
+| 20230206    | TransformerV4 | SimCLR | 88.41%   | sl29 | ACIDS_TransformerV4/exp1_contrastive_SimCLR |  |
+| 20230207    | TransformerV4 | MoCo | 87.67%   | sl29 | ACIDS_TransformerV4/exp2_contrastive_MoCo | temperature 0.2 |
 | 20230216    | TransformerV4 | Cosmo | 72.85%   | sl29 | ACIDS_TransformerV4/exp2_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
 | 20230221    | TransformerV4 | CMC | 84.80%   | tkimura4 | ACIDS_TransformerV4/exp10_contrastive_CMC | batch size 128 |
 
@@ -132,14 +132,28 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 | 20230201    | DeepSense    | SimCLR | 80.03%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR |  |
 | 20230224    | DeepSense | MoCo | 78.89%   | sl29 | ACIDS_DeepSense/exp0_contrastive_MoCo | temperature 0.2 |
 | 20230221    | DeepSense | CMC | 93.84%   | tkimura4 | ACIDS_DeepSense/exp3_contrastive_CMC | batch size 128 |
-| 20230224    | DeepSense | Cosmo | xx.xx%   | sl29 | ACIDS_DeepSense/exp13_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
+| 20230224    | DeepSense | Cosmo | 90.62%   | sl29 | ACIDS_DeepSense/exp13_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
 | 20230201    | TransformerV4 | Supervised | 90.76%   | sl29 | ACIDS_TransformerV4/exp0_supervised_terrain_classification_1.0 | channel_shuffle, mixup, phase_shift |
-| 20230201    | TransformerV4 | SimCLR | xx.xx%   | sl29 | ACIDS_TransformerV4/exp0_contrastive_SimCLR | |
-| 20230224    | TransformerV4 | MoCo | xx.xx%   | sl29 | ACIDS_TransformerV4/exp0_contrastive_MoCo | temperature 0.2 |
+| 20230201    | TransformerV4 | SimCLR | 90.36%   | sl29 | ACIDS_TransformerV4/exp1_contrastive_SimCLR | |
+| 20230224    | TransformerV4 | MoCo | xx.xx%   | sl29 | ACIDS_TransformerV4/exp2_contrastive_MoCo | temperature 0.2 |
 | 20230221    | TransformerV4 | CMC | 96.40%   | tkimura4 | ACIDS_TransformerV4/exp10_contrastive_CMC | batch size 128 |
 | 20230224    | TransformerV4 | Cosmo | xx.xx%   | sl29 | ACIDS_TransformerV4/exp2_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
 
-#### 3. Distance Classification (TODO: Data labels are not ready yet)
+#### 3. Speed Classification
+|  Date       | Model | Framework |   Accuracy  | User | Weight | Comment | 
+| :---:       |    :----:    |  :---: |  :---: | :--: | :-- | :-- |
+| 20230201    | DeepSense | Supervised |  xx.xx%   | sl29 | ACIDS_DeepSense/exp0_supervised_speed_classification_1.0 | no augmentations |
+| 20230201    | DeepSense    | SimCLR | 20.75%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR | no augmentations |
+| 20230224    | DeepSense | MoCo | 21.86%   | sl29 | ACIDS_DeepSense/exp0_contrastive_MoCo | temperature 0.2 |
+| 20230221    | DeepSense | CMC | 25.70%   | tkimura4 | ACIDS_DeepSense/exp3_contrastive_CMC | batch size 128 |
+| 20230224    | DeepSense | Cosmo | 32.17%   | sl29 | ACIDS_DeepSense/exp13_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
+| 20230201    | TransformerV4 | Supervised | xx.xx%   | sl29 |  | |
+| 20230201    | TransformerV4 | SimCLR | 17.06%   | sl29 | ACIDS_TransformerV4/exp1_contrastive_SimCLR | |
+| 20230224    | TransformerV4 | MoCo | 23.25%   | sl29 | ACIDS_TransformerV4/exp2_contrastive_MoCo | temperature 0.2 |
+| 20230221    | TransformerV4 | CMC | 44.92%   | tkimura4 | ACIDS_TransformerV4/exp10_contrastive_CMC | batch size 128 |
+| 20230224    | TransformerV4 | Cosmo | xx.xx%   | sl29 | ACIDS_TransformerV4/exp2_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
+
+<!-- #### 4. Distance Classification (TODO: Data labels are not ready yet)
 |  Date       | Model | Framework |   Accuracy  | User | Weight | Comment | 
 | :---:       |    :----:    |  :---: |  :---: | :--: | :-- | :-- |
 | 20230201    | DeepSense | Supervised     |  xx.xx%   | sl29 | ACIDS_DeepSense/exp0_supervised_speed_classification_1.0 | channel_shuffle, mixup, phase_shift |
@@ -151,18 +165,4 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 | 20230201    | TransformerV4 | SimCLR | xx.xx%   | sl29 |  |  |
 | 20230224    | TransformerV4 | MoCo | xx.xx%   | sl29 | ACIDS_TransformerV4/exp1_contrastive_MoCo | temperature 0.2 |
 | 20230221    | TransformerV4 | CMC | 85.85%   | tkimura4 | ACIDS_TransformerV4/exp10_contrastive_CMC | batch size 128 |
-| 20230224    | TransformerV4 | Cosmo | xx.xx%   | sl29 | ACIDS_TransformerV4/exp2_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
-
-#### 4. Speed Classification
-|  Date       | Model | Framework |   Accuracy  | User | Weight | Comment | 
-| :---:       |    :----:    |  :---: |  :---: | :--: | :-- | :-- |
-| 20230201    | DeepSense | Supervised |  xx.xx%   | sl29 | ACIDS_DeepSense/exp0_supervised_speed_classification_1.0 | no augmentations |
-| 20230201    | DeepSense    | SimCLR | 20.75%   | sl29 | ACIDS_DeepSense/exp0_contrastive_SimCLR | no augmentations |
-| 20230224    | DeepSense | MoCo | 21.86%   | sl29 | ACIDS_DeepSense/exp0_contrastive_MoCo | temperature 0.2 |
-| 20230221    | DeepSense | CMC | 25.70%   | tkimura4 | ACIDS_DeepSense/exp3_contrastive_CMC | batch size 128 |
-| 20230224    | DeepSense | Cosmo | xx.xx%   | sl29 | ACIDS_DeepSense/exp13_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
-| 20230201    | TransformerV4 | Supervised | xx.xx%   | sl29 |  | |
-| 20230201    | TransformerV4 | SimCLR | xx.xx%   | sl29 |  | |
-| 20230224    | TransformerV4 | MoCo | xx.xx%   | sl29 | ACIDS_TransformerV4/exp0_contrastive_MoCo | temperature 0.2 |
-| 20230221    | TransformerV4 | CMC | 44.92%   | tkimura4 | ACIDS_TransformerV4/exp10_contrastive_CMC | batch size 128 |
-| 20230224    | TransformerV4 | Cosmo | xx.xx%   | sl29 | ACIDS_TransformerV4/exp2_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
+| 20230224    | TransformerV4 | Cosmo | xx.xx%   | sl29 | ACIDS_TransformerV4/exp2_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 | -->
