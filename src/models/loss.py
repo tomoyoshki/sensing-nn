@@ -197,7 +197,7 @@ class MAELoss(nn.Module):
         self.locations = args.dataset_config["location_names"]
         self.norm_pix_loss = True
 
-    def patchify(self, imgs, patch_size):
+    def patchify(self, imgs, patch_size, in_channel):
         """
         imgs: (N, 3, H, W)
         x: (N, L, patch_size**2 *3)
@@ -208,16 +208,17 @@ class MAELoss(nn.Module):
         h = imgs.shape[2] // ph
         w = imgs.shape[3] // pw
 
-        x = imgs.reshape(shape=(imgs.shape[0], 2, h, ph, w, pw))
+        x = imgs.reshape(shape=(imgs.shape[0], in_channel, h, ph, w, pw))
         x = torch.einsum("nchpwq->nhwpqc", x)
-        x = x.reshape(imgs.shape[0], h * w, ph * pw * 2)
+        x = x.reshape(imgs.shape[0], h * w, ph * pw * in_channel)
         return x
 
     def forward(self, padded_x, decoded_x, masks):
         total_loss = 0
         for loc in self.locations:
             for mod in self.modalities:
-                target = self.patchify(padded_x[loc][mod], self.backbone_config["patch_size"]["freq"][mod])
+                in_channel = self.args.dataset_config["loc_mod_in_freq_channels"]["shake"][mod]
+                target = self.patchify(padded_x[loc][mod], self.backbone_config["patch_size"]["freq"][mod], in_channel)
                 mask = masks[loc][mod]
                 pred = decoded_x[loc][mod]
                 if self.norm_pix_loss:

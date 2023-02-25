@@ -73,7 +73,7 @@ def mae_train(
 
             # forward pass
             decoded_x, padded_x, masks = classifier(aug_freq_loc_inputs, False)
-            loss = loss_func(aug_freq_loc_inputs, decoded_x, masks)
+            loss = loss_func(padded_x, decoded_x, masks)
 
             # back propagation
             optimizer.zero_grad()

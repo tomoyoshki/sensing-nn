@@ -211,6 +211,14 @@ TransformerV4:
         fixed_augmenters:
                 time_augmenters: ["channel_shuffle", "mixup"]
                 freq_augmenters: ["phase_shift"]
+       # MAE
+        fusion: "concat"
+        # decoders
+        decoder_channels: 256
+        masked_ratio: 0.50
+        decoder_time_freq_block_num: 
+                audio: [2, 2, 4]
+                seismic: [2, 2, 4]
 
 SimCLR:
         emb_dim: 512
