@@ -7,7 +7,7 @@ Transformer-based foundation models for (multi-modal) time-series sensing data
 
 #### Training
 ```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=supervised -task=vehicle_classification -model=TransformerV4 -batch_size=256
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=supervised -task=vehicle_classification -model=TransformerV4 -batch_size=64
 ```
 
 #### Testing 
