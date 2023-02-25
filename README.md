@@ -147,7 +147,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 | 20230224    | DeepSense | MoCo | 21.86%   | sl29 | ACIDS_DeepSense/exp0_contrastive_MoCo | temperature 0.2 |
 | 20230221    | DeepSense | CMC | 25.70%   | tkimura4 | ACIDS_DeepSense/exp3_contrastive_CMC | batch size 128 |
 | 20230224    | DeepSense | Cosmo | 32.17%   | sl29 | ACIDS_DeepSense/exp13_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
-| 20230201    | TransformerV4 | Supervised | 53.83%   | sl29 |  | |
+| 20230201    | TransformerV4 | Supervised | 53.83%   | sl29 | ACIDS_TransformerV4/exp0_supervised_speed_classification_1.0 | |
 | 20230201    | TransformerV4 | SimCLR | 17.06%   | sl29 | ACIDS_TransformerV4/exp1_contrastive_SimCLR | |
 | 20230224    | TransformerV4 | MoCo | 23.25%   | sl29 | ACIDS_TransformerV4/exp2_contrastive_MoCo | temperature 0.2 |
 | 20230221    | TransformerV4 | CMC | 44.92%   | tkimura4 | ACIDS_TransformerV4/exp10_contrastive_CMC | batch size 128 |
