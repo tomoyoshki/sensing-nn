@@ -25,6 +25,7 @@ def calc_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inp
     """Eval the predictive loss for one batch."""
     if args.predictive_framework == "MTSS":
         aug_freq_loc_inputs, pretrain_labels = augmenter.forward("random", time_loc_inputs, return_aug_id=True)
+        pretrain_labels = torch.nn.functional.one_hot(pretrain_labels, num_classes=default_model.num_classes).float()
         pretrain_predictions = default_model(aug_freq_loc_inputs)
     elif args.predictive_framework == "ModPred":
         aug_freq_loc_inputs, pretrain_labels = augmenter.forward("random", time_loc_inputs, return_aug_mods=True)

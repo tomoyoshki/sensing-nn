@@ -2,6 +2,7 @@ import torch
 import logging
 import numpy as np
 from tqdm import tqdm
+import torch.nn as nn
 
 # utils
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
@@ -147,7 +148,7 @@ def eval_predictive_task(args, default_model, augmenter, dataloader):
 
             # get the predictions from the logits
             pretrain_predictions = (
-                (pretrain_logits > 0.5).float()
+                (nn.Sigmoid(pretrain_logits) > 0.5).float()
                 if args.predictive_framework == "ModPred"
                 else pretrain_logits.argmax(dim=1, keepdim=False)
             )

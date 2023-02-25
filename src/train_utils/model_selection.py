@@ -94,7 +94,7 @@ def init_loss_func(args, train_dataloader):
         elif args.train_mode == "predictive":
             """Predictive pretraining only."""
             if args.predictive_framework == "MTSS":
-                loss_func = nn.CrossEntropyLoss()
+                loss_func = nn.BCEWithLogitsLoss()
             elif args.predictive_framework == "ModPred":
                 loss_func = nn.CrossEntropyLoss()
             else:
