@@ -9,6 +9,7 @@ class PermutationAugmenter(nn.Module):
         super().__init__()
         self.args = args
         self.config = args.dataset_config["permutation"]
+        self.p = 1 if args.train_mode == "predictive" and args.predictive_framework == "MTSS" else self.config["prob"]
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
 
@@ -29,7 +30,7 @@ class PermutationAugmenter(nn.Module):
                 if b is None:
                     b = org_loc_inputs[loc][mod].shape[0]
 
-                if random() < self.config["prob"]:
+                if random() < self.p:
                     mod_input = org_loc_inputs[loc][mod]
                     rand_time_order = torch.randperm(mod_input.shape[2])
                     aug_loc_inputs[loc][mod] = mod_input[:, :, rand_time_order, :]

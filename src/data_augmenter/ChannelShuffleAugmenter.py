@@ -9,6 +9,7 @@ class ChannelShuffleAugmenter(nn.Module):
         super().__init__()
         self.args = args
         self.config = args.dataset_config["channel_shuffle"]
+        self.p = 1 if args.train_mode == "predictive" and args.predictive_framework == "MTSS" else self.config["prob"]
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
 
@@ -30,7 +31,7 @@ class ChannelShuffleAugmenter(nn.Module):
                     b = org_loc_inputs[loc][mod].shape[0]
 
                 # random augmentation
-                if random() < self.config["prob"]:
+                if random() < self.p:
                     mod_input = org_loc_inputs[loc][mod]
                     rand_channel_order = torch.randperm(mod_input.size(1))
                     aug_loc_inputs[loc][mod] = mod_input[:, rand_channel_order]

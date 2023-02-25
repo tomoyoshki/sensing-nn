@@ -11,6 +11,7 @@ class TimeMaskAugmenter(nn.Module):
         super().__init__()
         self.args = args
         self.config = args.dataset_config["time_mask"]
+        self.p = 1 if args.train_mode == "predictive" and args.predictive_framework == "MTSS" else self.config["prob"]
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
         self.max_duration = floor(args.dataset_config["num_segments"] * self.config["mask_ratio"])
@@ -33,7 +34,7 @@ class TimeMaskAugmenter(nn.Module):
                 if b is None:
                     b = org_loc_inputs[loc][mod].shape[0]
 
-                if random() < self.config["prob"]:
+                if random() < self.p:
                     mod_input = org_loc_inputs[loc][mod].clone()
                     duration = randint(1, self.max_duration)
                     start_interval = torch.randint(0, mod_input.shape[2] - duration, (1,)).item()

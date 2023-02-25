@@ -11,6 +11,7 @@ class FreqMaskAugmenter(nn.Module):
         super().__init__()
         self.args = args
         self.config = args.dataset_config["freq_mask"]
+        self.p =  1 if args.train_mode == "predictive" and args.predictive_framework == "MTSS" else self.config["prob"]
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
         self.max_band_widths = {}
@@ -40,7 +41,7 @@ class FreqMaskAugmenter(nn.Module):
                 if b is None:
                     b = org_loc_inputs[loc][mod].shape[0]
 
-                if random() < self.config["prob"]:
+                if random() < self.p:
                     mod_input = org_loc_inputs[loc][mod].clone()
                     band_width = randint(1, self.max_band_widths[mod])
                     start_freq = torch.randint(0, mod_input.shape[-1] - band_width, (1,)).item()

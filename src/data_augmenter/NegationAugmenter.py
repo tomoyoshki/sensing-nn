@@ -9,6 +9,7 @@ class NegationAugmenter(nn.Module):
         super().__init__()
         self.args = args
         self.config = args.dataset_config["negation"]
+        self.p = 1 if args.train_mode == "predictive" and args.predictive_framework == "MTSS" else self.config["prob"]
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
 
@@ -29,7 +30,7 @@ class NegationAugmenter(nn.Module):
                 if b is None:
                     b = org_loc_inputs[loc][mod].shape[0]
 
-                if random() < self.config["prob"]:
+                if random() < self.p:
                     aug_loc_inputs[loc][mod] = -org_loc_inputs[loc][mod]
                     aug_mod_labels.append(1)
                 else:

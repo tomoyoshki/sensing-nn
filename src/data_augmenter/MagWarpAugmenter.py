@@ -12,6 +12,7 @@ class MagWarpAugmenter(nn.Module):
         super().__init__()
         self.args = args
         self.config = args.dataset_config["mag_warp"]
+        self.p = 1 if args.train_mode == "predictive" and args.predictive_framework == "MTSS" else self.config["prob"]
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
         self.warp_func = TSMagWarp(magnitude=self.config["magnitude"], order=self.config["order"])
@@ -36,7 +37,7 @@ class MagWarpAugmenter(nn.Module):
                 if b is None:
                     b = org_loc_inputs[loc][mod].shape[0]
 
-                if random() < self.config["prob"]:
+                if random() < self.p:
                     mod_input = org_loc_inputs[loc][mod].clone()
                     b, c, i, s = mod_input.shape
                     mod_input = torch.reshape(mod_input, (b, c, i * s))

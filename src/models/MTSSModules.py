@@ -25,7 +25,7 @@ class MTSS(nn.Module):
             nn.Linear(fc_dim, fc_dim),
             nn.GELU(),
             nn.Linear(fc_dim, self.num_classes),
-            nn.Softmax(dim=1),
+            nn.Sigmoid(),
         )
 
     def forward(self, freq_input):
