@@ -297,17 +297,25 @@ class DeepSense_CMC(nn.Module):
             dec_mod_interval_features[mod] = dec_mod_interval_features[mod].squeeze(3)
 
         # Step 1: Single (loc, mod) feature extraction, (b, c, i)
-        loc_mod_features = {}
+        dec_loc_mod_input = {}
         for loc in self.locations:
-            loc_mod_features[loc] = {}
+            dec_loc_mod_input[loc] = {}
             for mod in self.modalities:
                 decoded_input = self.dec_loc_mod_extractors[loc][mod](dec_mod_interval_features[mod])
-                loc_mod_features[mod] = decoded_input
-        pass
+                dec_loc_mod_input[loc][mod] = decoded_input
+
+        return dec_loc_mod_input
 
     def forward(self, freq_x, class_head=True):
+        for loc in self.locations:
+            for mod in self.modalities:
+                print(f"freq_x {loc} {mod} has shape: {freq_x[loc][mod].shape}")
         mod_features, hidden_features = self.forward_encoder(freq_x, class_head)
         if self.args.train_mode != "MAE" or class_head:
             return mod_features
         encoded_mod_features = self.forward_feature_encoder(mod_features)
         decoded_output = self.forward_decoder(encoded_mod_features, hidden_features)
+        for loc in self.locations:
+            for mod in self.modalities:
+                print(f"decoded_output {loc} {mod} has shape: {decoded_output[loc][mod].shape}")
+        # return decoded_output

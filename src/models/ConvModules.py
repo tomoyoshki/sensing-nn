@@ -7,50 +7,22 @@ import math
 import torch.nn.functional as F
 
 
-class ConvTranspose2dSame(torch.nn.ConvTranspose2d):
+class ConvTranspose2dPadding(torch.nn.ConvTranspose2d):
     """ConvTranspose2d that calculates same padding
     https://github.com/pytorch/pytorch/issues/67551,
     https://pytorch.org/docs/stable/_modules/torch/nn/modules/conv.html#ConvTranspose2d,
     """
 
     def calc_same_pad(self, i: int, k: int, s: int, d: int) -> int:
-        return max((math.ceil(i / s) - 1) * s + (k - 1) * d + 1 - i, 0)
+        if self.mode == "same":
+            return max((math.ceil(i / s) - 1) * s + (k - 1) * d + 1 - i, 0)
+        else:
+            return max((math.floor(i / s) - 1) * s + (k - 1) * d + 1 - i, 0)
 
-    def forward(self, x: torch.Tensor, output_size=None) -> torch.Tensor:
-        ih, iw = x.size()[-2:]
-
-        pad_h = self.calc_same_pad(i=ih, k=self.kernel_size[0], s=self.stride[0], d=self.dilation[0])
-        pad_w = self.calc_same_pad(i=iw, k=self.kernel_size[1], s=self.stride[1], d=self.dilation[1])
-
-        if pad_h > 0 or pad_w > 0:
-            x = F.pad(x, [pad_w // 2, pad_w - pad_w // 2, pad_h // 2, pad_h - pad_h // 2])
-
-        self.padding = tuple([pad_h, pad_w])
-        # self.output_padding = 2 * np.array(padding) - np.array(self.kernel_size) + np.array(self.stride)
-        output_padding = self._output_padding(
-            x, output_size, self.stride, self.padding, self.kernel_size, 2, self.dilation
-        )
-
-        return F.conv_transpose2d(
-            x,
-            self.weight,
-            self.bias,
-            self.stride,
-            self.padding,
-            output_padding,
-            self.groups,
-            self.dilation,
-        )
-
-
-class ConvTranspose2dValid(torch.nn.ConvTranspose2d):
-    """ConvTranspose2d that calculates same padding
-    https://github.com/pytorch/pytorch/issues/67551,
-    https://pytorch.org/docs/stable/_modules/torch/nn/modules/conv.html#ConvTranspose2d,
-    """
-
-    def calc_same_pad(self, i: int, k: int, s: int, d: int) -> int:
-        return max((math.floor(i / s) - 1) * s + (k - 1) * d + 1 - i, 0)
+    def set_padding(self, mode):
+        """set padding to same or valid"""
+        assert mode in {"same", "valid"}
+        self.mode = mode
 
     def forward(self, x: torch.Tensor, output_size=None) -> torch.Tensor:
         ih, iw = x.size()[-2:]
@@ -163,25 +135,16 @@ class DeConvLayer2D(nn.Module):
         """
         super().__init__()
 
-        if padding == "same":
-            self.deconv = ConvTranspose2dSame(
-                in_channels,
-                out_channels,
-                kernel_size=kernel_size,
-                stride=stride,
-                padding_mode=padding_mode,
-                bias=bias,
-            )
-        elif padding == "valid":
-            self.deconv = ConvTranspose2dValid(
-                in_channels,
-                out_channels,
-                kernel_size=kernel_size,
-                stride=stride,
-                padding_mode=padding_mode,
-                bias=bias,
-            )
+        self.deconv = ConvTranspose2dPadding(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding_mode=padding_mode,
+            bias=bias,
+        )
 
+        self.deconv.set_padding(padding)
         self.batch_norm = nn.BatchNorm2d(out_channels, eps=1e-5, momentum=0.1, track_running_stats=True)
         if activation == "GELU":
             self.activation = nn.GELU()
