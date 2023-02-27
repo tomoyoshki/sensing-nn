@@ -24,7 +24,7 @@ CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=contrastiv
 
 #### Finetuning
 ```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4 -batch_size=256
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4 -batch_size=128
 ```
 
 #### Testing 
@@ -41,7 +41,7 @@ CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=ACIDS -train_mode=predictive -p
 
 #### Finetuning
 ```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=ACIDS -train_mode=predictive -predictive_framework=MTSS -stage=finetune -task=vehicle_classification -model=TransformerV4 -batch_size=256
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=ACIDS -train_mode=predictive -predictive_framework=MTSS -stage=finetune -task=vehicle_classification -model=TransformerV4 -batch_size=128
 ```
 
 #### Testing 
