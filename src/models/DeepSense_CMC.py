@@ -112,7 +112,7 @@ class DeepSense_CMC(nn.Module):
         if args.train_mode == "supervised" or self.config["pretrained_head"] == "linear":
             """Linear classification layers for supervised learning or finetuning."""
             self.class_layer = nn.Sequential(
-                nn.Linear(sample_dim, args.dataset_config[args.task]["num_classes"]),
+                nn.Linear(self.sample_dim, args.dataset_config[args.task]["num_classes"]),
                 # nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
             )
         else:
