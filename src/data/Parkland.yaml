@@ -67,11 +67,12 @@ DeepSense:
         loc_mod_conv_inter_layers: 4
         # single interval + location
         loc_conv_lens: [[1, 4], [1, 4], [1, 4]]
-        loc_out_channels: 256
+        loc_out_channels: 128
         loc_conv_inter_layers: 3
         # recurrent layer
         recurrent_dim: 256
         recurrent_layers: 2
+        
         # FC layer
         fc_dim: 512
         pretrained_head: "mlp"
@@ -99,6 +100,11 @@ DeepSense:
         fixed_augmenters:
                 time_augmenters: ["mixup"]
                 freq_augmenters: ["no"]
+        # MAE
+        fusion: "concat"
+        # decoders
+        decoder_channels: 256
+        masked_ratio: 0.50
         
 # ResNet config              
 ResNet:

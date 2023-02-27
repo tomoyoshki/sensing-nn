@@ -22,6 +22,8 @@ def init_model(args):
             return DeepSense
         elif args.train_mode == "contrastive" and args.contrastive_framework in {"CMC", "Cosmo"}:
             classifier = DeepSense_CMC(args)
+        elif args.train_mode == "MAE":
+            classifier = DeepSense_CMC(args)
         else:
             classifier = DeepSense(args, self_attention=False)
     elif args.model == "TransformerV4":

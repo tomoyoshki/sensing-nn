@@ -2,6 +2,81 @@ import torch
 import torch.nn as nn
 import numpy as np
 from time import sleep
+import math
+
+import torch.nn.functional as F
+
+
+class ConvTranspose2dSame(torch.nn.ConvTranspose2d):
+    """ConvTranspose2d that calculates same padding
+    https://github.com/pytorch/pytorch/issues/67551,
+    https://pytorch.org/docs/stable/_modules/torch/nn/modules/conv.html#ConvTranspose2d,
+    """
+
+    def calc_same_pad(self, i: int, k: int, s: int, d: int) -> int:
+        return max((math.ceil(i / s) - 1) * s + (k - 1) * d + 1 - i, 0)
+
+    def forward(self, x: torch.Tensor, output_size=None) -> torch.Tensor:
+        ih, iw = x.size()[-2:]
+
+        pad_h = self.calc_same_pad(i=ih, k=self.kernel_size[0], s=self.stride[0], d=self.dilation[0])
+        pad_w = self.calc_same_pad(i=iw, k=self.kernel_size[1], s=self.stride[1], d=self.dilation[1])
+
+        if pad_h > 0 or pad_w > 0:
+            x = F.pad(x, [pad_w // 2, pad_w - pad_w // 2, pad_h // 2, pad_h - pad_h // 2])
+
+        self.padding = tuple([pad_h, pad_w])
+        # self.output_padding = 2 * np.array(padding) - np.array(self.kernel_size) + np.array(self.stride)
+        output_padding = self._output_padding(
+            x, output_size, self.stride, self.padding, self.kernel_size, 2, self.dilation
+        )
+
+        return F.conv_transpose2d(
+            x,
+            self.weight,
+            self.bias,
+            self.stride,
+            self.padding,
+            output_padding,
+            self.groups,
+            self.dilation,
+        )
+
+
+class ConvTranspose2dValid(torch.nn.ConvTranspose2d):
+    """ConvTranspose2d that calculates same padding
+    https://github.com/pytorch/pytorch/issues/67551,
+    https://pytorch.org/docs/stable/_modules/torch/nn/modules/conv.html#ConvTranspose2d,
+    """
+
+    def calc_same_pad(self, i: int, k: int, s: int, d: int) -> int:
+        return max((math.floor(i / s) - 1) * s + (k - 1) * d + 1 - i, 0)
+
+    def forward(self, x: torch.Tensor, output_size=None) -> torch.Tensor:
+        ih, iw = x.size()[-2:]
+
+        pad_h = self.calc_same_pad(i=ih, k=self.kernel_size[0], s=self.stride[0], d=self.dilation[0])
+        pad_w = self.calc_same_pad(i=iw, k=self.kernel_size[1], s=self.stride[1], d=self.dilation[1])
+
+        if pad_h > 0 or pad_w > 0:
+            x = F.pad(x, [pad_w // 2, pad_w - pad_w // 2, pad_h // 2, pad_h - pad_h // 2])
+
+        self.padding = tuple([pad_h, pad_w])
+        # self.output_padding = 2 * np.array(padding) - np.array(self.kernel_size) + np.array(self.stride)
+        output_padding = self._output_padding(
+            x, output_size, self.stride, self.padding, self.kernel_size, 2, self.dilation
+        )
+
+        return F.conv_transpose2d(
+            x,
+            self.weight,
+            self.bias,
+            self.stride,
+            self.padding,
+            output_padding,
+            self.groups,
+            self.dilation,
+        )
 
 
 class ConvLayer2D(nn.Module):
@@ -88,20 +163,25 @@ class DeConvLayer2D(nn.Module):
         """
         super().__init__()
 
-        # set the output padding
-        if output_padding is None:
-            output_padding = 2 * np.array(padding) - np.array(kernel_size) + np.array(stride)
+        if padding == "same":
+            self.deconv = ConvTranspose2dSame(
+                in_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding_mode=padding_mode,
+                bias=bias,
+            )
+        elif padding == "valid":
+            self.deconv = ConvTranspose2dValid(
+                in_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding_mode=padding_mode,
+                bias=bias,
+            )
 
-        self.deconv = nn.ConvTranspose2d(
-            in_channels,
-            out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            padding_mode=padding_mode,
-            output_padding=output_padding,
-            bias=bias,
-        )
         self.batch_norm = nn.BatchNorm2d(out_channels, eps=1e-5, momentum=0.1, track_running_stats=True)
         if activation == "GELU":
             self.activation = nn.GELU()
@@ -211,22 +291,137 @@ class ConvBlock(nn.Module):
         Output:
             [b, c, i]
         """
+
+        print("ConvBlock input: ", x.shape)
         # input conv layer
         conv_out = self.conv_layer_in(x)
 
+        print("ConvBlock conv_out: ", conv_out.shape)
+
         # inter conv layers
+        i = 0
         for conv_layer in self.conv_layers_inter:
             conv_out = conv_out + conv_layer(conv_out)
+            print(f"{i}th conv_layer out: ", conv_out.shape)
+            i += 1
 
         # reshape the output to (N, C_out, intervals)
         conv_out = conv_out.permute(0, 1, 3, 2)
+
+        print("Permuted conv out shape: ", conv_out.shape)
         b, c, s, i = conv_out.shape
         if self.fuse_time_flag:
             conv_out = torch.reshape(conv_out, (b, c * s * i, 1))
         else:
             conv_out = torch.reshape(conv_out, (b, c * s, i))
 
+        print("Reshaped conv out shape: ", conv_out.shape)
+
         # map the dimension to the same as output, [b, c_out, i]
         conv_out = self.conv_layer_out(conv_out)
 
+        print("ConvBlock final conv shape: ", conv_out.shape)
+        print()
+        print()
+
         return conv_out
+
+
+class DeConvBlock(nn.Module):
+    def __init__(
+        self,
+        num_segments,
+        in_channels,
+        out_channels,
+        in_spectrum_len,
+        interval_num=9,  # only needed when conv_len[0] > 0 and fuse time dimension inforamtion
+        conv_lens=[[1, 3], [1, 3], [1, 3]],
+        dropout_ratio=0,
+        num_inter_layers=2,
+        in_stride=1,
+    ) -> None:
+        """The initialization of the sensor convolution block.
+        Structure: 3 * ConvLayer
+        conv_lens gives the length of convolution kernel at each conv layer.
+        At the input conv layer, necessary dimension unifying might be performed between acoustic and other sensors.
+        """
+        super().__init__()
+        self.num_segments = num_segments
+        self.conv_lens = conv_lens
+        self.out_channels = out_channels
+        self.num_inter_layers = num_inter_layers
+        self.fuse_time_flag = self.conv_lens[1][0] > 1
+
+        # define output conv layer
+        if self.fuse_time_flag:
+            if in_stride == 1:
+                last_in_channels = int(out_channels / 2 * in_spectrum_len * interval_num)
+            else:
+                last_in_channels = int(out_channels / 2 * in_spectrum_len * interval_num / in_stride[1])
+        else:
+            if in_stride == 1:
+                last_in_channels = int(out_channels / 2 * in_spectrum_len)
+            else:
+                last_in_channels = int(out_channels / 2 * in_spectrum_len / in_stride[1])
+
+        """Conv layer out decoder"""
+        self.dec_conv_layer_out = nn.ConvTranspose1d(
+            in_channels=out_channels,
+            out_channels=last_in_channels,
+            kernel_size=1,
+            stride=1,
+            padding_mode="zeros",
+        )
+
+        # define inter conv layers decoder with same input and output channels
+        self.dec_conv_layers_inter = nn.ModuleList()
+        for _ in range(self.num_inter_layers):
+            conv_layer = DeConvLayer2D(
+                int(out_channels / 2),
+                int(out_channels / 2),
+                kernel_size=conv_lens[1],
+                padding="same" if np.max(in_stride) == 1 else "valid",
+                padding_mode="zeros",
+                stride=1,
+                bias=True,
+                dropout_ratio=dropout_ratio,
+            )
+            self.dec_conv_layers_inter.append(conv_layer)
+
+        # define input conv layer decoder
+        self.dec_conv_layer_in = DeConvLayer2D(
+            int(out_channels / 2),
+            in_channels,
+            kernel_size=conv_lens[0],
+            stride=in_stride,
+            padding="same" if np.max(in_stride) == 1 else "valid",
+            padding_mode="zeros",
+            bias=True,
+            dropout_ratio=dropout_ratio,
+        )
+
+    def forward(self, x):
+        """The forward function of the SensorConvBlock.
+
+        Args:
+            x (_type_): (b, c (2 * 3 or 1), i (intervals), s (spectrum))
+        Output:
+            [b, c, i]
+        """
+        # unmap the dimension from output to input, [b, c_out, i]
+        dec_conv_out = self.dec_conv_layer_out(x)
+
+        b, _, i = dec_conv_out.shape
+        if self.fuse_time_flag:
+            dec_conv_out = torch.reshape(dec_conv_out, (b, int(self.out_channels / 2), -1, self.num_segments))
+        else:
+            dec_conv_out = torch.reshape(dec_conv_out, (b, int(self.out_channels / 2), -1, i))
+
+        dec_conv_out = dec_conv_out.permute(0, 1, 3, 2)
+
+        for dec_conv_layer in self.dec_conv_layers_inter:
+            dec_conv_out = dec_conv_layer(dec_conv_out)
+
+        dec_conv_out = self.dec_conv_layer_in(dec_conv_out)
+
+        return dec_conv_out

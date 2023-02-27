@@ -34,11 +34,11 @@ CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=contrastiv
 CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive
 ```
 
-### Contrastive Learning
+### Masked Auto Encoder
 
 #### Pretraining
 ```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=MAE -stage=pretrain -model=MAETransformer
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=MAE -stage=pretrain -model=DeepSense
 ```
 
 ### Parkland Results

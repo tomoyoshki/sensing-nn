@@ -410,7 +410,7 @@ class TransformerV4_CMC(nn.Module):
             logits = self.class_layer(sample_features)
             return logits
 
-    def decode(self, encoded_features):
+    def forward_decode(self, encoded_features):
         """
         Decode the latent features
         """
@@ -435,7 +435,7 @@ class TransformerV4_CMC(nn.Module):
 
         return decoded_out
 
-    def encode_features(self, mod_features):
+    def forward_feature_encode(self, mod_features):
         """Encode the features by merging and then demerge
 
         Args:
@@ -512,16 +512,17 @@ class TransformerV4_CMC(nn.Module):
         # PatchEmbed the input, window mask if MAE
         patched_inputs, padded_inputs, masks = self.patch_forward(freq_x, class_head)
 
-        if self.args.train_mode != "MAE" or class_head:
-            return self.encode(patched_inputs, class_head)
 
         # for MAE
         mod_features = self.encode(patched_inputs, class_head)
         
+        if self.args.train_mode != "MAE" or class_head:
+            return mod_features
+
         # intermediate encodings
-        encoded_mod_features = self.encode_features(mod_features)
+        encoded_mod_features = self.forward_feature_encode(mod_features)
         
         # decide the features
-        recovered_input = self.decode(encoded_mod_features)
+        recovered_input = self.forward_decode(encoded_mod_features)
         return recovered_input, padded_inputs, masks
         

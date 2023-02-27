@@ -154,7 +154,6 @@ def train(args):
             )
         else:
             raise Exception(f"Invalid stage provided: {args.stage}")
-
     else:
         pass
 
