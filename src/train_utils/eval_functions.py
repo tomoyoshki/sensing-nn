@@ -219,21 +219,20 @@ def val_and_logging(
 
     if args.train_mode == "supervised" or args.stage == "finetune":
         """Supervised training or fine-tuning"""
-<<<<<<< HEAD
-        val_loss, val_f1, val_acc, val_conf_matrix = eval_supervised_model(
-=======
         val_loss, val_acc, val_f1, val_conf_matrix = eval_supervised_model(
->>>>>>> 7616a87150b157ab0220ded10c1541be7f059b92
             args, model, augmenter, val_loader, loss_func
         )
         test_loss, test_acc, test_f1, test_conf_matrix = eval_supervised_model(
             args, model, augmenter, test_loader, loss_func
         )
-<<<<<<< HEAD
-    elif args.train_mode == "contrastive":
-        """Self-supervised pre-training"""
-        val_loss, val_f1, val_acc, val_conf_matrix = eval_contrastive_model(
-=======
+    elif args.train_mode == "MAE":
+        """MAE pretraining"""
+        val_loss, val_f1, val_acc, val_conf_matrix = eval_mae_model(
+            args, model, estimator, augmenter, val_loader, loss_func
+        )
+        test_loss, test_f1, test_acc, test_conf_matrix = eval_mae_model(
+            args, model, estimator, augmenter, test_loader, loss_func
+        )
     else:
         """Predictive pretrain task"""
         if args.train_mode == "predictive":
@@ -254,26 +253,11 @@ def val_and_logging(
 
         """All self-supervised pre-training tasks"""
         val_loss, val_acc, val_f1, val_conf_matrix = eval_pretrained_model(
->>>>>>> 7616a87150b157ab0220ded10c1541be7f059b92
             args, model, estimator, augmenter, val_loader, loss_func
         )
         test_loss, test_acc, test_f1, test_conf_matrix = eval_pretrained_model(
             args, model, estimator, augmenter, test_loader, loss_func
         )
-<<<<<<< HEAD
-    elif args.train_mode == "MAE":
-        """MAE pretraining"""
-        val_loss, val_f1, val_acc, val_conf_matrix = eval_mae_model(
-            args, model, estimator, augmenter, val_loader, loss_func
-        )
-        test_loss, test_f1, test_acc, test_conf_matrix = eval_mae_model(
-            args, model, estimator, augmenter, test_loader, loss_func
-        )
-    else:
-        raise NotImplementedError(f"{args.train_mode} evaluation is yet implemented for {args.stage}")
-=======
-
->>>>>>> 7616a87150b157ab0220ded10c1541be7f059b92
     logging.info(f"Val loss: {val_loss: .5f}")
     logging.info(f"Val acc: {val_acc: .5f}, val f1: {val_f1: .5f}")
     logging.info(f"Val confusion matrix:\n {val_conf_matrix} \n")
