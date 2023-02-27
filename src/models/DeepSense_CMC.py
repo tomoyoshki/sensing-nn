@@ -7,7 +7,12 @@ from models.ConvModules import ConvBlock, DeConvBlock
 from models.FusionModules import MeanFusionBlock, SelfAttentionFusionBlock
 from models.RecurrentModule import RecurrentBlock, DecRecurrentBlock
 from input_utils.normalize import normalize_input
+from input_utils.padding_utils import get_padded_size
 from models.FusionModules import TransformerFusionBlock
+
+
+from models.SwinModules import PatchEmbed
+from models.MAEModule import get_2d_sincos_pos_embed
 
 
 class DeepSense_CMC(nn.Module):
@@ -33,6 +38,7 @@ class DeepSense_CMC(nn.Module):
         """define the architecture"""
         self.init_encoder(args)
         if args.train_mode == "MAE":
+            self.init_patch_embedding(args)
             self.init_feature_encoding(args)
             self.init_decoder(args)
 
@@ -118,6 +124,77 @@ class DeepSense_CMC(nn.Module):
                 nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
             )
 
+    def init_patch_embedding(self, args):
+        self.patch_embed = nn.ModuleDict()
+        self.pos_embed = nn.ModuleDict()
+        self.decoder_pos_embed = nn.ModuleDict()
+        self.mask_token = nn.ModuleDict()
+
+        for loc in self.locations:
+            self.patch_embed[loc] = nn.ModuleDict()
+            self.pos_embed[loc] = nn.ParameterDict()
+            self.decoder_pos_embed[loc] = nn.ParameterDict()
+            self.mask_token[loc] = nn.ParameterDict()
+            for mod in self.modalities:
+                # get the padded image size
+                stride = self.config["in_stride"][mod]
+                spectrum_len = self.args.dataset_config["loc_mod_spectrum_len"][loc][mod]
+
+                img_size = (self.num_segments, spectrum_len // stride)
+                padded_img_size = get_padded_size(
+                    img_size,
+                    self.config["window_size"][mod],
+                    self.config["patch_size"]["freq"][mod],
+                    len(self.config["time_freq_block_num"][mod]),
+                )
+                self.patch_embed[loc][mod] = PatchEmbed(
+                    img_size=padded_img_size,
+                    patch_size=self.config["patch_size"]["freq"][mod],
+                    in_chans=self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod] * stride,
+                    embed_dim=self.config["loc_mod_out_channels"],
+                    norm_layer=nn.LayerNorm,
+                )
+
+                num_patches = self.patch_embed[loc][mod].num_patches
+                self.pos_embed[loc][mod] = nn.Parameter(
+                    torch.zeros(1, num_patches + 1, self.config["loc_mod_out_channels"]), requires_grad=False
+                )  # fixed sin-cos embedding
+
+                self.decoder_pos_embed = nn.Parameter(
+                    torch.zeros(1, num_patches + 1, self.config["loc_mod_out_channels"]), requires_grad=False
+                )  # fixed sin-cos embedding
+
+                self.mask_token[loc][mod] = nn.Parameter(torch.zeros(1, 1, self.config["loc_mod_out_channels"]))
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        # initialization
+        # initialize (and freeze) pos_embed by sin-cos embedding
+        for loc in self.locations:
+            for mod in self.modalities:
+                pos_embed = get_2d_sincos_pos_embed(
+                    self.pos_embed[loc][mod].shape[-1], int(self.patch_embed[loc][mod].num_patches), cls_token=True
+                )
+                self.pos_embed[loc][mod].data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+
+                decoder_pos_embed = get_2d_sincos_pos_embed(
+                    self.decoder_pos_embed[loc][mod].shape[-1],
+                    int(self.patch_embed[loc][mod].num_patches),
+                    cls_token=True,
+                )
+                self.decoder_pos_embed.data.copy_(torch.from_numpy(decoder_pos_embed).float().unsqueeze(0))
+
+                # initialize patch_embed like nn.Linear (instead of nn.Conv2d)
+                w = self.patch_embed[loc][mod].proj.weight.data
+                torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+
+                # timm's trunc_normal_(std=.02) is effectively normal_(std=0.02) as cutoff is too big (2.)
+                torch.nn.init.normal_(self.cls_token[loc][mod], std=0.02)
+                torch.nn.init.normal_(self.mask_token[loc][mod], std=0.02)
+
+        # initialize nn.Linear and nn.LayerNorm
+        self.apply(self._init_weights)
+
     def init_feature_encoding(self, args):
         self.encoded_features_layer = nn.Sequential(
             nn.Linear(self.sample_dim, self.config["fc_dim"]),
@@ -192,18 +269,24 @@ class DeepSense_CMC(nn.Module):
                 )
         pass
 
+    def mask_input(self, freq_x):
+        for loc in self.locations:
+            for mod in self.modalities:
+                embeded_x = self.patch_embed[loc][mod](freq_x[loc][mod])
+                embeded_x = embeded_x + self.pos_embed[:, 1:, :]
+
     def forward_encoder(self, freq_x, class_head=True):
         """The encoder function of DeepSense.
         Args:
             time_x (_type_): time_x is a dictionary consisting of the Tensor input of each input modality.
                         For each modality, the data is in (b, c (2 * 3 or 1), i (intervals), s (spectrum)) format.
         """
+        masked_x, mask, ids_restore = self.mask_input()
         # Step 1: Single (loc, mod) feature extraction, (b, c, i)
         loc_mod_features = {mod: [] for mod in self.modalities}
         for loc in self.locations:
             for mod in self.modalities:
                 loc_mod_feature = self.loc_mod_extractors[loc][mod](freq_x[loc][mod])
-                print("Loc mod feature: ", loc_mod_feature.shape)
                 loc_mod_features[mod].append(loc_mod_feature)
 
         for mod in loc_mod_features:
@@ -307,15 +390,9 @@ class DeepSense_CMC(nn.Module):
         return dec_loc_mod_input
 
     def forward(self, freq_x, class_head=True):
-        for loc in self.locations:
-            for mod in self.modalities:
-                print(f"freq_x {loc} {mod} has shape: {freq_x[loc][mod].shape}")
         mod_features, hidden_features = self.forward_encoder(freq_x, class_head)
         if self.args.train_mode != "MAE" or class_head:
             return mod_features
         encoded_mod_features = self.forward_feature_encoder(mod_features)
         decoded_output = self.forward_decoder(encoded_mod_features, hidden_features)
-        for loc in self.locations:
-            for mod in self.modalities:
-                print(f"decoded_output {loc} {mod} has shape: {decoded_output[loc][mod].shape}")
         # return decoded_output

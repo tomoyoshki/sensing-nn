@@ -56,7 +56,14 @@ class TransformerV4_CMC(nn.Module):
         self.drop_rate = self.config["dropout_ratio"]
         self.norm_layer = nn.LayerNorm
         self.avgpool = nn.AdaptiveAvgPool1d(1)
+        
+        self.init_encoder()
+        
+        if args.train_mode == "MAE":
+            self.init_feature_encoder()
+            self.init_decoder()
 
+    def init_encoder(self) -> None:
         # Single sensor
         self.freq_interval_layers = nn.ModuleDict()  # Frequency & Interval layers
         self.patch_embed = nn.ModuleDict()
@@ -78,7 +85,7 @@ class TransformerV4_CMC(nn.Module):
             for mod in self.modalities:
                 # Decide the spatial size for "image"
                 stride = self.config["in_stride"][mod]
-                spectrum_len = args.dataset_config["loc_mod_spectrum_len"][loc][mod]
+                spectrum_len = self.args.dataset_config["loc_mod_spectrum_len"][loc][mod]
                 img_size = (self.num_segments, spectrum_len // stride)
 
                 # get the padded image size
@@ -95,7 +102,7 @@ class TransformerV4_CMC(nn.Module):
                 self.patch_embed[loc][mod] = PatchEmbed(
                     img_size=padded_img_size,
                     patch_size=self.config["patch_size"]["freq"][mod],
-                    in_chans=args.dataset_config["loc_mod_in_freq_channels"][loc][mod] * stride,
+                    in_chans=self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod] * stride,
                     embed_dim=self.config["time_freq_out_channels"],
                     norm_layer=self.norm_layer,
                 )
@@ -179,7 +186,7 @@ class TransformerV4_CMC(nn.Module):
             )
 
         # mod fusion layer
-        if args.contrastive_framework == "Cosmo":
+        if self.args.contrastive_framework == "Cosmo":
             "Attention fusion for Cosmo"
             "Attentio fusion for MAE?"
             self.mod_fusion_layer = TransformerFusionBlock(
@@ -192,45 +199,54 @@ class TransformerV4_CMC(nn.Module):
         else:
             sample_dim = self.config["loc_out_channels"] * len(self.modalities)
 
-        if args.train_mode == "MAE":
-            "Linear layers for encoded features"
-
-            # [mod1_feature, mod2_feature, mod3_feature, ...] -> fc_dim layer
-            self.encoded_features_layer = nn.Sequential(
-                nn.Linear(sample_dim, self.config["fc_dim"]),
-                nn.GELU(),
-                nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
-            )
-
-            # [fc_dim layer] -> [mod1_feature, mod2_feature, mod3_feature]
-            self.encoded_mod_extract_layer = nn.ModuleDict()
-            for loc in self.locations:
-                self.encoded_mod_extract_layer[loc] = nn.ModuleDict()
-                for mod in self.modalities:
-                    self.encoded_mod_extract_layer[loc][mod] = nn.Sequential(
-                        nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
-                        nn.GELU(),
-                        nn.Linear(self.config["fc_dim"], self.config["loc_out_channels"]),
-                    )
-
-            # init decoder layers
-            self.init_decoder()
-
         # Classification layer
-        if args.train_mode == "supervised" or self.config["pretrained_head"] == "linear":
+        if self.args.train_mode == "supervised" or self.config["pretrained_head"] == "linear":
             """Linear classification layers for supervised learning or finetuning."""
             self.class_layer = nn.Sequential(
-                nn.Linear(sample_dim, args.dataset_config[args.task]["num_classes"]),
-                nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
+                nn.Linear(sample_dim, self.args.dataset_config[self.args.task]["num_classes"]),
+                nn.Sigmoid() if self.args.multi_class else nn.Softmax(dim=1),
             )
         else:
             """Non-linear classification layers for self-supervised learning."""
             self.class_layer = nn.Sequential(
                 nn.Linear(sample_dim, self.config["fc_dim"]),
                 nn.GELU(),
-                nn.Linear(self.config["fc_dim"], args.dataset_config[args.task]["num_classes"]),
-                nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
+                nn.Linear(self.config["fc_dim"], self.args.dataset_config[self.args.task]["num_classes"]),
+                nn.Sigmoid() if self.args.multi_class else nn.Softmax(dim=1),
             )
+
+    def init_feature_encoder(self) -> None:
+        "Linear layers for encoded features"
+        # mod fusion layer
+        if self.args.contrastive_framework == "Cosmo":
+            "Attention fusion for Cosmo"
+            "Attentio fusion for MAE?"
+            self.mod_fusion_layer = TransformerFusionBlock(
+                self.config["loc_out_channels"],
+                self.config["loc_head_num"],
+                self.config["dropout_ratio"],
+                self.config["dropout_ratio"],
+            )
+            sample_dim = self.config["loc_out_channels"]
+        else:
+            sample_dim = self.config["loc_out_channels"] * len(self.modalities)
+        # [mod1_feature, mod2_feature, mod3_feature, ...] -> fc_dim layer
+        self.encoded_features_layer = nn.Sequential(
+            nn.Linear(sample_dim, self.config["fc_dim"]),
+            nn.GELU(),
+            nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
+        )
+
+        # [fc_dim layer] -> [mod1_feature, mod2_feature, mod3_feature]
+        self.encoded_mod_extract_layer = nn.ModuleDict()
+        for loc in self.locations:
+            self.encoded_mod_extract_layer[loc] = nn.ModuleDict()
+            for mod in self.modalities:
+                self.encoded_mod_extract_layer[loc][mod] = nn.Sequential(
+                    nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
+                    nn.GELU(),
+                    nn.Linear(self.config["fc_dim"], self.config["loc_out_channels"]),
+                )
 
     def init_decoder(self) -> None:
         self.patch_expand = nn.ModuleDict()
@@ -344,7 +360,7 @@ class TransformerV4_CMC(nn.Module):
 
         return freq_input, padded_img_size
 
-    def encode(self, patched_input, class_head=True):
+    def forward_encode(self, patched_input, class_head=True):
         """
         If class_head is False, we return the modality features; otherwise, we return the classification results.
         time-freq feature extraction --> loc fusion --> mod concatenation --> class layer
@@ -512,9 +528,7 @@ class TransformerV4_CMC(nn.Module):
         # PatchEmbed the input, window mask if MAE
         patched_inputs, padded_inputs, masks = self.patch_forward(freq_x, class_head)
 
-
-        # for MAE
-        mod_features = self.encode(patched_inputs, class_head)
+        mod_features = self.forward_encode(patched_inputs, class_head)
         
         if self.args.train_mode != "MAE" or class_head:
             return mod_features
