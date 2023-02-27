@@ -110,12 +110,12 @@ class DINOLoss(nn.Module):
 
 
 class SimCLRLoss(nn.Module):
-    def __init__(self, batch_size, temperature):
+    def __init__(self, args):
         super(SimCLRLoss, self).__init__()
-        self.batch_size = batch_size
-        self.temperature = temperature
+        self.batch_size = args.batch_size
+        self.temperature = args.dataset_config[args.contrastive_framework]["temperature"]
 
-        self.mask = self.mask_correlated_samples(batch_size)
+        self.mask = self.mask_correlated_samples(self.batch_size)
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
         self.similarity_f = nn.CosineSimilarity(dim=2)
 
@@ -239,6 +239,8 @@ class CMCLoss(nn.Module):
         super(CMCLoss, self).__init__()
         self.args = args
         self.config = args.dataset_config["CMC"]
+        self.batch_size = args.batch_size
+        self.temperature = args.dataset_config[args.contrastive_framework]["temperature"]
 
         # h(x) in paper
         self.contrast = NCEAverage(args, N)
@@ -246,12 +248,47 @@ class CMCLoss(nn.Module):
         # Softmaxs
         self.criterion_seismic = NCESoftmaxLoss() if self.config["softmax"] else NCECriterion(N)
         self.criterion_audio = NCESoftmaxLoss() if self.config["softmax"] else NCECriterion(N)
+        self.criterion = nn.CrossEntropyLoss(reduction="sum")
+        self.similarity_f = nn.CosineSimilarity(dim=2)
+
+    def mask_correlated_samples(self, batch_size):
+        N = 2 * batch_size
+        mask = torch.ones((N, N), dtype=bool)
+        mask = mask.fill_diagonal_(0)
+        for i in range(batch_size):
+            mask[i, batch_size + i] = 0
+            mask[batch_size + i, i] = 0
+        return mask
+
+    def forward_similiarity(self, z_i, z_j, idx=None):
+        """
+        We do not sample negative examples explicitly.
+        Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1)
+        augmented examples within a minibatch as negative examples.
+        """
+        batch_size = z_i.shape[0]
+        N = 2 * batch_size
+
+        z = torch.cat((z_i, z_j), dim=0)
+
+        sim = self.similarity_f(z.unsqueeze(1), z.unsqueeze(0)) / self.temperature
+
+        sim = sim.reshape(sim.shape[0], sim.shape[1])
+        sim_i_j = torch.diag(sim, batch_size)
+        sim_j_i = torch.diag(sim, -batch_size)
+
+        # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
+        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)
+        negative_samples = sim[self.mask_correlated_samples(batch_size)].reshape(N, -1)
+
+        labels = torch.zeros(N).to(positive_samples.device).long()
+        logits = torch.cat((positive_samples, negative_samples), dim=1)
+        loss = self.criterion(logits, labels)
+        loss /= N
+        return loss
 
     def forward(self, seismic_features, audio_features, index):
-        out_seismic, out_audio = self.contrast(seismic_features, audio_features, index)
-        seismic_loss = self.criterion_seismic(out_seismic)
-        audio_loss = self.criterion_audio(out_audio)
-        loss = seismic_loss + audio_loss
+        loss = self.forward_similiarity(seismic_features, audio_features)
 
         return loss
 
@@ -328,7 +365,8 @@ class NCEAverage(nn.Module):
         self.multinomial.cuda()
 
         self.register_buffer(
-            "params", torch.tensor([self.config["nce_k"], self.config["nce_t"], -1, -1, self.config["nce_momentum"]])
+            "params",
+            torch.tensor([self.config["nce_k"], self.config["nce_t"], -1, -1, self.config["nce_momentum"]]),
         )
         stdv = 1.0 / math.sqrt(self.input_size / 3)
         self.register_buffer("memory_l", torch.rand(self.output_size, self.input_size).mul_(2 * stdv).add_(-stdv))
@@ -350,12 +388,14 @@ class NCEAverage(nn.Module):
             idx = self.multinomial.draw(batchSize * (self.K + 1)).view(batchSize, -1)
             idx.select(1, 0).copy_(y.data)
             idx = idx.to(self.args.device)
+
         # sample
         weight_l = torch.index_select(self.memory_l, 0, idx.view(-1)).detach()
         weight_l = weight_l.view(batchSize, K + 1, inputSize)
 
         ab_view = ab.view(batchSize, inputSize, 1)
         out_ab = torch.bmm(weight_l, ab_view)
+
         # sample
         weight_ab = torch.index_select(self.memory_ab, 0, idx.view(-1)).detach()
         weight_ab = weight_ab.view(batchSize, K + 1, inputSize)
@@ -372,30 +412,97 @@ class NCEAverage(nn.Module):
             out_l = torch.exp(torch.div(out_l, T))
             # set Z_0 if haven't been set yet,
             # Z_0 is used as a constant approximation of Z, to scale the probs
-            if Z_l < 0:
-                self.params[2] = out_l.mean() * outputSize
-                Z_l = self.params[2].clone().detach().item()
-            if Z_ab < 0:
-                self.params[3] = out_ab.mean() * outputSize
-                Z_ab = self.params[3].clone().detach().item()
+            if self.training:
+                if Z_l < 0:
+                    self.params[2] = out_l.mean() * outputSize
+                    Z_l = self.params[2].clone().detach().item()
+                if Z_ab < 0:
+                    self.params[3] = out_ab.mean() * outputSize
+                    Z_ab = self.params[3].clone().detach().item()
             # compute out_l, out_ab
             out_l = torch.div(out_l, Z_l).contiguous()
             out_ab = torch.div(out_ab, Z_ab).contiguous()
 
         # # update memory
         with torch.no_grad():
-            l_pos = torch.index_select(self.memory_l, 0, y.view(-1))
-            l_pos.mul_(momentum)
-            l_pos.add_(torch.mul(l, 1 - momentum))
-            l_norm = l_pos.pow(2).sum(1, keepdim=True).pow(0.5)
-            updated_l = l_pos.div(l_norm)
-            self.memory_l.index_copy_(0, y, updated_l)
+            if self.training:
+                l_pos = torch.index_select(self.memory_l, 0, y.view(-1))
+                l_pos.mul_(momentum)
+                l_pos.add_(torch.mul(l, 1 - momentum))
+                l_norm = l_pos.pow(2).sum(1, keepdim=True).pow(0.5)
+                updated_l = l_pos.div(l_norm)
+                self.memory_l.index_copy_(0, y, updated_l)
 
-            ab_pos = torch.index_select(self.memory_ab, 0, y.view(-1))
-            ab_pos.mul_(momentum)
-            ab_pos.add_(torch.mul(ab, 1 - momentum))
-            ab_norm = ab_pos.pow(2).sum(1, keepdim=True).pow(0.5)
-            updated_ab = ab_pos.div(ab_norm)
-            self.memory_ab.index_copy_(0, y, updated_ab)
+                ab_pos = torch.index_select(self.memory_ab, 0, y.view(-1))
+                ab_pos.mul_(momentum)
+                ab_pos.add_(torch.mul(ab, 1 - momentum))
+                ab_norm = ab_pos.pow(2).sum(1, keepdim=True).pow(0.5)
+                updated_ab = ab_pos.div(ab_norm)
+                self.memory_ab.index_copy_(0, y, updated_ab)
 
         return out_l, out_ab
+
+
+class CosmoLoss(nn.Module):
+    def __init__(self, args):
+        """Based on SupConLoss from "Supervised Contrastive Loss" paper."""
+        super(CosmoLoss, self).__init__()
+        self.args = args
+        self.config = args.dataset_config["Cosmo"]
+        self.temperature = self.config["temperature"]
+        self.contrast_mode = self.config["contrast_mode"]
+        self.base_temperature = self.config["temperature"]
+
+    def forward(self, features, labels=None, mask=None):
+        """
+        Args:
+            features: hidden vector of shape [bsz, n_views, feat_dim].
+        Returns:
+            A loss scalar.
+        """
+        device = self.args.device
+
+        if len(features.shape) < 3:
+            raise ValueError("`features` needs to be [bsz, n_views, ...]," "at least 3 dimensions are required")
+        if len(features.shape) > 3:
+            features = features.view(features.shape[0], features.shape[1], -1)
+
+        batch_size = features.shape[0]
+
+        # change to [n_views*bsz, dim]
+        contrast_count = features.shape[1]
+        contrast_feature = torch.cat(torch.unbind(features, dim=1), dim=0)
+        contrast_feature = F.normalize(contrast_feature, dim=1)
+
+        anchor_feature = contrast_feature
+        anchor_count = contrast_count
+
+        # compute logits, z_i * z_a / T
+        similarity_matrix = torch.matmul(anchor_feature, contrast_feature.T)
+        similarity_matrix = torch.div(similarity_matrix, self.temperature)
+
+        # tile mask, [b * n_views, b * n_views]
+        mask = torch.eye(batch_size, dtype=torch.float32).to(device)
+        mask = mask.repeat(anchor_count, contrast_count)  # positive index
+
+        # mask-out self-contrast cases in all diagonal positions; dig to 0, others to 1 (negative samples)
+        logits_mask = torch.scatter(
+            torch.ones_like(mask),
+            1,
+            torch.arange(batch_size * anchor_count).view(-1, 1).to(device),
+            0,
+        )
+        mask = mask * logits_mask  # positive samples except diagonal elements
+
+        # compute log_prob, except the diagonal positions, [b * n_views, b * n_views]
+        exp_logits = torch.exp(similarity_matrix) * logits_mask  # exp(z_i * z_a / T)
+
+        # SupCon out
+        log_prob = similarity_matrix - torch.log(exp_logits.sum(1, keepdim=True))
+        mean_log_prob_pos = (mask * log_prob).sum(1) / mask.sum(1)  # sup_out
+
+        # loss, [n_views, bsz]
+        loss = -(self.temperature / self.base_temperature) * mean_log_prob_pos
+        loss = loss.view(anchor_count, batch_size).mean()
+
+        return loss

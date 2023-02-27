@@ -255,6 +255,10 @@ SimCLR:
                 start_epoch: 0
                 decay_epochs: 100
                 decay_rate: 0.2
+        # data augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
+                freq_augmenters: ["phase_shift"]
 
 MoCo:
         emb_dim: 512
@@ -292,88 +296,18 @@ MoCo:
                 start_epoch: 0
                 decay_epochs: 100
                 decay_rate: 0.2
-
-DINO:
-        emb_dim: 512
-        momentum_teacher: 0.9995
-        temperature_student: 0.1
-        temperature_teacher: 0.04
-        center_momentum: 0.9
-        temperature: 0.07
-        # Pre training  
-        pretrain_optimizer:
-                name: "AdamW"
-                start_lr: 0.0005
-                warmup_lr: 0.000001
-                min_lr: 0.0000001
-                clip_grad: 5.0
-                weight_decay: 0.05
-        pretrain_lr_scheduler:
-                name: "cosine"
-                warmup_prefix: True
-                warmup_epochs: 0
-                train_epochs: 2000
-                start_epoch: 0
-                decay_epochs: 500
-                decay_rate: 0.2
-        # Fine tuning 
-        finetune_optimizer:
-                name: "AdamW"
-                start_lr: 0.0001
-                warmup_lr: 0.000001
-                min_lr: 0.0000001
-                clip_grad: 5.0
-                weight_decay: 0.05
-        finetune_lr_scheduler:
-                name: "step"
-                warmup_prefix: True
-                warmup_epochs: 0
-                train_epochs: 200
-                start_epoch: 0
-                decay_epochs: 50
-                decay_rate: 0.2
+        # data augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
+                freq_augmenters: ["phase_shift"]
 
 CMC:
-        emb_dim: 512
-        nce_k: 1000
-        nce_t: 0.2
-        nce_momentum: 0.5
-        softmax: False
+        emb_dim: 256
+        nce_k: 4096
+        nce_t: 0.07
+        nce_momentum: 0.9
+        softmax: True
         input_size: 256
-        # Pre training  
-        pretrain_optimizer:
-                name: "AdamW"
-                start_lr: 0.0001
-                warmup_lr: 0.000001
-                min_lr: 0.000001
-                clip_grad: 5.0
-                weight_decay: 0.05
-        pretrain_lr_scheduler:
-                name: "cosine"
-                warmup_prefix: True
-                warmup_epochs: 0
-                train_epochs: 2000
-                start_epoch: 0
-                decay_epochs: 500
-                decay_rate: 0.2
-        # Fine tuning 
-        finetune_optimizer:
-                name: "AdamW"
-                start_lr: 0.001
-                warmup_lr: 0.000001
-                min_lr: 0.0000001
-                clip_grad: 5.0
-                weight_decay: 0.05
-        finetune_lr_scheduler:
-                name: "step"
-                warmup_prefix: True
-                warmup_epochs: 0
-                train_epochs: 200
-                start_epoch: 0
-                decay_epochs: 50
-                decay_rate: 0.2
-
-Cosmo:
         temperature: 0.2
         # Pre training  
         pretrain_optimizer:
@@ -399,6 +333,7 @@ Cosmo:
                 min_lr: 0.0000001
                 clip_grad: 5.0
                 weight_decay: 0.05
+                decay_rate: 0.2
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -407,6 +342,135 @@ Cosmo:
                 start_epoch: 0
                 decay_epochs: 50
                 decay_rate: 0.2
+        # data augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
+                freq_augmenters: ["phase_shift"]
+
+CMC:
+        emb_dim: 512
+        nce_k: 1000
+        nce_t: 0.2
+        nce_momentum: 0.5
+        softmax: False
+        input_size: 256
+Cosmo:
+        temperature: 1
+        num_positive: 10
+        emb_dim: 256
+        contrast_mode: all
+        # Pre training  
+        pretrain_optimizer:
+                name: "AdamW"
+                start_lr: 0.00001
+                warmup_lr: 0.000001
+                min_lr: 0.000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        pretrain_lr_scheduler:
+                name: "cosine"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 2000
+                start_epoch: 0
+                decay_epochs: 500
+                decay_rate: 0.2
+        # Fine tuning 
+        finetune_optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        finetune_lr_scheduler:
+                name: "step"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 500
+                start_epoch: 0
+                decay_epochs: 100
+                decay_rate: 0.2
+        # data augmenters
+        random_augmenters:
+                time_augmenters: ["no"]
+                freq_augmenters: []
+
+MTSS:
+        # Pre training  
+        pretrain_optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        pretrain_lr_scheduler:
+                name: "cosine"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 2000
+                start_epoch: 0
+                decay_epochs: 500
+                decay_rate: 0.2
+        # Fine tuning 
+        finetune_optimizer:
+                name: "AdamW"
+                start_lr: 0.001
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        finetune_lr_scheduler:
+                name: "step"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 200
+                start_epoch: 0
+                decay_epochs: 50
+                decay_rate: 0.2
+        # data augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp",]
+                freq_augmenters: ["phase_shift"]
+
+ModPred:
+        # Pre training  
+        pretrain_optimizer:
+                name: "AdamW"
+                start_lr: 0.003
+                warmup_lr: 0.000001
+                min_lr: 0.000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        pretrain_lr_scheduler:
+                name: "cosine"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 2000
+                start_epoch: 0
+                decay_epochs: 500
+                decay_rate: 0.2
+        # Fine tuning 
+        finetune_optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        finetune_lr_scheduler:
+                name: "step"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 200
+                start_epoch: 0
+                decay_epochs: 50
+                decay_rate: 0.2
+        # data augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
+                freq_augmenters: ["phase_shift"]
 
 
 # ------------------------------------------- Data Augmenter Configs ------------------------------------------

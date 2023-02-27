@@ -13,6 +13,7 @@ from train_utils.optimizer import define_optimizer
 from train_utils.lr_scheduler import define_lr_scheduler
 from train_utils.knn import compute_embedding, compute_knn
 from train_utils.model_selection import init_contrastive_framework
+from train_utils.loss_calc_utils import calc_contrastive_loss
 
 # utils
 from general_utils.time_utils import time_sync
@@ -33,8 +34,6 @@ def contrastive_pretrain(
     The supervised training function for tbe backbone network,
     used in train of supervised mode or fine-tune of foundation models.
     """
-    classifier_config = args.dataset_config[args.model]
-
     # Initialize contrastive model
     default_model = init_contrastive_framework(args, backbone_model)
 
@@ -77,20 +76,16 @@ def contrastive_pretrain(
             idx = idx.to(args.device)
 
             # move to target device, FFT, and augmentations
-            if args.contrastive_framework in {"CMC", "Cosmo"}:
-                aug_freq_loc_inputs = augmenter.forward("random", time_loc_inputs)
-                feature1, feature2 = default_model(aug_freq_loc_inputs)
-            else:
-                aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
-                aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
-                feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
-
-            loss = loss_func(feature1, feature2, idx)
+            loss = calc_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx)
 
             # back propagation
             loss.backward()
 
             # update
+            # torch.nn.utils.clip_grad_norm(
+            #     default_model.parameters(),
+            #     args.dataset_config[args.contrastive_framework]["pretrain_optimizer"]["clip_grad"],
+            # )
             optimizer.step()
             train_loss_list.append(loss.item())
 

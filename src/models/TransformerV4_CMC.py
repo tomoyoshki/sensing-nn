@@ -177,7 +177,7 @@ class TransformerV4_CMC(nn.Module):
             ]
             self.loc_context_layers[mod] = nn.Sequential(*module_list)
 
-            """Mod fusion layer for each loc"""
+            """Loc fusion layer for each mod"""
             self.loc_fusion_layer[mod] = TransformerFusionBlock(
                 self.config["loc_out_channels"],
                 self.config["loc_head_num"],
@@ -204,7 +204,7 @@ class TransformerV4_CMC(nn.Module):
             """Linear classification layers for supervised learning or finetuning."""
             self.class_layer = nn.Sequential(
                 nn.Linear(sample_dim, self.args.dataset_config[self.args.task]["num_classes"]),
-                nn.Sigmoid() if self.args.multi_class else nn.Softmax(dim=1),
+                # nn.Sigmoid() if self.args.multi_class else nn.Softmax(dim=1),
             )
         else:
             """Non-linear classification layers for self-supervised learning."""
@@ -212,7 +212,7 @@ class TransformerV4_CMC(nn.Module):
                 nn.Linear(sample_dim, self.config["fc_dim"]),
                 nn.GELU(),
                 nn.Linear(self.config["fc_dim"], self.args.dataset_config[self.args.task]["num_classes"]),
-                nn.Sigmoid() if self.args.multi_class else nn.Softmax(dim=1),
+                # nn.Sigmoid() if self.args.multi_class else nn.Softmax(dim=1),
             )
 
     def init_feature_encoder(self) -> None:

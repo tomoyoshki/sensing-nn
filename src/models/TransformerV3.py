@@ -161,7 +161,7 @@ class TransformerV3(nn.Module):
         )
         self.class_layer = nn.Sequential(
             nn.Linear(self.config["fc_dim"], args.dataset_config["num_classes"]),
-            nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
+            # nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
     def forward(self, freq_x, class_head=True):
