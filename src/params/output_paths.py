@@ -37,13 +37,10 @@ def set_model_weight_folder(args):
             suffix = f"supervised_{args.task}_{args.label_ratio}"
         elif args.train_mode == "contrastive":
             suffix = f"contrastive_{args.contrastive_framework}"
-<<<<<<< HEAD
         elif args.train_mode == "MAE":
             suffix = f"mae_{args.model}"
-=======
         elif args.train_mode == "predictive":
             suffix = f"predictive_{args.predictive_framework}"
->>>>>>> 7616a87150b157ab0220ded10c1541be7f059b92
         else:
             raise Exception(f"Unknown train mode: {args.train_mode}")
 

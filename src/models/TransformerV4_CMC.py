@@ -333,7 +333,6 @@ class TransformerV4_CMC(nn.Module):
                     nn.Linear(self.config["time_freq_out_channels"], patch_area * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]),
                 )
 
-
     def pad_input(self, freq_x, loc, mod):
         stride = self.config["in_stride"][mod]
         spectrum_len = self.args.dataset_config["loc_mod_spectrum_len"][loc][mod]
