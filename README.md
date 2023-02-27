@@ -75,7 +75,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 | 20230226    | DeepSense | MTSS | 46.95% | sl29 | | |
 | 20230130    | TransformerV4 | Supervised | 91.90%   |  sl29 | Parkland_TransformerV4/exp5_supervised_vehicle_classification_1.0 | mixup + phase_shift. |
 | 20230130    | TransformerV4 | SimCLR | 93.03%   |  sl29 | Parkland_TransformerV4/exp22_contrastive_SimCLR | use large dataset, batch size 256|
-| 20230212    | TransformerV4 | MoCo | 91.09%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 64|
+| 20230212    | TransformerV4 | MoCo | 93.77%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 256|
 | 20230223    | TransformerV4 | Cosmo | 23.04%   | sl29 | Parkland_TransformerV4/exp0_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
 | 20230220    | TransformerV4 | CMC | 91.96%   |  tkimura4 | Parkland_TransformerV4/exp28_contrastive_CMC | use large dataset, batch size 128, infoNCE loss|
 | 20230226    | TransformerV4 | MTSS | 42.19% | sl29 | | |
