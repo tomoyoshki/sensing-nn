@@ -32,7 +32,10 @@ def eval_task_metrics(args, labels, predictions):
     else:
         mean_acc = accuracy_score(labels, predictions)
         mean_f1 = f1_score(labels, predictions, average="macro", zero_division=1)
-        conf_matrix = confusion_matrix(labels, predictions)
+        try:
+            conf_matrix = confusion_matrix(labels, predictions)
+        except:
+            conf_matrix = []
 
     return mean_acc, mean_f1, conf_matrix
 
@@ -148,7 +151,7 @@ def eval_predictive_task(args, default_model, augmenter, dataloader):
 
             # get the predictions from the logits
             pretrain_predictions = (
-                (nn.Sigmoid(pretrain_logits) > 0.5).float()
+                (nn.Sigmoid()(pretrain_logits) > 0.5).float()
                 if args.predictive_framework == "ModPred"
                 else pretrain_logits.argmax(dim=1, keepdim=False)
             )
