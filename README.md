@@ -24,7 +24,7 @@ CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=contrastiv
 
 #### Finetuning
 ```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4 -batch_size=256
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=contrastive -contrastive_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4 -batch_size=128
 ```
 
 #### Testing 
@@ -41,7 +41,7 @@ CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=ACIDS -train_mode=predictive -p
 
 #### Finetuning
 ```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=ACIDS -train_mode=predictive -predictive_framework=MTSS -stage=finetune -task=vehicle_classification -model=TransformerV4 -batch_size=256
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=ACIDS -train_mode=predictive -predictive_framework=MTSS -stage=finetune -task=vehicle_classification -model=TransformerV4 -batch_size=128
 ```
 
 #### Testing 
@@ -67,37 +67,41 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 
 |  Date       | Model | Framework |   Accuracy  | User | Weight | Comment | 
 | :---:       |    :----:    |   :----:    |    :---: | :--: | :-- | :-- |
-| 20230131    | DeepSense| Supervised | 91.22%   | sl29 | Parkland_DeepSense/exp0_supervised_vehicle_classification_1.0 | use MixUp augmentation. |
+| 20230131    | DeepSense| Supervised | 89.08%   | sl29 | Parkland_DeepSense/exp1_supervised_vehicle_classification_1.0 | mixup. |
 | 20230131    | DeepSense | SimCLR | 89.89%   |  sl29 | Parkland_DeepSense/exp0_contrastive_SimCLR | use large dataset, batch size 256|
 | 20230211    | DeepSense | MoCo | 88.34%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 64| 
 | 20230218    | DeepSense | Cosmo | 91.36%   | sl29 | Parkland_DeepSense/exp0_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
 | 20230220    | DeepSense | CMC | 94.58%   |  tkimura4 | Parkland_DeepSense/exp4_contrastive_CMC | use large datasets, batch size 128, infoNCE loss|
-| 20230130    | TransformerV4 | Supervised | 88.74%   |  sl29 | Parkland_TransformerV4/exp63_supervised_vehicle_classification_1.0 | use MixUp augmentation. |
+| 20230226    | DeepSense | MTSS | 46.95% | sl29 | | |
+| 20230130    | TransformerV4 | Supervised | 91.90%   |  sl29 | Parkland_TransformerV4/exp5_supervised_vehicle_classification_1.0 | mixup + phase_shift. |
 | 20230130    | TransformerV4 | SimCLR | 93.03%   |  sl29 | Parkland_TransformerV4/exp22_contrastive_SimCLR | use large dataset, batch size 256|
-| 20230212    | TransformerV4 | MoCo | 91.09%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 64|
+| 20230212    | TransformerV4 | MoCo | 94.31%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 256|
 | 20230223    | TransformerV4 | Cosmo | 23.04%   | sl29 | Parkland_TransformerV4/exp0_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
 | 20230220    | TransformerV4 | CMC | 91.96%   |  tkimura4 | Parkland_TransformerV4/exp28_contrastive_CMC | use large dataset, batch size 128, infoNCE loss|
+| 20230226    | TransformerV4 | MTSS | 42.19% | sl29 | | |
 
 #### 3. Speed classification 
 
 |  Date       | Model | Framework |   Accuracy  | User | Weight | Comment | 
 | :---:       |    :----:    |  :---: |  :---: | :--: | :-- | :-- |
-| 20230131    | DeepSense | Supervised | 59.37%   | sl29 | Parkland_DeepSense/exp0_supervised_speed_classification_1.0 | use MixUp augmentation. |
+| 20230131    | DeepSense | Supervised | 84.37%   | sl29 | Parkland_DeepSense/exp0_supervised_speed_classification_1.0 | use MixUp augmentation. |
 | 20230131    | DeepSense | SimCLR | 96.87%   |  sl29 | Parkland_DeepSense/exp0_contrastive_SimCLR | use large datasets, batch size 256|
 | 20230211    | DeepSense | MoCo | 96.87%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 64|
 | 20230220    | DeepSense | CMC | 78.125%   |  tkimura4 | Parkland_DeepSense/exp4_contrastive_CMC | use large datasets, batch size 128, infoNCE loss|
 | 20230224    | DeepSense | Cosmo | 96.87%   | sl29 | Parkland_DeepSense/exp0_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
-| 20230131    | TransformerV4 | Supervised | 56.25%   |  sl29 | Parkland_TransformerV4/exp0_supervised_speed_classification_1.0 | use MixUp augmentation. |
+| 20230226    | DeepSense | MTSS | 43.56% | sl29 | | |
+| 20230131    | TransformerV4 | Supervised | 68.75%   |  sl29 | Parkland_TransformerV4/exp0_supervised_speed_classification_1.0 | use MixUp augmentation. |
 | 20230131    | TransformerV4 | SimCLR | 93.75%   |  sl29 | Parkland_TransformerV4/exp22_contrastive_SimCLR | use large datasets, batch size 256|
 | 20230212    | TransformerV4 | MoCo | 93.60%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large datasets, batch size 64|
 | 20230220    | TransformerV4 | CMC | 90.63%   |  tkimura4 | Parkland_TransformerV4/exp28_contrastive_CMC | use large datasets, batch size 128, infoNCE loss
 | 20230224    | TransformerV4 | Cosmo | 40.62%   | sl29 | Parkland_TransformerV4/exp0_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
+| 20230226    | TransformerV4 | MTSS | 43.65% | sl29 | | |
 
 #### 4. Distance classification 
 
 |  Date       | Model | Framework |   Accuracy  | User | Weight | Comment | 
 | :---:       |    :----:    |  :---: |  :---: | :--: | :-- | :-- |
-| 20230131    | DeepSense | Supervised | 54.54%   | sl29 | Parkland_DeepSense/exp1_supervised_distance_classification_1.0  | no augmentation. |
+| 20230131    | DeepSense | Supervised | 66.67%   | sl29 | Parkland_DeepSense/exp0_supervised_distance_classification_1.0  | mixup. |
 | 20230131    | DeepSense | SimCLR | 90.91%   |  sl29 | Parkland_DeepSense/exp0_contrastive_SimCLR | use large datasets, batch size 256|
 | 20230211    | DeepSense | MoCo | 84.84%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 64| 
 | 20230220    | DeepSense | CMC | 78.79%   |  tkimura4 | Parkland_DeepSense/exp4_contrastive_CMC | use large datasets, batch size 128, infoNCE loss|
