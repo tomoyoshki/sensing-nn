@@ -100,8 +100,8 @@ def predictive_pretrain(
                 embs,
                 metadata=labels_,
                 label_img=imgs,
-                global_step=epoch,
-                tag="embeddings",
+                global_step=((epoch / 10) % 5), # storing the latest 5 only
+                tag=f"embedding",
             )
 
             # Use KNN classifier for validation
