@@ -131,7 +131,7 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 | 20230216    | TransformerV4 | Cosmo | 72.85%   | sl29 | ACIDS_TransformerV4/exp2_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
 | 20230221    | TransformerV4 | CMC | 84.80%   | tkimura4 | ACIDS_TransformerV4/exp10_contrastive_CMC | batch size 128 |
 | 20230228    | TransformerV4 | MTSS | 43.65% | sl29 | | ||
-| 20230228    | TransformerV4 | ModPred | xx.xx% | sl29 | | ||
+| 20230228    | TransformerV4 | ModPred | 51.68% | sl29 | | ||
 
 #### 2. Terrain Classification
 |  Date       | Model | Framework |   Accuracy  | User | Weight | Comment | 
