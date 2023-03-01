@@ -95,7 +95,6 @@ class TransformerV4_CMC(nn.Module):
                     self.config["patch_size"]["freq"][mod],
                     len(self.config["time_freq_block_num"][mod]),
                 )
-                logging.info(f"=\tPadded image size for {mod}: {padded_img_size}")
                 self.img_sizes[loc][mod] = padded_img_size
 
                 # Patch embedding and Linear embedding (H, W, in_channel) -> (H / p_size, W / p_size, C)
@@ -107,7 +106,6 @@ class TransformerV4_CMC(nn.Module):
                     norm_layer=self.norm_layer,
                 )
                 patches_resolution = self.patch_embed[loc][mod].patches_resolution
-                logging.info(f"=\tPatch resolution for {mod}: {patches_resolution}")
 
                 # Absolute positional embedding (optional)
                 self.absolute_pos_embed[loc][mod] = nn.Parameter(
@@ -188,51 +186,38 @@ class TransformerV4_CMC(nn.Module):
         # mod fusion layer
         if self.args.contrastive_framework == "Cosmo":
             "Attention fusion for Cosmo"
-            "Attentio fusion for MAE?"
             self.mod_fusion_layer = TransformerFusionBlock(
                 self.config["loc_out_channels"],
                 self.config["loc_head_num"],
                 self.config["dropout_ratio"],
                 self.config["dropout_ratio"],
             )
-            sample_dim = self.config["loc_out_channels"]
+            self.sample_dim = self.config["loc_out_channels"]
         else:
-            sample_dim = self.config["loc_out_channels"] * len(self.modalities)
+            self.sample_dim = self.config["loc_out_channels"] * len(self.modalities)
 
         # Classification layer
         if self.args.train_mode == "supervised" or self.config["pretrained_head"] == "linear":
             """Linear classification layers for supervised learning or finetuning."""
             self.class_layer = nn.Sequential(
-                nn.Linear(sample_dim, self.args.dataset_config[self.args.task]["num_classes"]),
-                # nn.Sigmoid() if self.args.multi_class else nn.Softmax(dim=1),
+                nn.Linear(self.sample_dim, self.args.dataset_config[self.args.task]["num_classes"]),
             )
         else:
             """Non-linear classification layers for self-supervised learning."""
             self.class_layer = nn.Sequential(
-                nn.Linear(sample_dim, self.config["fc_dim"]),
+                nn.Linear(self.sample_dim, self.config["fc_dim"]),
                 nn.GELU(),
                 nn.Linear(self.config["fc_dim"], self.args.dataset_config[self.args.task]["num_classes"]),
-                # nn.Sigmoid() if self.args.multi_class else nn.Softmax(dim=1),
             )
 
     def init_feature_encoder(self) -> None:
-        "Linear layers for encoded features"
-        # mod fusion layer
-        if self.args.contrastive_framework == "Cosmo":
-            "Attention fusion for Cosmo"
-            "Attentio fusion for MAE?"
-            self.mod_fusion_layer = TransformerFusionBlock(
-                self.config["loc_out_channels"],
-                self.config["loc_head_num"],
-                self.config["dropout_ratio"],
-                self.config["dropout_ratio"],
-            )
-            sample_dim = self.config["loc_out_channels"]
-        else:
-            sample_dim = self.config["loc_out_channels"] * len(self.modalities)
+        """Context encoding and modality separation
+        1. Merged Context -> Non linear fully connexted layers
+        2. Non linear layer to extract context for each modality
+        """
         # [mod1_feature, mod2_feature, mod3_feature, ...] -> fc_dim layer
         self.encoded_features_layer = nn.Sequential(
-            nn.Linear(sample_dim, self.config["fc_dim"]),
+            nn.Linear(self.sample_dim, self.config["fc_dim"]),
             nn.GELU(),
             nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
         )

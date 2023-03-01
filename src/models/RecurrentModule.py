@@ -75,7 +75,7 @@ class DecRecurrentBlock(nn.Module):
         # GRU decode
         dec_rnn_features, state = self.gru(encoded_feature, hidden_state)
         # soft max + linear dim
-        dec_features = self.softmax(self.dec_rnn_layer(dec_rnn_features))
+        dec_features = self.dec_rnn_layer(dec_rnn_features)
         dec_features = dec_features.permute(0, 2, 1)
 
         return dec_features

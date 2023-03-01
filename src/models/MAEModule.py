@@ -78,6 +78,13 @@ def window_masking(
         return (x_masked, mask)
 
 
+def find_patch_size(dim):
+    for i in range(2, dim):
+        if dim % i == 0:
+            return i
+    return 1
+
+
 def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
     """
     grid_size: int of the grid height and width

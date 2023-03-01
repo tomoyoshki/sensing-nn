@@ -12,7 +12,7 @@ from models.FusionModules import TransformerFusionBlock
 
 
 from models.SwinModules import PatchEmbed
-from models.MAEModule import get_2d_sincos_pos_embed
+from models.MAEModule import find_patch_size
 
 
 class DeepSense_CMC(nn.Module):
@@ -212,14 +212,24 @@ class DeepSense_CMC(nn.Module):
             masked_x[loc] = {}
             masks[loc] = {}
             for mod in self.modalities:
+                # get mask ratio for each modality
                 mask_ratio = self.config["masked_ratio"][mod]
                 b, c, i, s = freq_x[loc][mod].shape
-                bit_mask = torch.cuda.FloatTensor(b, i, s).uniform_() > mask_ratio
-                bit_mask = bit_mask.int().float()
-                bit_mask_channel = torch.stack([bit_mask] * c, dim=1)
-                masked_input = freq_x[loc][mod].clone() * bit_mask_channel
+
+                patch_h, patch_w = find_patch_size(i), find_patch_size(s)
+                patch_resolution_h, patch_resolution_w = i // patch_h, s // patch_w
+
+                # generate random mask
+                bit_mask = torch.cuda.FloatTensor(b, patch_resolution_h, patch_resolution_w).uniform_() > mask_ratio
+                patch_mask = bit_mask.repeat_interleave(patch_h, dim=1)
+                patch_mask = patch_mask.repeat_interleave(patch_w, dim=2)
+                patch_mask = patch_mask.int().float()
+                patch_mask_channel = torch.stack([patch_mask] * c, dim=1)
+
+                # mask the input
+                masked_input = freq_x[loc][mod].clone() * patch_mask_channel
                 masked_x[loc][mod] = masked_input
-                masks[loc][mod] = bit_mask
+                masks[loc][mod] = patch_mask
         return (masked_x, masks)
 
     def forward_encoder(self, freq_x, class_head=True):
