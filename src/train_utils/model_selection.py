@@ -21,7 +21,7 @@ from models.MTSSModules import MTSS
 from models.ModPredModules import ModPred
 
 # loss functions
-from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss
+from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss, MAELoss
 
 
 def init_model(args):
@@ -117,6 +117,8 @@ def init_loss_func(args, train_dataloader):
                 loss_func = CosmoLoss(args).to(args.device)
             else:
                 raise NotImplementedError(f"Loss function for {args.contrastive_framework} yet implemented")
+        elif args.train_mode == "MAE":
+            loss_func = MAELoss(args).to(args.device)
         else:
             raise Exception(f"Invalid train mode provided: {args.train_mode}")
 

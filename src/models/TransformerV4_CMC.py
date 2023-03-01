@@ -515,7 +515,7 @@ class TransformerV4_CMC(nn.Module):
                         self.mask_token[loc][mod],
                         remove=False,
                         mask_len_sparse=False,
-                        mask_ratio=self.masked_ratio
+                        mask_ratio=self.config["masked_ratio"][mod]
                     )
                     mod_loc_masks[loc][mod] = mod_loc_mask
 

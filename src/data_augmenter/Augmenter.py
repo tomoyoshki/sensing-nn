@@ -198,6 +198,8 @@ class Augmenter:
             ]
         elif args.train_mode == "predictive" and args.stage == "pretrain":
             self.time_aug_names = args.dataset_config[args.predictive_framework]["random_augmenters"]["time_augmenters"]
+        elif args.train_mode == "MAE" and args.stage == "pretrain":
+            self.time_aug_names = args.dataset_config[args.model]["random_augmenters"]["time_augmenters"]
         else:
             """Supervised training and fine-tuning"""
             self.time_aug_names = args.dataset_config[args.model]["fixed_augmenters"]["time_augmenters"]
@@ -224,6 +226,8 @@ class Augmenter:
             ]
         elif args.train_mode == "predictive" and args.stage == "pretrain":
             self.freq_aug_names = args.dataset_config[args.predictive_framework]["random_augmenters"]["freq_augmenters"]
+        elif args.train_mode == "MAE" and args.stage == "pretrain":
+            self.freq_aug_names = args.dataset_config[args.model]["random_augmenters"]["freq_augmenters"]
         else:
             """Supervised training and fine-tuning"""
             self.freq_aug_names = args.dataset_config[args.model]["fixed_augmenters"]["freq_augmenters"]

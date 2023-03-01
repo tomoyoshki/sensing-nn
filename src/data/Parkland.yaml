@@ -104,7 +104,9 @@ DeepSense:
         fusion: "concat"
         # decoders
         decoder_channels: 256
-        masked_ratio: 0.50
+        masked_ratio:
+                audio: 0.75
+                seismic: 0.75
         
 # ResNet config              
 ResNet:
@@ -216,7 +218,9 @@ TransformerV4:
         # MAE
         fusion: "concat"
         # decoders
-        masked_ratio: 0.85
+        masked_ratio:
+                audio: 0.1
+                seismic: 0.9
         decoder_time_freq_block_num: 
                 audio: [2, 2, 4]
                 seismic: [2, 2, 4]

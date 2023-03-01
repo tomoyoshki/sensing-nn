@@ -255,37 +255,27 @@ class ConvBlock(nn.Module):
             [b, c, i]
         """
 
-        print("ConvBlock input: ", x.shape)
+        # print("ConvBlock input: ", x.shape)
         # input conv layer
         conv_out = self.conv_layer_in(x)
 
-        print("ConvBlock conv_out: ", conv_out.shape)
+        # print("ConvBlock conv_out: ", conv_out.shape)
 
         # inter conv layers
-        i = 0
         for conv_layer in self.conv_layers_inter:
             conv_out = conv_out + conv_layer(conv_out)
-            print(f"{i}th conv_layer out: ", conv_out.shape)
-            i += 1
 
         # reshape the output to (N, C_out, intervals)
         conv_out = conv_out.permute(0, 1, 3, 2)
 
-        print("Permuted conv out shape: ", conv_out.shape)
         b, c, s, i = conv_out.shape
         if self.fuse_time_flag:
             conv_out = torch.reshape(conv_out, (b, c * s * i, 1))
         else:
             conv_out = torch.reshape(conv_out, (b, c * s, i))
 
-        print("Reshaped conv out shape: ", conv_out.shape)
-
         # map the dimension to the same as output, [b, c_out, i]
         conv_out = self.conv_layer_out(conv_out)
-
-        print("ConvBlock final conv shape: ", conv_out.shape)
-        print()
-        print()
 
         return conv_out
 

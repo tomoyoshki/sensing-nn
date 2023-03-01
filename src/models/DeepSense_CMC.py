@@ -38,7 +38,6 @@ class DeepSense_CMC(nn.Module):
         """define the architecture"""
         self.init_encoder(args)
         if args.train_mode == "MAE":
-            self.init_patch_embedding(args)
             self.init_feature_encoding(args)
             self.init_decoder(args)
 
@@ -124,78 +123,8 @@ class DeepSense_CMC(nn.Module):
                 # nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
             )
 
-    def init_patch_embedding(self, args):
-        self.patch_embed = nn.ModuleDict()
-        self.pos_embed = nn.ModuleDict()
-        self.decoder_pos_embed = nn.ModuleDict()
-        self.mask_token = nn.ModuleDict()
-
-        for loc in self.locations:
-            self.patch_embed[loc] = nn.ModuleDict()
-            self.pos_embed[loc] = nn.ParameterDict()
-            self.decoder_pos_embed[loc] = nn.ParameterDict()
-            self.mask_token[loc] = nn.ParameterDict()
-            for mod in self.modalities:
-                # get the padded image size
-                stride = self.config["in_stride"][mod]
-                spectrum_len = self.args.dataset_config["loc_mod_spectrum_len"][loc][mod]
-
-                img_size = (self.num_segments, spectrum_len // stride)
-                padded_img_size = get_padded_size(
-                    img_size,
-                    self.config["window_size"][mod],
-                    self.config["patch_size"]["freq"][mod],
-                    len(self.config["time_freq_block_num"][mod]),
-                )
-                self.patch_embed[loc][mod] = PatchEmbed(
-                    img_size=padded_img_size,
-                    patch_size=self.config["patch_size"]["freq"][mod],
-                    in_chans=self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod] * stride,
-                    embed_dim=self.config["loc_mod_out_channels"],
-                    norm_layer=nn.LayerNorm,
-                )
-
-                num_patches = self.patch_embed[loc][mod].num_patches
-                self.pos_embed[loc][mod] = nn.Parameter(
-                    torch.zeros(1, num_patches + 1, self.config["loc_mod_out_channels"]), requires_grad=False
-                )  # fixed sin-cos embedding
-
-                self.decoder_pos_embed = nn.Parameter(
-                    torch.zeros(1, num_patches + 1, self.config["loc_mod_out_channels"]), requires_grad=False
-                )  # fixed sin-cos embedding
-
-                self.mask_token[loc][mod] = nn.Parameter(torch.zeros(1, 1, self.config["loc_mod_out_channels"]))
-        self.initialize_weights()
-
-    def initialize_weights(self):
-        # initialization
-        # initialize (and freeze) pos_embed by sin-cos embedding
-        for loc in self.locations:
-            for mod in self.modalities:
-                pos_embed = get_2d_sincos_pos_embed(
-                    self.pos_embed[loc][mod].shape[-1], int(self.patch_embed[loc][mod].num_patches), cls_token=True
-                )
-                self.pos_embed[loc][mod].data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
-
-                decoder_pos_embed = get_2d_sincos_pos_embed(
-                    self.decoder_pos_embed[loc][mod].shape[-1],
-                    int(self.patch_embed[loc][mod].num_patches),
-                    cls_token=True,
-                )
-                self.decoder_pos_embed.data.copy_(torch.from_numpy(decoder_pos_embed).float().unsqueeze(0))
-
-                # initialize patch_embed like nn.Linear (instead of nn.Conv2d)
-                w = self.patch_embed[loc][mod].proj.weight.data
-                torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
-
-                # timm's trunc_normal_(std=.02) is effectively normal_(std=0.02) as cutoff is too big (2.)
-                torch.nn.init.normal_(self.cls_token[loc][mod], std=0.02)
-                torch.nn.init.normal_(self.mask_token[loc][mod], std=0.02)
-
-        # initialize nn.Linear and nn.LayerNorm
-        self.apply(self._init_weights)
-
     def init_feature_encoding(self, args):
+        # feature dimension of each encoded sample to fc dimension
         self.encoded_features_layer = nn.Sequential(
             nn.Linear(self.sample_dim, self.config["fc_dim"]),
             nn.GELU(),
@@ -267,13 +196,31 @@ class DeepSense_CMC(nn.Module):
                     num_inter_layers=self.config["loc_mod_conv_inter_layers"],
                     in_stride=in_stride,
                 )
-        pass
 
-    def mask_input(self, freq_x):
+    @torch.no_grad()
+    def process_input(self, freq_x, class_head):
+        """
+        Masking input for MAE
+        Only mask for MAE pretraining
+        """
+        if self.args.train_mode != "MAE" or class_head:
+            return freq_x, None
+
+        masked_x = {}
+        masks = {}
         for loc in self.locations:
+            masked_x[loc] = {}
+            masks[loc] = {}
             for mod in self.modalities:
-                embeded_x = self.patch_embed[loc][mod](freq_x[loc][mod])
-                embeded_x = embeded_x + self.pos_embed[:, 1:, :]
+                mask_ratio = self.config["masked_ratio"][mod]
+                b, c, i, s = freq_x[loc][mod].shape
+                bit_mask = torch.cuda.FloatTensor(b, i, s).uniform_() > mask_ratio
+                bit_mask = bit_mask.int().float()
+                bit_mask_channel = torch.stack([bit_mask] * c, dim=1)
+                masked_input = freq_x[loc][mod].clone() * bit_mask_channel
+                masked_x[loc][mod] = masked_input
+                masks[loc][mod] = bit_mask
+        return (masked_x, masks)
 
     def forward_encoder(self, freq_x, class_head=True):
         """The encoder function of DeepSense.
@@ -281,7 +228,6 @@ class DeepSense_CMC(nn.Module):
             time_x (_type_): time_x is a dictionary consisting of the Tensor input of each input modality.
                         For each modality, the data is in (b, c (2 * 3 or 1), i (intervals), s (spectrum)) format.
         """
-        masked_x, mask, ids_restore = self.mask_input()
         # Step 1: Single (loc, mod) feature extraction, (b, c, i)
         loc_mod_features = {mod: [] for mod in self.modalities}
         for loc in self.locations:
@@ -324,7 +270,7 @@ class DeepSense_CMC(nn.Module):
                 sample_features = torch.cat(mod_features, dim=1)
 
             logits = self.class_layer(sample_features)
-            return logits
+            return logits, None
 
     def forward_feature_encoder(self, mod_features):
         """Encode the features by merging and then demerge
@@ -357,7 +303,6 @@ class DeepSense_CMC(nn.Module):
         return dict(zip(self.modalities, mod_features))
 
     def forward_decoder(self, mod_features, hidden_features):
-        print("Forward decoder")
         # Step 1: Interval Fusion Decoder for each modality, [b, c, i]
         dec_mod_features = {}
         for mod in self.modalities:
@@ -370,7 +315,7 @@ class DeepSense_CMC(nn.Module):
             if not self.multi_location_flag:
                 dec_mod_interval_features[mod] = dec_mod_features[mod].unsqueeze(3)
             else:
-                # TODO: Test
+                # TODO:
                 fused_mod_feature = self.dec_loc_fusion_layers[mod](dec_mod_features[mod])
                 extracted_mod_features = self.dec_mod_extractors[mod](fused_mod_feature)
                 dec_mod_interval_features[mod] = extracted_mod_features
@@ -390,9 +335,15 @@ class DeepSense_CMC(nn.Module):
         return dec_loc_mod_input
 
     def forward(self, freq_x, class_head=True):
-        mod_features, hidden_features = self.forward_encoder(freq_x, class_head)
+        processed_freq_x, masks = self.process_input(freq_x, class_head)
+
+        mod_features, hidden_features = self.forward_encoder(processed_freq_x, class_head)
+
+        # Encoded features
         if self.args.train_mode != "MAE" or class_head:
             return mod_features
+
+        # MAE specific forward for pretraining
         encoded_mod_features = self.forward_feature_encoder(mod_features)
         decoded_output = self.forward_decoder(encoded_mod_features, hidden_features)
-        # return decoded_output
+        return decoded_output, freq_x, masks

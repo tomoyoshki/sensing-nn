@@ -217,10 +217,19 @@ class MAELoss(nn.Module):
         total_loss = 0
         for loc in self.locations:
             for mod in self.modalities:
-                in_channel = self.args.dataset_config["loc_mod_in_freq_channels"]["shake"][mod]
-                target = self.patchify(padded_x[loc][mod], self.backbone_config["patch_size"]["freq"][mod], in_channel)
                 mask = masks[loc][mod]
                 pred = decoded_x[loc][mod]
+                if self.args.model == "TransformerV4":
+                    in_channel = self.args.dataset_config["loc_mod_in_freq_channels"]["shake"][mod]
+                    target = self.patchify(
+                        padded_x[loc][mod], self.backbone_config["patch_size"]["freq"][mod], in_channel
+                    )
+                else:
+                    target = padded_x[loc][mod]
+                    # b, c, i, s -> b, i, s, c to match TransformerV4
+                    pred = torch.permute(pred, (0, 2, 3, 1))
+                    target = torch.permute(target, (0, 2, 3, 1))
+
                 if self.norm_pix_loss:
                     mean = target.mean(dim=-1, keepdim=True)
                     var = target.var(dim=-1, keepdim=True)
@@ -228,7 +237,6 @@ class MAELoss(nn.Module):
 
                 loss = (pred - target) ** 2
                 loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
-
                 loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
                 total_loss += loss
         return total_loss
