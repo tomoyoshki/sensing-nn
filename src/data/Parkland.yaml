@@ -105,7 +105,7 @@ DeepSense:
         # decoders
         decoder_channels: 256
         masked_ratio:
-                audio: 0.5
+                audio: 0.25
                 seismic: 0.75
         
 # ResNet config              
@@ -219,11 +219,8 @@ TransformerV4:
         fusion: "concat"
         # decoders
         masked_ratio:
-                audio: 0.85
-                seismic: 0.85
-        decoder_time_freq_block_num: 
-                audio: [2, 2, 4]
-                seismic: [2, 2, 4]
+                audio: 0.25
+                seismic: 0.75
 
 SimCLR:
         emb_dim: 512
