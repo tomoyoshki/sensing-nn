@@ -72,13 +72,15 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 | 20230211    | DeepSense | MoCo | 88.34%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 64| 
 | 20230218    | DeepSense | Cosmo | 91.36%   | sl29 | Parkland_DeepSense/exp0_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
 | 20230220    | DeepSense | CMC | 94.58%   |  tkimura4 | Parkland_DeepSense/exp4_contrastive_CMC | use large datasets, batch size 128, infoNCE loss|
-| 20230226    | DeepSense | MTSS | 46.95% | sl29 | | |
+| 20230226    | DeepSense | MTSS | 46.95% | sl29 | | 
+| 20230228    | DeepSense | ModPred | 42.86% | sl29 | | ||
 | 20230130    | TransformerV4 | Supervised | 91.90%   |  sl29 | Parkland_TransformerV4/exp5_supervised_vehicle_classification_1.0 | mixup + phase_shift. |
 | 20230130    | TransformerV4 | SimCLR | 93.03%   |  sl29 | Parkland_TransformerV4/exp22_contrastive_SimCLR | use large dataset, batch size 256|
 | 20230212    | TransformerV4 | MoCo | 94.31%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 256|
 | 20230223    | TransformerV4 | Cosmo | 23.04%   | sl29 | Parkland_TransformerV4/exp0_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
 | 20230220    | TransformerV4 | CMC | 91.96%   |  tkimura4 | Parkland_TransformerV4/exp28_contrastive_CMC | use large dataset, batch size 128, infoNCE loss|
 | 20230226    | TransformerV4 | MTSS | 42.19% | sl29 | | |
+| 20230228    | TransformerV4 | ModPred | xx.xx% | sl29 | | |
 
 #### 3. Speed classification 
 
@@ -89,13 +91,11 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 | 20230211    | DeepSense | MoCo | 96.87%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 64|
 | 20230220    | DeepSense | CMC | 78.125%   |  tkimura4 | Parkland_DeepSense/exp4_contrastive_CMC | use large datasets, batch size 128, infoNCE loss|
 | 20230224    | DeepSense | Cosmo | 96.87%   | sl29 | Parkland_DeepSense/exp0_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
-| 20230226    | DeepSense | MTSS | 43.56% | sl29 | | |
 | 20230131    | TransformerV4 | Supervised | 68.75%   |  sl29 | Parkland_TransformerV4/exp0_supervised_speed_classification_1.0 | use MixUp augmentation. |
 | 20230131    | TransformerV4 | SimCLR | 93.75%   |  sl29 | Parkland_TransformerV4/exp22_contrastive_SimCLR | use large datasets, batch size 256|
 | 20230212    | TransformerV4 | MoCo | 93.60%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large datasets, batch size 64|
 | 20230220    | TransformerV4 | CMC | 90.63%   |  tkimura4 | Parkland_TransformerV4/exp28_contrastive_CMC | use large datasets, batch size 128, infoNCE loss
 | 20230224    | TransformerV4 | Cosmo | 40.62%   | sl29 | Parkland_TransformerV4/exp0_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
-| 20230226    | TransformerV4 | MTSS | 43.65% | sl29 | | |
 
 #### 4. Distance classification 
 
@@ -123,11 +123,15 @@ CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -pr
 | 20230207    | DeepSense | MoCo | 76.62%   | sl29 | ACIDS_DeepSense/exp0_contrastive_MoCo | temperature 0.2 |
 | 20230218    | DeepSense | Cosmo | 92.62%   | sl29 | ACIDS_DeepSense/exp13_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
 | 20230221    | DeepSense | CMC | 89.04%   | tkimura4 | ACIDS_DeepSense/exp3_contrastive_CMC | batch size 128 |
+| 20230228    | DeepSense | MTSS | 43.28% | sl29 | | ||
+| 20230228    | DeepSense | ModPred | 51.37% | sl29 | | ||
 | 20230206    | TransformerV4 | Supervised | 91.14%   | sl29 | ACIDS_TransformerV4/exp0_supervised_vehicle_classification_1.0 | channel_shuffle, mixup, phase_shift |
 | 20230206    | TransformerV4 | SimCLR | 88.41%   | sl29 | ACIDS_TransformerV4/exp1_contrastive_SimCLR |  |
 | 20230207    | TransformerV4 | MoCo | 87.67%   | sl29 | ACIDS_TransformerV4/exp2_contrastive_MoCo | temperature 0.2 |
 | 20230216    | TransformerV4 | Cosmo | 72.85%   | sl29 | ACIDS_TransformerV4/exp2_contrastive_Cosmo | temperature 1, no augmentation, batch size 256 |
 | 20230221    | TransformerV4 | CMC | 84.80%   | tkimura4 | ACIDS_TransformerV4/exp10_contrastive_CMC | batch size 128 |
+| 20230228    | TransformerV4 | MTSS | 43.65% | sl29 | | ||
+| 20230228    | TransformerV4 | ModPred | xx.xx% | sl29 | | ||
 
 #### 2. Terrain Classification
 |  Date       | Model | Framework |   Accuracy  | User | Weight | Comment | 
