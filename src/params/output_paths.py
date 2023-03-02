@@ -14,35 +14,48 @@ def check_paths(path_list):
             os.mkdir(p)
 
 
-def set_model_weight_folder(args):
+def set_model_weight_suffix(
+    train_mode,
+    learn_framework=None,
+    task=None,
+    label_ratio=None,
+    miss_modalities=None,
+):
     """Automatically get the model path.
 
     Args:
         args (_type_): _description_
     """
-    base_path = f"{os.path.abspath(os.path.join(os.getcwd(), os.pardir))}/weights"
-    dataset_model_path = os.path.join(base_path, f"{args.dataset}_{args.model}")
-    check_paths([base_path, dataset_model_path])
-
-    # suffix for different modes, only related to the **train mode**
-    if args.train_mode == "supervised" and len(args.miss_modalities) > 0:
-        suffix = f"{args.train_mode}-miss-"
-        ordered_miss_modalities = list(args.miss_modalities)
+    if train_mode == "supervised" and len(miss_modalities) > 0:
+        suffix = f"{train_mode}-miss-"
+        ordered_miss_modalities = list(miss_modalities)
         ordered_miss_modalities.sort()
         for mod in ordered_miss_modalities:
             suffix += f"-{mod}"
     else:
         """Other modes include: supervised, contrastive, predictive, and more..."""
-        if args.train_mode == "supervised":
-            suffix = f"supervised_{args.task}_{args.label_ratio}"
-        elif args.train_mode == "contrastive":
-            suffix = f"contrastive_{args.contrastive_framework}"
-        elif args.train_mode == "predictive":
-            suffix = f"predictive_{args.predictive_framework}"
+        if train_mode == "supervised":
+            suffix = f"supervised_{task}_{label_ratio}"
+        elif train_mode == "contrastive":
+            suffix = f"contrastive_{learn_framework}"
+        elif train_mode == "predictive":
+            suffix = f"predictive_{learn_framework}"
         else:
-            raise Exception(f"Unknown train mode: {args.train_mode}")
+            raise Exception(f"Unknown train mode: {train_mode}")
 
-    # get the newest id matching the current config
+    return suffix
+
+
+def find_most_recent_weight(args, train_mode, learn_framework, task=None, label_ratio=None, return_suffix=False):
+    """Find the most recent weight path for the given (model, train_mode, framework).)"""
+    # base model path
+    base_path = f"{os.path.abspath(os.path.join(os.getcwd(), os.pardir))}/weights"
+    dataset_model_path = os.path.join(base_path, f"{args.dataset}_{args.model}")
+
+    # identify the proper suffix
+    suffix = set_model_weight_suffix(train_mode, learn_framework, task, label_ratio)
+
+    # find the most recent weight (training, finetuning, testing)
     newest_id = -1
     existing_weights = os.listdir(dataset_model_path)
     for weight in existing_weights:
@@ -54,19 +67,44 @@ def set_model_weight_folder(args):
             weight_id = int(weight.split("_")[0][3:])
             if weight_id > newest_id:
                 newest_id = weight_id
-                newest_weight = weight
+                newest_weight = os.path.join(dataset_model_path, weight)
+
+    if return_suffix:
+        return newest_id, newest_weight, suffix
+    else:
+        return newest_id, newest_weight
+
+
+def set_model_weight_folder(args):
+    """Automatically get the model path.
+
+    Args:
+        args (_type_): _description_
+    """
+    base_path = f"{os.path.abspath(os.path.join(os.getcwd(), os.pardir))}/weights"
+    dataset_model_path = os.path.join(base_path, f"{args.dataset}_{args.model}")
+    check_paths([base_path, dataset_model_path])
+
+    # get the newest id matching the current config
+    newest_id, newest_weight, suffix = find_most_recent_weight(
+        args,
+        args.train_mode,
+        args.learn_framework,
+        args.task,
+        args.label_ratio,
+        return_suffix=True,
+    )
 
     # set the weight path to avoid redundancy
     if args.option == "test" or args.stage == "finetune":
-        """Test or finetuning"""
-        if args.model_weight is None:
+        if args.model_weight is not None:
+            weight_folder = args.model_weight
+        else:
             """Select the newest experiment in the given (dataset, model) config."""
             if newest_id == -1:
                 raise Exception(f"No existing model weights for {suffix}")
             else:
-                weight_folder = os.path.join(dataset_model_path, newest_weight)
-        else:
-            weight_folder = args.model_weight
+                weight_folder = newest_weight
     else:
         "Supervised training or self-supervised pretraining"
         weight_folder = os.path.join(dataset_model_path, f"exp{newest_id + 1}") + f"_{suffix}"
@@ -75,12 +113,9 @@ def set_model_weight_folder(args):
         with open(os.path.join(weight_folder, "model_config.json"), "w") as f:
             f.write(json.dumps(model_config, indent=4))
 
-        if args.train_mode == "contrastive":
-            with open(os.path.join(weight_folder, "contrastive_framework_config.json"), "w") as f:
-                f.write(json.dumps(args.dataset_config[args.contrastive_framework], indent=4))
-        elif args.train_mode == "predictive":
-            with open(os.path.join(weight_folder, "predictive_framework_config.json"), "w") as f:
-                f.write(json.dumps(args.dataset_config[args.predictive_framework], indent=4))
+        framework_config_log = os.path.join(weight_folder, "learn_framework_config.json")
+        with open(framework_config_log, "w") as f:
+            f.write(json.dumps(args.dataset_config[args.learn_framework], indent=4))
 
     # set log files
     if args.option == "train":
@@ -93,12 +128,10 @@ def set_model_weight_folder(args):
                 args.tensorboard_log = os.path.join(weight_folder, f"pretrain_events")
             else:
                 args.train_log_file = os.path.join(
-                    weight_folder,
-                    f"{args.task}_{args.label_ratio}_{args.stage}_log.txt",
+                    weight_folder, f"{args.task}_{args.label_ratio}_{args.stage}_log.txt"
                 )
                 args.tensorboard_log = os.path.join(
-                    weight_folder,
-                    f"{args.task}_{args.label_ratio}_{args.stage}_events",
+                    weight_folder, f"{args.task}_{args.label_ratio}_{args.stage}_events"
                 )
 
     print(f"[Model weights path]: {weight_folder}")

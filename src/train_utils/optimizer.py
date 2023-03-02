@@ -8,14 +8,10 @@ def define_optimizer(args, parameters):
     """Define the optimizer."""
     if args.train_mode == "supervised":
         optimizer_config = args.dataset_config[args.model]["optimizer"]
-    elif args.train_mode == "contrastive" and args.stage == "pretrain":
-        optimizer_config = args.dataset_config[args.contrastive_framework]["pretrain_optimizer"]
-    elif args.train_mode == "contrastive" and args.stage == "finetune":
-        optimizer_config = args.dataset_config[args.contrastive_framework]["finetune_optimizer"]
-    elif args.train_mode == "predictive" and args.stage == "pretrain":
-        optimizer_config = args.dataset_config[args.predictive_framework]["pretrain_optimizer"]
-    elif args.train_mode == "predictive" and args.stage == "finetune":
-        optimizer_config = args.dataset_config[args.predictive_framework]["finetune_optimizer"]
+    elif args.stage == "pretrain":
+        optimizer_config = args.dataset_config[args.learn_framework]["pretrain_optimizer"]
+    elif args.stage == "finetune":
+        optimizer_config = args.dataset_config[args.learn_framework]["finetune_optimizer"]
     else:
         raise Exception("Optimizer not defined.")
     optimizer_name = optimizer_config["name"]

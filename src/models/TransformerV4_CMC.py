@@ -144,29 +144,30 @@ class TransformerV4_CMC(nn.Module):
                 )
 
         # Loc fusion, [b, i, c], loc contextual feature extraction + loc fusion
-        self.loc_context_layers = nn.ModuleDict()
-        self.loc_fusion_layer = nn.ModuleDict()
-        for mod in self.modalities:
-            """Single mod contextual feature extraction"""
-            module_list = [
-                TransformerEncoderLayer(
-                    d_model=self.config["loc_out_channels"],
-                    nhead=self.config["loc_head_num"],
-                    dim_feedforward=self.config["loc_out_channels"],
-                    dropout=self.config["dropout_ratio"],
-                    batch_first=True,
-                )
-                for _ in range(self.config["loc_block_num"])
-            ]
-            self.loc_context_layers[mod] = nn.Sequential(*module_list)
+        if len(self.locations) > 1:
+            self.loc_context_layers = nn.ModuleDict()
+            self.loc_fusion_layer = nn.ModuleDict()
+            for mod in self.modalities:
+                """Single mod contextual feature extraction"""
+                module_list = [
+                    TransformerEncoderLayer(
+                        d_model=self.config["loc_out_channels"],
+                        nhead=self.config["loc_head_num"],
+                        dim_feedforward=self.config["loc_out_channels"],
+                        dropout=self.config["dropout_ratio"],
+                        batch_first=True,
+                    )
+                    for _ in range(self.config["loc_block_num"])
+                ]
+                self.loc_context_layers[mod] = nn.Sequential(*module_list)
 
-            """Loc fusion layer for each mod"""
-            self.loc_fusion_layer[mod] = TransformerFusionBlock(
-                self.config["loc_out_channels"],
-                self.config["loc_head_num"],
-                self.config["dropout_ratio"],
-                self.config["dropout_ratio"],
-            )
+                """Loc fusion layer for each mod"""
+                self.loc_fusion_layer[mod] = TransformerFusionBlock(
+                    self.config["loc_out_channels"],
+                    self.config["loc_head_num"],
+                    self.config["dropout_ratio"],
+                    self.config["dropout_ratio"],
+                )
 
         # mod fusion layer
         if args.contrastive_framework == "Cosmo":

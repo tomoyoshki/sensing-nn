@@ -90,7 +90,7 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
 def eval_pretrained_model(args, default_model, estimator, augmenter, dataloader, loss_func):
     """Evaluate the downstream task performance with KNN estimator."""
     default_model.eval()
-    if args.train_mode == "contrastive" and args.contrastive_framework in {"CMC"}:
+    if args.train_mode == "contrastive" and args.learn_framework in {"CMC"}:
         loss_func.contrast.eval()
 
     sample_embeddings = []
@@ -142,8 +142,8 @@ def eval_predictive_task(args, default_model, augmenter, dataloader):
             aug_freq_loc_inputs, pretrain_labels = augmenter.forward(
                 "random",
                 time_loc_inputs,
-                return_aug_id=True if args.predictive_framework == "MTSS" else False,
-                return_aug_mods=True if args.predictive_framework == "ModPred" else False,
+                return_aug_id=True if args.learn_framework == "MTSS" else False,
+                return_aug_mods=True if args.learn_framework == "ModPred" else False,
             )
 
             # forward pass
@@ -152,7 +152,7 @@ def eval_predictive_task(args, default_model, augmenter, dataloader):
             # get the predictions from the logits
             pretrain_predictions = (
                 (nn.Sigmoid()(pretrain_logits) > 0.5).float()
-                if args.predictive_framework == "ModPred"
+                if args.learn_framework == "ModPred"
                 else pretrain_logits.argmax(dim=1, keepdim=False)
             )
 

@@ -31,7 +31,7 @@ def finetune(
     classifier = load_model_weight(classifier, pretrain_weight, load_class_layer=False)
     learnable_parameters = []
     for name, param in classifier.named_parameters():
-        if args.contrastive_framework == "Cosmo":
+        if args.learn_framework == "Cosmo":
             if "class_layer" in name or "mod_fusion_layer" in name:
                 param.requires_grad = True
                 learnable_parameters.append(param)
@@ -61,7 +61,7 @@ def finetune(
     )
 
     val_epochs = 5 if args.dataset == "Parkland" else 3
-    for epoch in range(args.dataset_config[args.contrastive_framework]["finetune_lr_scheduler"]["train_epochs"]):
+    for epoch in range(args.dataset_config[args.learn_framework]["finetune_lr_scheduler"]["train_epochs"]):
         if epoch > 0:
             logging.info("-" * 40 + f"Epoch {epoch}" + "-" * 40)
 

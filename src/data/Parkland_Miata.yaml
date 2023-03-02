@@ -1,11 +1,11 @@
 # data paths  
 pretrain_index_file: /home/sl29/data/Parkland/time_data_partition/pretrain_index.txt 
 vehicle_classification:
-        num_classes: 2  # number of classes
-        class_names: ["no-car", "car"]
-        train_index_file: /home/sl29/data/UIUC_Parking_Lot_F23/2023-02-20-Mazda-MX5/75feet/time_data_partition/train_index.txt 
-        val_index_file: /home/sl29/data/UIUC_Parking_Lot_F23/2023-02-20-Mazda-MX5/75feet/time_data_partition/val_index.txt  
-        test_index_file: /home/sl29/data/UIUC_Parking_Lot_F23/2023-02-20-Mazda-MX5/75feet/time_data_partition/test_index.txt
+        num_classes: 4  # number of classes
+        class_names: ["no-car", "car-1", "car-2", "car-3"]
+        train_index_file: /home/sl29/data/UIUC_Parking_Lot_F23/2023-03-01/balanced_time_data_partition/train_index.txt 
+        val_index_file: /home/sl29/data/UIUC_Parking_Lot_F23/2023-03-01/balanced_time_data_partition/val_index.txt  
+        test_index_file: /home/sl29/data/UIUC_Parking_Lot_F23/2023-03-01/balanced_time_data_partition/test_index.txt
 distance_classification:
         num_classes: 3  # number of classes
         class_names: ["close", "medium", "far"]
@@ -97,7 +97,7 @@ DeepSense:
                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
                 freq_augmenters: ["phase_shift"]
         fixed_augmenters:
-                time_augmenters: ["time_warp", "mag_warp"]
+                time_augmenters: ["mixup"]
                 freq_augmenters: ["phase_shift"]
 
 SimCLR:

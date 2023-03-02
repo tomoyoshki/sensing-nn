@@ -41,16 +41,10 @@ def parse_base_args(option="train"):
         help="The used mode for model training (supervised/contrastive/...).",
     )
     parser.add_argument(
-        "-contrastive_framework",
+        "-learn_framework",
         type=str,
         default="SimCLR",
-        help="Contrastive learning framework to use",
-    )
-    parser.add_argument(
-        "-predictive_framework",
-        type=str,
-        default="MTSS",
-        help="Contrastive learning framework to use",
+        help="Contrastive/Predictive/Reconstructive learning framework to use",
     )
     parser.add_argument(
         "-inference_mode",
