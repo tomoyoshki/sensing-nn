@@ -20,7 +20,7 @@ def set_model_weight_suffix(train_mode, learn_framework=None, task=None, label_r
     Args:
         args (_type_): _description_
     """
-    if train_mode == "supervised" and len(miss_modalities) > 0:
+    if train_mode == "supervised" and miss_modalities is not None and len(miss_modalities) > 0:
         suffix = f"{train_mode}-miss-"
         ordered_miss_modalities = list(miss_modalities)
         ordered_miss_modalities.sort()
@@ -106,9 +106,10 @@ def set_model_weight_folder(args):
         with open(os.path.join(weight_folder, "model_config.json"), "w") as f:
             f.write(json.dumps(model_config, indent=4))
 
-        framework_config_log = os.path.join(weight_folder, "learn_framework_config.json")
-        with open(framework_config_log, "w") as f:
-            f.write(json.dumps(args.dataset_config[args.learn_framework], indent=4))
+        if args.train_mode != "supervised" and args.stage == "pretrain":
+            framework_config_log = os.path.join(weight_folder, "learn_framework_config.json")
+            with open(framework_config_log, "w") as f:
+                f.write(json.dumps(args.dataset_config[args.learn_framework], indent=4))
 
     # set log files
     if args.option == "train":
