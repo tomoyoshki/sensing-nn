@@ -105,7 +105,7 @@ def eval_pretrained_model(args, default_model, estimator, augmenter, dataloader,
             """Eval pretrain loss."""
             if args.train_mode == "contrastive":
                 loss = calc_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, index).item()
-            elif args.train_mode in {"predictive", "fusion"}:
+            elif args.train_mode == "predictive":
                 loss = calc_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs).item()
             loss_list.append(loss)
 
@@ -195,7 +195,7 @@ def val_and_logging(
         classifier_dataloader (_type_): _description_
         classifier_loss_func (_type_): _description_
     """
-    if args.train_mode in {"contrastive", "predictive"} and args.stage == "pretrain":
+    if args.train_mode in {"contrastive", "predictive", "predictive_fusion"} and args.stage == "pretrain":
         logging.info(f"Train {args.train_mode} loss: {train_loss: .5f} \n")
     else:
         logging.info(f"Train classifier loss: {train_loss: .5f} \n")
@@ -210,7 +210,7 @@ def val_and_logging(
         )
     else:
         """Predictive pretrain task"""
-        if args.train_mode in {"predictive", "fusion"}:
+        if args.train_mode == "predictive":
             val_pretrain_acc, val_pretrain_f1, val_pretrain_conf_matrix = eval_predictive_task(
                 args, model, augmenter, val_loader
             )

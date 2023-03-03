@@ -27,14 +27,22 @@ from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss
 def init_model(args):
     """Automatically select the model according to args."""
     if args.model == "DeepSense":
-        if args.train_mode == "contrastive" and args.stage == "pretrain" and args.learn_framework in {"MoCo"}:
+        if (
+            args.train_mode == "contrastive"
+            and args.stage == "pretrain"
+            and args.learn_framework in {"MoCo", "MoCoFusion"}
+        ):
             return DeepSense
         elif args.train_mode == "contrastive" and args.learn_framework in {"CMC", "Cosmo"}:
             classifier = DeepSense_CMC(args)
         else:
             classifier = DeepSense(args, self_attention=False)
     elif args.model == "TransformerV4":
-        if args.train_mode == "contrastive" and args.stage == "pretrain" and args.learn_framework in {"MoCo"}:
+        if (
+            args.train_mode == "contrastive"
+            and args.stage == "pretrain"
+            and args.learn_framework in {"MoCo", "MoCoFusion"}
+        ):
             return TransformerV4
         elif args.train_mode == "contrastive" and args.learn_framework in {"CMC", "Cosmo"}:
             classifier = TransformerV4_CMC(args)
@@ -53,11 +61,11 @@ def init_model(args):
 
 def init_contrastive_framework(args, backbone_model):
     # model config
-    if args.learn_framework == "SimCLR":
+    if args.learn_framework in {"SimCLR", "SimCLRFusion"}:
         default_model = SimCLR(args, backbone_model)
     elif args.learn_framework == "DINO":
         default_model = DINO(args, backbone_model)
-    elif args.learn_framework == "MoCo":
+    elif args.learn_framework in {"MoCo", "MoCoFusion"}:
         default_model = MoCoWrapper(args, backbone_model)
     elif args.learn_framework == "CMC":
         default_model = CMC(args, backbone_model)
@@ -91,7 +99,7 @@ def init_loss_func(args, train_dataloader):
     else:
         if args.train_mode == "supervised" or args.stage == "finetune":
             loss_func = nn.CrossEntropyLoss()
-        elif args.train_mode in {"predictive", "fusion"}:
+        elif args.train_mode == "predictive":
             """Predictive pretraining only."""
             if args.learn_framework == "MTSS":
                 loss_func = nn.BCEWithLogitsLoss()
@@ -103,11 +111,11 @@ def init_loss_func(args, train_dataloader):
             """Contrastive pretraining only."""
             if args.learn_framework == "DINO":
                 loss_func = DINOLoss(args).to(args.device)
-            elif args.learn_framework in {"MoCo"}:
+            elif args.learn_framework in {"MoCo", "MoCoFusion"}:
                 loss_func = MoCoLoss(args).to(args.device)
             elif args.learn_framework in {"CMC"}:
                 loss_func = CMCLoss(args, len(train_dataloader.dataset)).to(args.device)
-            elif args.learn_framework in {"SimCLR"}:
+            elif args.learn_framework in {"SimCLR", "SimCLRFusion"}:
                 loss_func = SimCLRLoss(args).to(args.device)
             elif args.learn_framework in {"Cosmo"}:
                 loss_func = CosmoLoss(args).to(args.device)

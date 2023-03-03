@@ -12,7 +12,7 @@ class TimeWarpAugmenter(nn.Module):
         super().__init__()
         self.args = args
         self.config = args.dataset_config["time_warp"]
-        self.p = 1 if args.train_mode == "predictive" and args.predictive_framework == "MTSS" else self.config["prob"]
+        self.p = 1 if args.train_mode == "predictive" and args.learn_framework == "MTSS" else self.config["prob"]
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
         self.warp_func = TSTimeWarp(magnitude=self.config["magnitude"], order=self.config["order"])

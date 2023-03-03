@@ -12,15 +12,15 @@ from train_utils.eval_functions import val_and_logging
 from train_utils.optimizer import define_optimizer
 from train_utils.lr_scheduler import define_lr_scheduler
 from train_utils.knn import compute_embedding, compute_knn
-from train_utils.model_selection import init_predictive_framework
-from train_utils.loss_calc_utils import calc_predictive_loss
-from general_utils.weight_utils import load_feature_extraction_weight
+from train_utils.model_selection import init_predictive_framework, init_contrastive_framework
+from train_utils.loss_calc_utils import calc_predictive_loss, calc_contrastive_loss
+from general_utils.weight_utils import load_feature_extraction_weight, freeze_patch_embedding
 
 # utils
 from general_utils.time_utils import time_sync
 
 
-def fusion_pretrain(
+def pretrain(
     args,
     backbone_model,
     augmenter,
@@ -36,12 +36,24 @@ def fusion_pretrain(
     used in train of supervised mode or fine-tune of foundation models.
     """
     # Initialize contrastive model
-    default_model = init_predictive_framework(args, backbone_model)
-    default_model = load_feature_extraction_weight(args, default_model)
+    if args.train_mode in {"predictive"}:
+        default_model = init_predictive_framework(args, backbone_model)
+    elif args.train_mode in {"contrastive"}:
+        default_model = init_contrastive_framework(args, backbone_model)
+    else:
+        raise Exception("Invalid train mode")
+
+    # Load feature extractor for fusion pretraining
+    if "Fusion" in args.learn_framework:
+        default_model = load_feature_extraction_weight(args, default_model)
 
     # Define the optimizer and learning rate scheduler
     optimizer = define_optimizer(args, default_model.parameters())
     lr_scheduler = define_lr_scheduler(args, optimizer)
+
+    # Fix the patch embedding layer of TransformerV4, from MOCOv3
+    if "Fusion" not in args.learn_framework:
+        default_model = freeze_patch_embedding(args, default_model)
 
     # Print the trainable parameters
     if args.verbose:
@@ -73,7 +85,10 @@ def fusion_pretrain(
             idx = idx.to(args.device)
 
             # move to target device, FFT, and augmentations
-            loss = calc_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs)
+            if args.train_mode in {"predictive", "predictive_fusion"}:
+                loss = calc_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs)
+            else:
+                loss = calc_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx)
 
             # back propagation
             loss.backward()

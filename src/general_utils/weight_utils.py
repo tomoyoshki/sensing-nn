@@ -83,3 +83,15 @@ def set_learnable_params_finetune(args, classifier):
                 param.requires_grad = False
 
     return learnable_parameters
+
+
+def freeze_patch_embedding(args, default_model):
+    """
+    Freeze the patch embedding layaer.
+    """
+    if "Fusion" not in args.learn_framework:
+        for name, param in default_model.backbone.named_parameters():
+            if "patch_embed" in name:
+                param.requires_grad = False
+
+    return default_model

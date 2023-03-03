@@ -30,12 +30,8 @@ def set_model_weight_suffix(train_mode, learn_framework=None, task=None, label_r
         """Other modes include: supervised, contrastive, predictive, and more..."""
         if train_mode == "supervised":
             suffix = f"supervised_{task}_{label_ratio}"
-        elif train_mode == "contrastive":
-            suffix = f"contrastive_{learn_framework}"
-        elif train_mode == "predictive":
-            suffix = f"predictive_{learn_framework}"
-        elif train_mode == "fusion":
-            suffix = f"fusion_{learn_framework}"
+        elif train_mode in {"contrastive", "predictive"}:
+            suffix = f"{train_mode}_{learn_framework}"
         else:
             raise Exception(f"Unknown train mode: {train_mode}")
 
@@ -144,7 +140,7 @@ def set_model_weight_file(args):
             args.weight_folder,
             f"{args.dataset}_{args.model}_{args.task}_best.pt",
         )
-    elif args.train_mode in {"contrastive", "predictive", "fusion"}:
+    elif args.train_mode in {"contrastive", "predictive"}:
         if args.stage == "pretrain":
             args.classifier_weight = os.path.join(
                 args.weight_folder,

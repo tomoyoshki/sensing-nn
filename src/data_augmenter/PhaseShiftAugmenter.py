@@ -11,7 +11,7 @@ class PhaseShiftAugmenter(nn.Module):
         super().__init__()
         self.args = args
         self.config = args.dataset_config["phase_shift"]
-        self.p = 1 if args.train_mode == "predictive" and args.predictive_framework == "MTSS" else self.config["prob"]
+        self.p = 1 if args.train_mode == "predictive" and args.learn_framework == "MTSS" else self.config["prob"]
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
 
