@@ -192,7 +192,7 @@ class Augmenter:
             "time_mask": TimeMaskAugmenter,
         }
 
-        if args.stage == "pretrain":
+        if args.train_mode != "supervised" and args.stage == "pretrain":
             self.time_aug_names = args.dataset_config[args.learn_framework]["random_augmenters"]["time_augmenters"]
         else:
             """Supervised training and fine-tuning"""
@@ -214,7 +214,7 @@ class Augmenter:
             "phase_shift": PhaseShiftAugmenter,
         }
 
-        if args.stage == "pretrain":
+        if args.train_mode != "supervised" and args.stage == "pretrain":
             self.freq_aug_names = args.dataset_config[args.learn_framework]["random_augmenters"]["freq_augmenters"]
         else:
             """Supervised training and fine-tuning"""
