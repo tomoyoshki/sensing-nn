@@ -23,6 +23,7 @@ from train_utils.eval_functions import eval_supervised_model
 from train_utils.supervised_train import supervised_train
 from train_utils.contrastive_train import contrastive_pretrain
 from train_utils.predictive_train import predictive_pretrain
+from train_utils.fusion_train import fusion_pretrain
 from train_utils.finetune import finetune
 
 
@@ -98,6 +99,18 @@ def train(args):
 
     elif args.train_mode == "predictive" and args.stage == "pretrain":
         predictive_pretrain(
+            args,
+            classifier,
+            augmenter,
+            train_dataloader,
+            val_dataloader,
+            test_dataloader,
+            loss_func,
+            tb_writer,
+            num_batches,
+        )
+    elif args.train_mode == "fusion" and args.stage == "pretrain":
+        fusion_pretrain(
             args,
             classifier,
             augmenter,

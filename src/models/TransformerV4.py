@@ -168,23 +168,24 @@ class TransformerV4(nn.Module):
             )
 
         # Loc fusion, [b, i, c], loc contextual feature extraction + loc fusion
-        module_list = [
-            TransformerEncoderLayer(
-                d_model=self.config["loc_out_channels"],
-                nhead=self.config["loc_head_num"],
-                dim_feedforward=self.config["loc_out_channels"],
-                dropout=self.config["dropout_ratio"],
-                batch_first=True,
+        if len(self.locations) > 1:
+            module_list = [
+                TransformerEncoderLayer(
+                    d_model=self.config["loc_out_channels"],
+                    nhead=self.config["loc_head_num"],
+                    dim_feedforward=self.config["loc_out_channels"],
+                    dropout=self.config["dropout_ratio"],
+                    batch_first=True,
+                )
+                for _ in range(self.config["loc_block_num"])
+            ]
+            self.loc_context_layer = nn.Sequential(*module_list)
+            self.loc_fusion_layer = TransformerFusionBlock(
+                self.config["loc_out_channels"],
+                self.config["loc_head_num"],
+                self.config["dropout_ratio"],
+                self.config["dropout_ratio"],
             )
-            for _ in range(self.config["loc_block_num"])
-        ]
-        self.loc_context_layer = nn.Sequential(*module_list)
-        self.loc_fusion_layer = TransformerFusionBlock(
-            self.config["loc_out_channels"],
-            self.config["loc_head_num"],
-            self.config["dropout_ratio"],
-            self.config["dropout_ratio"],
-        )
 
         # Sample embedding layer
         self.sample_embd_layer = nn.Sequential(

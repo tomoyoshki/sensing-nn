@@ -75,7 +75,7 @@ def init_predictive_framework(args, backbone_model):
     """
     if args.learn_framework == "MTSS":
         default_model = MTSS(args, backbone_model)
-    elif args.learn_framework == "ModPred":
+    elif args.learn_framework in {"ModPred", "ModPredFusion"}:
         default_model = ModPred(args, backbone_model)
     else:
         raise NotImplementedError
@@ -91,11 +91,11 @@ def init_loss_func(args, train_dataloader):
     else:
         if args.train_mode == "supervised" or args.stage == "finetune":
             loss_func = nn.CrossEntropyLoss()
-        elif args.train_mode == "predictive":
+        elif args.train_mode in {"predictive", "fusion"}:
             """Predictive pretraining only."""
             if args.learn_framework == "MTSS":
                 loss_func = nn.BCEWithLogitsLoss()
-            elif args.learn_framework == "ModPred":
+            elif args.learn_framework in {"ModPred", "ModPredFusion"}:
                 loss_func = nn.BCEWithLogitsLoss()
             else:
                 raise NotImplementedError(f"Loss function for {args.learn_framework} yet implemented")

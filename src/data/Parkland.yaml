@@ -453,7 +453,7 @@ ModPred:
                 freq_augmenters: ["phase_shift"]
 
 ModPredFusion:
-        feature_learning_framework: "CMC"
+        feature_learn_framework: "CMC"
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"

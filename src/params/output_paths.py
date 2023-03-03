@@ -14,13 +14,7 @@ def check_paths(path_list):
             os.mkdir(p)
 
 
-def set_model_weight_suffix(
-    train_mode,
-    learn_framework=None,
-    task=None,
-    label_ratio=None,
-    miss_modalities=None,
-):
+def set_model_weight_suffix(train_mode, learn_framework=None, task=None, label_ratio=None, miss_modalities=None):
     """Automatically get the model path.
 
     Args:
@@ -40,6 +34,8 @@ def set_model_weight_suffix(
             suffix = f"contrastive_{learn_framework}"
         elif train_mode == "predictive":
             suffix = f"predictive_{learn_framework}"
+        elif train_mode == "fusion":
+            suffix = f"fusion_{learn_framework}"
         else:
             raise Exception(f"Unknown train mode: {train_mode}")
 
@@ -57,6 +53,7 @@ def find_most_recent_weight(args, train_mode, learn_framework, task=None, label_
 
     # find the most recent weight (training, finetuning, testing)
     newest_id = -1
+    newest_weight = None
     existing_weights = os.listdir(dataset_model_path)
     for weight in existing_weights:
         # only check qualified weight with the required suffix
@@ -147,7 +144,7 @@ def set_model_weight_file(args):
             args.weight_folder,
             f"{args.dataset}_{args.model}_{args.task}_best.pt",
         )
-    elif args.train_mode in {"contrastive", "predictive"}:
+    elif args.train_mode in {"contrastive", "predictive", "fusion"}:
         if args.stage == "pretrain":
             args.classifier_weight = os.path.join(
                 args.weight_folder,

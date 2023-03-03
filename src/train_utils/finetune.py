@@ -11,7 +11,7 @@ from train_utils.lr_scheduler import define_lr_scheduler
 
 # utils
 from general_utils.time_utils import time_sync
-from general_utils.weight_utils import load_model_weight
+from general_utils.weight_utils import load_model_weight, set_learnable_params_finetune
 
 
 def finetune(
@@ -29,21 +29,7 @@ def finetune(
     # Load the pretrained feature extractor
     pretrain_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_pretrain_latest.pt")
     classifier = load_model_weight(classifier, pretrain_weight, load_class_layer=False)
-    learnable_parameters = []
-    for name, param in classifier.named_parameters():
-        if args.learn_framework == "Cosmo":
-            if "class_layer" in name or "mod_fusion_layer" in name:
-                param.requires_grad = True
-                learnable_parameters.append(param)
-            else:
-                param.requires_grad = False
-        else:
-            """For SimCLR, MoCo, CMC"""
-            if "class_layer" in name:
-                param.requires_grad = True
-                learnable_parameters.append(param)
-            else:
-                param.requires_grad = False
+    learnable_parameters = set_learnable_params_finetune(args, classifier)
 
     # Init the optimizer
     optimizer = define_optimizer(args, learnable_parameters)

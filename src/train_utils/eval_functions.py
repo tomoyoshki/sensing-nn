@@ -105,7 +105,7 @@ def eval_pretrained_model(args, default_model, estimator, augmenter, dataloader,
             """Eval pretrain loss."""
             if args.train_mode == "contrastive":
                 loss = calc_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, index).item()
-            elif args.train_mode == "predictive":
+            elif args.train_mode in {"predictive", "fusion"}:
                 loss = calc_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs).item()
             loss_list.append(loss)
 
@@ -143,7 +143,7 @@ def eval_predictive_task(args, default_model, augmenter, dataloader):
                 "random",
                 time_loc_inputs,
                 return_aug_id=True if args.learn_framework == "MTSS" else False,
-                return_aug_mods=True if args.learn_framework == "ModPred" else False,
+                return_aug_mods=True if args.learn_framework in {"ModPred", "ModPredFusion"} else False,
             )
 
             # forward pass
@@ -152,7 +152,7 @@ def eval_predictive_task(args, default_model, augmenter, dataloader):
             # get the predictions from the logits
             pretrain_predictions = (
                 (nn.Sigmoid()(pretrain_logits) > 0.5).float()
-                if args.learn_framework == "ModPred"
+                if args.learn_framework in {"ModPred", "ModPredFusion"}
                 else pretrain_logits.argmax(dim=1, keepdim=False)
             )
 
@@ -210,7 +210,7 @@ def val_and_logging(
         )
     else:
         """Predictive pretrain task"""
-        if args.train_mode == "predictive":
+        if args.train_mode in {"predictive", "fusion"}:
             val_pretrain_acc, val_pretrain_f1, val_pretrain_conf_matrix = eval_predictive_task(
                 args, model, augmenter, val_loader
             )
