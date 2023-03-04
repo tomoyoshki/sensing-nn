@@ -2,6 +2,7 @@ import os
 import json
 import torch
 import getpass
+import logging
 
 from params.output_paths import set_model_weight_file, set_output_paths, set_model_weight_folder
 from input_utils.yaml_utils import load_yaml
@@ -60,16 +61,29 @@ def select_device(device="", batch_size=0, newline=True):
     return torch.device("cuda:0" if cuda else "cpu")
 
 
-def auto_select_augmenter(args):
-    """Automatically select the data augmenter, mainly for separate training mode."""
-    if args.option == "train":
-        if args.train_mode == "supervised" and len(args.miss_modalities) > 0:
-            args.augmenter = "SeparateAugmenter"
+def set_train_mode(args):
+    """
+    Automatically set the train mode according to the learn_framework.
+    NOTE: Add the learn framework to this register when adding a new learn framework.
+    """
+    learn_framework_register = {
+        "SimCLR": "contrastive",
+        "SimCLRFusion": "contrastive",
+        "MoCo": "contrastive",
+        "MoCoFusion": "contrastive",
+        "Cosmo": "contrastive",
+        "CMC": "contrastive",
+        "MTSS": "predictive",
+        "ModPred": "predictive",
+        "ModPredFusion": "predictive",
+        "no": "supervised",
+    }
+
+    if args.learn_framework in learn_framework_register:
+        args.train_mode = learn_framework_register[args.learn_framework]
+        print(f"Setting train mode: {args.train_mode}")
     else:
-        if args.train_mode == "supervised" and len(args.miss_modalities) > 0:
-            args.augmenter = "SeparateAugmenter"
-        else:
-            args.augmenter = "NoAugmenter"
+        raise ValueError(f"Invalid learn_framework provided: {args.learn_framework}")
 
     return args
 
@@ -100,9 +114,6 @@ def set_auto_params(args):
     # dataloader config
     args.workers = 10
 
-    # triplet batch size
-    # args.triplet_batch_size = int(args.batch_size / 3)
-
     # Sing-class problem or multi-class problem
     if args.dataset in {}:
         args.multi_class = True
@@ -116,8 +127,8 @@ def set_auto_params(args):
     else:
         args.miss_modalities = set()
 
-    # automatically set the miss generator and the detector
-    args = auto_select_augmenter(args)
+    # set the train mode
+    args = set_train_mode(args)
 
     # set output path
     args = set_model_weight_folder(args)

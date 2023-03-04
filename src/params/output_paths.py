@@ -1,6 +1,6 @@
 import os
-from datetime import date
 import json
+import logging
 
 
 def check_paths(path_list):
@@ -128,7 +128,12 @@ def set_model_weight_folder(args):
                     weight_folder, f"{args.task}_{args.label_ratio}_{args.stage}_events"
                 )
 
-    print(f"[Model weights path]: {weight_folder}")
+    # set logging config
+    logging.basicConfig(
+        level=logging.INFO, handlers=[logging.FileHandler(args.train_log_file), logging.StreamHandler()]
+    )
+
+    logging.info(f"=\t[Model weights path]: {weight_folder}")
     args.weight_folder = weight_folder
 
     return args
@@ -155,7 +160,7 @@ def set_model_weight_file(args):
     else:
         raise Exception(f"Invalid training mode provided: {args.stage}")
 
-    print(f"[Classifier weight file]: {os.path.basename(args.classifier_weight)}")
+    logging.info(f"=\t[Classifier weight file]: {os.path.basename(args.classifier_weight)}")
 
     return args
 

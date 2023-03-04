@@ -195,7 +195,7 @@ def val_and_logging(
         classifier_dataloader (_type_): _description_
         classifier_loss_func (_type_): _description_
     """
-    if args.train_mode in {"contrastive", "predictive", "predictive_fusion"} and args.stage == "pretrain":
+    if args.train_mode in {"contrastive", "predictive"} and args.stage == "pretrain":
         logging.info(f"Train {args.train_mode} loss: {train_loss: .5f} \n")
     else:
         logging.info(f"Train classifier loss: {train_loss: .5f} \n")

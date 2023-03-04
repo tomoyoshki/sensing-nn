@@ -170,7 +170,7 @@ class TransformerV4_CMC(nn.Module):
                 )
 
         # mod fusion layer
-        if args.contrastive_framework == "Cosmo":
+        if args.learn_framework == "Cosmo":
             "Attention fusion for Cosmo"
             self.mod_fusion_layer = TransformerFusionBlock(
                 self.config["loc_out_channels"],
@@ -275,7 +275,7 @@ class TransformerV4_CMC(nn.Module):
         if not class_head:
             return dict(zip(self.modalities, mod_features))
         else:
-            if self.args.contrastive_framework == "Cosmo":
+            if self.args.learn_framework == "Cosmo":
                 """Attention-based fusion."""
                 mod_features = torch.stack(mod_features, dim=1)
                 mod_features = mod_features.unsqueeze(dim=1)
