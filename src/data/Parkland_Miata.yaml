@@ -56,7 +56,7 @@ loc_mod_spectrum_len:
 
 # DeepSense config
 DeepSense:
-        dropout_ratio: 0.2 
+        dropout_ratio: 0.2
         # single interval + location + modality
         loc_mod_in_conv_stride:
                 audio: [1, 20]
