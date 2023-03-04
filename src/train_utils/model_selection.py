@@ -94,34 +94,34 @@ def init_predictive_framework(args, backbone_model):
 
 def init_loss_func(args, train_dataloader):
     """Initialize the loss function according to the config."""
-    if args.multi_class:
-        loss_func = nn.BCELoss()
-    else:
-        if args.train_mode == "supervised" or args.stage == "finetune":
-            loss_func = nn.CrossEntropyLoss()
-        elif args.train_mode == "predictive":
-            """Predictive pretraining only."""
-            if args.learn_framework == "MTSS":
-                loss_func = nn.BCEWithLogitsLoss()
-            elif args.learn_framework in {"ModPred", "ModPredFusion"}:
-                loss_func = nn.BCEWithLogitsLoss()
-            else:
-                raise NotImplementedError(f"Loss function for {args.learn_framework} yet implemented")
-        elif args.train_mode == "contrastive":
-            """Contrastive pretraining only."""
-            if args.learn_framework == "DINO":
-                loss_func = DINOLoss(args).to(args.device)
-            elif args.learn_framework in {"MoCo", "MoCoFusion"}:
-                loss_func = MoCoLoss(args).to(args.device)
-            elif args.learn_framework in {"CMC"}:
-                loss_func = CMCLoss(args, len(train_dataloader.dataset)).to(args.device)
-            elif args.learn_framework in {"SimCLR", "SimCLRFusion"}:
-                loss_func = SimCLRLoss(args).to(args.device)
-            elif args.learn_framework in {"Cosmo"}:
-                loss_func = CosmoLoss(args).to(args.device)
-            else:
-                raise NotImplementedError(f"Loss function for {args.learn_framework} yet implemented")
+    if args.train_mode == "supervised" or args.stage == "finetune":
+        if args.multi_class:
+            loss_func = nn.BCELoss()
         else:
-            raise Exception(f"Invalid train mode provided: {args.train_mode}")
+            loss_func = nn.CrossEntropyLoss()
+    elif args.train_mode == "predictive":
+        """Predictive pretraining only."""
+        if args.learn_framework == "MTSS":
+            loss_func = nn.BCEWithLogitsLoss()
+        elif args.learn_framework in {"ModPred", "ModPredFusion"}:
+            loss_func = nn.BCEWithLogitsLoss()
+        else:
+            raise NotImplementedError(f"Loss function for {args.learn_framework} yet implemented")
+    elif args.train_mode == "contrastive":
+        """Contrastive pretraining only."""
+        if args.learn_framework == "DINO":
+            loss_func = DINOLoss(args).to(args.device)
+        elif args.learn_framework in {"MoCo", "MoCoFusion"}:
+            loss_func = MoCoLoss(args).to(args.device)
+        elif args.learn_framework in {"CMC"}:
+            loss_func = CMCLoss(args, len(train_dataloader.dataset)).to(args.device)
+        elif args.learn_framework in {"SimCLR", "SimCLRFusion"}:
+            loss_func = SimCLRLoss(args).to(args.device)
+        elif args.learn_framework in {"Cosmo"}:
+            loss_func = CosmoLoss(args).to(args.device)
+        else:
+            raise NotImplementedError(f"Loss function for {args.learn_framework} yet implemented")
+    else:
+        raise Exception(f"Invalid train mode provided: {args.train_mode}")
 
     return loss_func
