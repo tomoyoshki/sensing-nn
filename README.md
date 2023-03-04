@@ -7,46 +7,29 @@ Transformer-based foundation models for (multi-modal) time-series sensing data
 
 #### Training
 ```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=supervised -task=vehicle_classification -model=TransformerV4 -batch_size=64
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -task=vehicle_classification -model=TransformerV4 -batch_size=64
 ```
 
 #### Testing 
 ```
-CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=supervised -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised
+CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised
 ```
 
-### Contrastive Learning
+### Contrastive/Predictive Learning
 
 #### Pretraining
 ```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=contrastive -learn_framework=SimCLR -stage=pretrain -model=TransformerV4 -batch_size=256
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -learn_framework=SimCLR -stage=pretrain -model=TransformerV4 -batch_size=256
 ```
 
 #### Finetuning
 ```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=contrastive -learn_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4 -batch_size=128
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -learn_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4 -batch_size=128
 ```
 
 #### Testing 
 ```
-CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -train_mode=contrastive -learn_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive
-```
-
-### Predictive Learning
-
-#### Pretraining
-```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=ACIDS -train_mode=predictive -learn_framework=MTSS -stage=pretrain -model=TransformerV4 -batch_size=256
-```
-
-#### Finetuning
-```
-CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=ACIDS -train_mode=predictive -learn_framework=MTSS -stage=finetune -task=vehicle_classification -model=TransformerV4 -batch_size=128
-```
-
-#### Testing 
-```
-CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=ACIDS -train_mode=predictive -learn_framework=MTSS -stage=finetune -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive
+CUDA_VISIBLE_DEVICES=0 python3 test.py -dataset=Parkland -learn_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive
 ```
 
 ### Parkland Results
