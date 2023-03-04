@@ -2,6 +2,9 @@
 
 Transformer-based foundation models for (multi-modal) time-series sensing data
 
+### [Internal] Complete Result
+[Google sheet](https://docs.google.com/spreadsheets/d/1r2cNw9Dhy9kzQ601ogCgEJn-meDGkahuqeCOut9oUQs/edit?usp=sharing)
+
 
 ### Supervised Learning 
 
