@@ -14,6 +14,17 @@ def check_paths(path_list):
             os.mkdir(p)
 
 
+def remove_files(path_list):
+    """
+    Remove the given path list.
+    :param path_list:
+    :return:
+    """
+    for p in path_list:
+        if os.path.exists(p):
+            os.remove(p)
+
+
 def set_model_weight_suffix(train_mode, learn_framework=None, task=None, label_ratio=None, miss_modalities=None):
     """Automatically get the model path.
 
@@ -127,6 +138,9 @@ def set_model_weight_folder(args):
                 args.tensorboard_log = os.path.join(
                     weight_folder, f"{args.task}_{args.label_ratio}_{args.stage}_events"
                 )
+
+        # delete old log file
+        remove_files([args.train_log_file])
 
         # set logging config
         logging.basicConfig(

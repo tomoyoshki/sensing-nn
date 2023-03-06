@@ -13,9 +13,6 @@ import sys
 np.set_printoptions(threshold=sys.maxsize)
 torch.set_printoptions(threshold=sys.maxsize)
 
-# import models
-from data_augmenter.Augmenter import Augmenter
-
 # train utils
 from train_utils.supervised_train import supervised_train
 from train_utils.pretrain import pretrain
@@ -43,6 +40,9 @@ def train(args):
     logging.info(f"=\tVal: {len(val_dataloader)}")
     logging.info(f"=\tTest: {len(test_dataloader)}")
     logging.info(f"{'='*70}")
+
+    # Only import augmenter after parse arguments so the device is correct
+    from data_augmenter.Augmenter import Augmenter
 
     # Init the miss modality simulator
     augmenter = Augmenter(args)

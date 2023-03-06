@@ -1,11 +1,9 @@
+import os
 import warnings
 
 warnings.simplefilter("ignore", UserWarning)
 
 import torch.nn as nn
-
-# import models
-from data_augmenter.Augmenter import Augmenter
 
 # utils
 from general_utils.time_utils import time_sync
@@ -20,6 +18,9 @@ def test(args):
     """The main function for test."""
     # Init data loaders
     test_dataloader, _ = create_dataloader("test", args, batch_size=args.batch_size, workers=args.workers)
+
+    # Only import augmenter after parse arguments so the device is correct
+    from data_augmenter.Augmenter import Augmenter
 
     # Init the miss modality simulator
     augmenter = Augmenter(args)
@@ -49,6 +50,8 @@ def test(args):
     print(f"Test classifier loss: {test_classifier_loss: .5f}")
     print(f"Test acc: {test_acc: .5f}, test f1: {test_f1: .5f}")
     print(f"Test confusion matrix:\n {test_conf_matrix}")
+
+    return test_classifier_loss, test_acc, test_f1
 
 
 def main_test():
