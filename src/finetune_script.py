@@ -164,9 +164,9 @@ def schedule_loop():
 
 if __name__ == "__main__":
     datasets = ["ACIDS"]
-    models = ["TransformerV4"]
-    learn_frameworks = ["SimCLR"]  # , "MoCo", "CMC", "Cosmo", "MTSS", "MoCoFusion"]
-    tasks = ["vehicle_classification"]  # , "terrain_classification", "speed_classification"]
+    models = ["TransformerV4", "DeepSense"]
+    learn_frameworks = ["SimCLR", "MoCo", "CMC", "Cosmo", "MTSS", "MoCoFusion"]
+    tasks = ["vehicle_classification", "terrain_classification", "speed_classification"]
     label_ratios = [1, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
 
     # hardware
