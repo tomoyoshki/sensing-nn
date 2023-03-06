@@ -9,7 +9,6 @@ from test import test
 from params.base_params import parse_base_args
 from params.params_util import set_auto_params
 from finetune_script import check_execution_flags
-from collections import defaultdict
 
 
 def update_finetune_result(result, result_file):
@@ -23,6 +22,9 @@ def update_finetune_result(result, result_file):
 
     for config in result:
         complete_result[config] = result[config]
+
+    # sort the result
+    complete_result = dict(sorted(complete_result.items()))
 
     with open(result_file, "w") as f:
         f.write(json.dumps(complete_result, indent=4))
