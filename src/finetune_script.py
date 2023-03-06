@@ -6,7 +6,7 @@ import subprocess
 from collections import OrderedDict
 
 
-def init_execution_flags():
+def init_execution_flags(status_log_file):
     """Init the log of finetuning status."""
     if os.path.exists(status_log_file):
         status = json.load(open(status_log_file))
@@ -25,7 +25,7 @@ def init_execution_flags():
         f.write(json.dumps(status, indent=4))
 
 
-def update_execution_flags(dataset, model, task, learn_framework, label_ratio):
+def update_execution_flags(status_log_file, dataset, model, task, learn_framework, label_ratio):
     """
     Update the status of finetuning status.
     """
@@ -36,7 +36,7 @@ def update_execution_flags(dataset, model, task, learn_framework, label_ratio):
         f.write(json.dumps(status, indent=4))
 
 
-def check_execution_flags(dataset, model, task, learn_framework, label_ratio):
+def check_execution_flags(status_log_file, dataset, model, task, learn_framework, label_ratio):
     """
     Check the status of finetuning status.
     """
@@ -84,14 +84,14 @@ def claim_cuda_slot(cuda_device_utils):
     return assigned_cuda_device, cuda_device_utils
 
 
-def schedule_loop():
+def schedule_loop(status_log_file):
     """
     Schedule the finetuning jobs.
     """
     start = time.time()
 
     # init the execution flags
-    init_execution_flags()
+    init_execution_flags(status_log_file)
     subprocess_pool = {}
     cuda_device_utils = {device: 0 for device in cuda_device_slots}
 
@@ -103,7 +103,9 @@ def schedule_loop():
                     for learn_framework in learn_frameworks:
                         for label_ratio in label_ratios:
                             # check if the job is done
-                            if check_execution_flags(dataset, model, task, learn_framework, label_ratio):
+                            if check_execution_flags(
+                                status_log_file, dataset, model, task, learn_framework, label_ratio
+                            ):
                                 continue
 
                             # wait until a valid cuda device is available
@@ -148,7 +150,7 @@ def schedule_loop():
                     finished = False
                     break
                 else:
-                    update_execution_flags(*subprocess_pool[p]["info"])
+                    update_execution_flags(status_log_file, *subprocess_pool[p]["info"])
 
             if finished:
                 break
@@ -159,6 +161,7 @@ def schedule_loop():
         os.system(f"pkill -f stage=finetune")
 
     end = time.time()
+    print("-" * 80)
     print(f"Total time: {end - start: .3f} seconds.")
 
 
@@ -167,7 +170,7 @@ if __name__ == "__main__":
     models = ["TransformerV4", "DeepSense"]
     learn_frameworks = ["SimCLR", "MoCo", "CMC", "Cosmo", "MTSS", "MoCoFusion"]
     tasks = ["vehicle_classification", "terrain_classification", "speed_classification"]
-    label_ratios = [1, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
+    label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
 
     # hardware
     cuda_device_slots = {0: 2, 1: 2}
@@ -175,4 +178,4 @@ if __name__ == "__main__":
     # for logging
     status_log_file = "/home/sl29/FoundationSense/result/finetune_status.json"
 
-    schedule_loop()
+    schedule_loop(status_log_file)

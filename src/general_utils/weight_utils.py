@@ -55,9 +55,9 @@ def load_feature_extraction_weight(args, model):
     model.backbone.load_state_dict(model_dict)
 
     # no grad for loaded parameters
-    for name, param in model.backbone.named_parameters():
-        if name in load_dict:
-            param.requires_grad = False
+    # for name, param in model.backbone.named_parameters():
+    #     if name in load_dict:
+    #         param.requires_grad = False
 
     return model
 
