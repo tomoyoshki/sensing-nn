@@ -50,7 +50,7 @@ def check_execution_flags(status_log_file, dataset, model, task, learn_framework
     return flag
 
 
-def check_cuda_slot(subprocess_pool, cuda_device_utils):
+def check_cuda_slot(status_log_file, subprocess_pool, cuda_device_utils):
     """
     Return a cuda slot.
     """
@@ -60,7 +60,7 @@ def check_cuda_slot(subprocess_pool, cuda_device_utils):
             """Subprocess has finished, release the cuda slot."""
             cuda_device = subprocess_pool[p]["cuda_device"]
             cuda_device_utils[cuda_device] = max(0, cuda_device_utils[cuda_device] - 1)
-            update_execution_flags(*subprocess_pool[p]["info"])
+            update_execution_flags(status_log_file, *subprocess_pool[p]["info"])
         else:
             new_pid_pool[p] = subprocess_pool[p]
 
@@ -111,7 +111,11 @@ def schedule_loop(status_log_file):
                             # wait until a valid cuda device is available
                             cuda_device = -1
                             while cuda_device == -1:
-                                subprocess_pool, cuda_device_utils = check_cuda_slot(subprocess_pool, cuda_device_utils)
+                                subprocess_pool, cuda_device_utils = check_cuda_slot(
+                                    status_log_file,
+                                    subprocess_pool,
+                                    cuda_device_utils,
+                                )
                                 cuda_device, cuda_device_utils = claim_cuda_slot(cuda_device_utils)
 
                             # run the command
@@ -173,9 +177,8 @@ if __name__ == "__main__":
     label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
 
     # hardware
-    cuda_device_slots = {0: 2, 1: 2}
+    cuda_device_slots = {0: 2, 2: 2}
 
     # for logging
     status_log_file = "/home/sl29/FoundationSense/result/finetune_status.json"
-
     schedule_loop(status_log_file)
