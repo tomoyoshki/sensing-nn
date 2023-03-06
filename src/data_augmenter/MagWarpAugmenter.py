@@ -15,7 +15,7 @@ class MagWarpAugmenter(nn.Module):
         self.p = 1 if args.train_mode == "predictive" and args.learn_framework == "MTSS" else self.config["prob"]
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
-        self.warp_func = TSMagWarp(magnitude=self.config["magnitude"], order=self.config["order"])
+        self.warp_func = TSMagWarp(magnitude=self.config["magnitude"], order=self.config["order"], device=args.device)
 
     def forward(self, org_loc_inputs, labels=None):
         """
