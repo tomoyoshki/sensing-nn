@@ -242,7 +242,7 @@ class TransformerV4(nn.Module):
 
                 # Patch Partition and Linear Embedding
                 embeded_input = self.patch_embed[loc][mod](freq_input)
-                print(f"Input shape: {embeded_input.shape}")
+
                 # Absolute positional embedding
                 if self.config["APE"]:
                     embeded_input = embeded_input + self.absolute_pos_embed[loc][mod]

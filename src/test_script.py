@@ -8,7 +8,7 @@ import numpy as np
 from test import test
 from params.base_params import parse_base_args
 from params.params_util import set_auto_params
-from finetune_script import check_execution_flags
+from finetune_script import check_execution_flags, reset_execution_flags
 
 
 def update_finetune_result(result, result_file):
@@ -54,26 +54,34 @@ def test_loop(result_file, status_log_file):
                             )
                         else:
                             print(f"Testing {dataset}-{model}-{learn_framework}-{task}-{label_ratio}.")
-                            # set args
-                            args = parse_base_args("test")
-                            args.dataset = dataset
-                            args.model = model
-                            args.learn_framework = learn_framework
-                            args.task = task
-                            args.label_ratio = label_ratio
-                            args.stage = "finetune"
-                            args = set_auto_params(args)
-
                             # get result
-                            classifier_loss, acc, f1 = test(args)
-                            result = {
-                                f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
-                                    "loss": classifier_loss,
-                                    "acc": acc,
-                                    "f1": f1,
-                                },
-                            }
-                            update_finetune_result(result, result_file)
+                            try:
+                                # set args
+                                args = parse_base_args("test")
+                                args.dataset = dataset
+                                args.model = model
+                                args.learn_framework = learn_framework
+                                args.task = task
+                                args.label_ratio = label_ratio
+                                args.stage = "finetune"
+                                args = set_auto_params(args)
+
+                                # eval the model
+                                classifier_loss, acc, f1 = test(args)
+                                result = {
+                                    f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
+                                        "loss": classifier_loss,
+                                        "acc": acc,
+                                        "f1": f1,
+                                    },
+                                }
+                                update_finetune_result(result, result_file)
+                            except:
+                                """No model available, reset the execution flag"""
+                                print(f"Resetting {dataset}-{model}-{learn_framework}-{task}-{label_ratio}.")
+                                reset_execution_flags(
+                                    status_log_file, dataset, model, task, learn_framework, label_ratio
+                                )
 
 
 if __name__ == "__main__":

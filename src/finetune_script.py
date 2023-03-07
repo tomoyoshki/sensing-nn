@@ -36,6 +36,17 @@ def update_execution_flags(status_log_file, dataset, model, task, learn_framewor
         f.write(json.dumps(status, indent=4))
 
 
+def reset_execution_flags(status_log_file, dataset, model, task, learn_framework, label_ratio):
+    """
+    Update the status of finetuning status.
+    """
+    status = json.load(open(status_log_file))
+    status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = False
+
+    with open(status_log_file, "w") as f:
+        f.write(json.dumps(status, indent=4))
+
+
 def check_execution_flags(status_log_file, dataset, model, task, learn_framework, label_ratio):
     """
     Check the status of finetuning status.
@@ -177,7 +188,7 @@ if __name__ == "__main__":
     label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
 
     # hardware
-    cuda_device_slots = {0: 2, 2: 2}
+    cuda_device_slots = {0: 2, 1: 2, 2: 2, 3: 2}
 
     # for logging
     status_log_file = "/home/sl29/FoundationSense/result/finetune_status.json"

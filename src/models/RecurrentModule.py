@@ -25,8 +25,10 @@ class RecurrentBlock(nn.Module):
         # GRU --> mean
         # [b, i, c] --> [b, i, c]
         output, hidden_output = self.gru(x)
+
         # [b, i, c] --> [b, c]
         output = torch.mean(output, dim=1)
+
         return output, hidden_output
 
 
