@@ -16,12 +16,15 @@ from models.MoCoModule import MoCoWrapper
 from models.CMCModules import CMC
 from models.CosmoModules import Cosmo
 
+# Generative Learning utils
+from models.MAEModule import MAE
+
 # Predictive Learning utils
 from models.MTSSModules import MTSS
 from models.ModPredModules import ModPred
 
 # loss functions
-from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss
+from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss, MAELoss
 
 
 def init_model(args):
@@ -35,6 +38,8 @@ def init_model(args):
             return DeepSense
         elif args.train_mode == "contrastive" and args.learn_framework in {"CMC", "Cosmo"}:
             classifier = DeepSense_CMC(args)
+        elif args.train_mode == "generative":
+            classifier = DeepSense_CMC(args)
         else:
             classifier = DeepSense(args, self_attention=False)
     elif args.model == "TransformerV4":
@@ -45,6 +50,8 @@ def init_model(args):
         ):
             return TransformerV4
         elif args.train_mode == "contrastive" and args.learn_framework in {"CMC", "Cosmo"}:
+            classifier = TransformerV4_CMC(args)
+        elif args.train_mode in {"generative"}:
             classifier = TransformerV4_CMC(args)
         else:
             classifier = TransformerV4(args)
@@ -91,6 +98,14 @@ def init_predictive_framework(args, backbone_model):
     default_model = default_model.to(args.device)
     return default_model
 
+def init_generative_framework(args, backbone_model):
+    if args.learn_framework == "MAE":
+        default_model = MAE(args, backbone_model)
+    else:
+        raise NotImplementedError(f"Invalid learninig framework {args.learn_framework} provided")
+
+    default_model = default_model.to(args.device)
+    return default_model
 
 def init_loss_func(args, train_dataloader):
     """Initialize the loss function according to the config."""
@@ -121,6 +136,9 @@ def init_loss_func(args, train_dataloader):
             loss_func = CosmoLoss(args).to(args.device)
         else:
             raise NotImplementedError(f"Loss function for {args.learn_framework} yet implemented")
+    elif args.train_mode == "generative":
+        if args.learn_framework == "MAE":
+            loss_func = MAELoss(args).to(args.device)
     else:
         raise Exception(f"Invalid train mode provided: {args.train_mode}")
 

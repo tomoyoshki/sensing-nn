@@ -184,6 +184,64 @@ class MoCoLoss(nn.Module):
         return loss
 
 
+class MAELoss(nn.Module):
+    """MAE Loss function
+    https://github.com/facebookresearch/mae/blob/main/models_mae.py
+    """
+
+    def __init__(self, args):
+        super(MAELoss, self).__init__()
+        self.args = args
+        self.modalities = args.dataset_config["modality_names"]
+        self.backbone_config = args.dataset_config[args.model]
+        self.locations = args.dataset_config["location_names"]
+        self.norm_pix_loss = True
+
+    def patchify(self, imgs, patch_size, in_channel):
+        """
+        imgs: (N, 3, H, W)
+        x: (N, L, patch_size**2 *3)
+        """
+
+        ph, pw = patch_size
+
+        h = imgs.shape[2] // ph
+        w = imgs.shape[3] // pw
+
+        x = imgs.reshape(shape=(imgs.shape[0], in_channel, h, ph, w, pw))
+        x = torch.einsum("nchpwq->nhwpqc", x)
+        x = x.reshape(imgs.shape[0], h * w, ph * pw * in_channel)
+        return x
+
+    def forward(self, padded_x, decoded_x, masks):
+        total_loss = 0
+        for loc in self.locations:
+            for mod in self.modalities:
+                mask = masks[loc][mod]
+                pred = decoded_x[loc][mod]
+                if self.args.model == "TransformerV4":
+                    in_channel = self.args.dataset_config["loc_mod_in_freq_channels"]["shake"][mod]
+                    target = self.patchify(
+                        padded_x[loc][mod], self.backbone_config["patch_size"]["freq"][mod], in_channel
+                    )
+                else:
+                    target = padded_x[loc][mod]
+                    # b, c, i, s -> b, i, s, c to match TransformerV4
+                    pred = torch.permute(pred, (0, 2, 3, 1))
+                    target = torch.permute(target, (0, 2, 3, 1))
+
+                if self.norm_pix_loss:
+                    mean = target.mean(dim=-1, keepdim=True)
+                    var = target.var(dim=-1, keepdim=True)
+                    target = (target - mean) / (var + 1.0e-6) ** 0.5
+
+                loss = (pred - target) ** 2
+                loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+                loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
+                total_loss += loss
+        return total_loss
+
+
 class CMCLoss(nn.Module):
     def __init__(self, args, N):
         super(CMCLoss, self).__init__()

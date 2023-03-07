@@ -78,6 +78,7 @@ def set_train_mode(args):
         "MTSS": "predictive",
         "ModPred": "predictive",
         "ModPredFusion": "predictive",
+        "MAE": "generative",
         "no": "supervised",
     }
 
