@@ -5,6 +5,8 @@ import subprocess
 
 from collections import OrderedDict
 from output_utils.schedule_log_utils import init_execution_flags, update_execution_flags, check_execution_flags
+from params.output_paths import find_most_recent_weight
+from params.params_util import get_train_mode
 
 
 def check_cuda_slot(status_log_file, subprocess_pool, cuda_device_utils):
@@ -156,4 +158,6 @@ if __name__ == "__main__":
 
     # for logging
     status_log_file = "/home/sl29/FoundationSense/result/finetune_status.json"
-    schedule_loop(status_log_file)
+
+    # scheduling loop
+    schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, label_ratios)

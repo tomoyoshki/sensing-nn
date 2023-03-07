@@ -130,7 +130,7 @@ def set_auto_params(args):
         args.miss_modalities = set()
 
     # set the train mode
-    args.train_mode = get_train_mode(args)
+    args.train_mode = get_train_mode(args.learn_framework)
     print(f"Settign train mode: {args.train_mode}")
 
     # set output path
