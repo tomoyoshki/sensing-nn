@@ -181,9 +181,19 @@ def schedule_loop(status_log_file):
 
 
 if __name__ == "__main__":
-    datasets = ["ACIDS"]
+    datasets = ["ACIDS", "Parkland"]
     models = ["TransformerV4", "DeepSense"]
-    learn_frameworks = ["SimCLR", "MoCo", "CMC", "Cosmo", "MTSS", "MoCoFusion"]
+    learn_frameworks = [
+        "SimCLR",
+        "MoCo",
+        "CMC",
+        "Cosmo",
+        "MTSS",
+        "ModPred",
+        "MoCoFusion",
+        "SimCLRFusion",
+        "ModPredFusion",
+    ]
     tasks = ["vehicle_classification", "terrain_classification", "speed_classification"]
     label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
 

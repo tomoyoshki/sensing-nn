@@ -87,7 +87,7 @@ def pretrain(
             idx = idx.to(args.device)
 
             # move to target device, FFT, and augmentations
-            if args.train_mode in {"predictive", "predictive_fusion"}:
+            if args.train_mode in {"predictive"}:
                 # predicitve, predictive fusion loss
                 loss = calc_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs)
             elif args.train_mode in {"generative"}:
@@ -113,8 +113,7 @@ def pretrain(
 
         if epoch % 10 == 0:
             # compute embedding for the validation dataloader
-            
-            if args.train_mode == "contrastive":
+            if args.train_mode in {"contrastive", "predictive"}:
                 embs, imgs, labels_ = compute_embedding(args, default_model.backbone, augmenter, val_dataloader)
                 tb_writer.add_embedding(
                     embs,
