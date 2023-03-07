@@ -214,11 +214,10 @@ TransformerV4:
        # MAE
         fusion: "concat"
         # decoders
-        decoder_channels: 256
-        masked_ratio: 0.50
-        decoder_time_freq_block_num: 
-                audio: [2, 2, 4]
-                seismic: [2, 2, 4]
+        # decoders
+        masked_ratio:
+                audio: 0.25
+                seismic: 0.75
 
 SimCLR:
         emb_dim: 512
@@ -347,13 +346,6 @@ CMC:
                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
                 freq_augmenters: ["phase_shift"]
 
-CMC:
-        emb_dim: 512
-        nce_k: 1000
-        nce_t: 0.2
-        nce_momentum: 0.5
-        softmax: False
-        input_size: 256
 Cosmo:
         temperature: 1
         num_positive: 10

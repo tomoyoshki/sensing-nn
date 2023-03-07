@@ -79,7 +79,7 @@ DeepSense:
         # Optimizer config
         optimizer:
                 name: "AdamW"
-                start_lr: 0.00001
+                start_lr: 0.000005
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
@@ -100,12 +100,15 @@ DeepSense:
         fixed_augmenters:
                 time_augmenters: ["mixup"]
                 freq_augmenters: ["no"]
+        patch_size:
+                audio: [1, 20]
+                seismic: [1, 1]
         # MAE
         fusion: "concat"
         # decoders
         decoder_channels: 256
         masked_ratio:
-                audio: 0.25
+                audio: 0.75
                 seismic: 0.75
         
 # ResNet config              
@@ -154,9 +157,9 @@ ResNet:
                 freq_augmenters: ["no"]
 
 TransformerV4:
-        dropout_ratio: 0.2
-        drop_path_rate: 0.1
-        attn_drop_rate: 0.2
+        dropout_ratio: 0
+        drop_path_rate: 0
+        attn_drop_rate: 0
         # loc mod freq feature
         in_stride:
                 audio: 1
@@ -186,7 +189,7 @@ TransformerV4:
         patch_size:
                 freq:
                         audio: [1, 40]
-                        seismic: [1, 2]
+                        seismic: [1, 1]
         # FC layer
         fc_dim: 512
         pretrained_head: "mlp"
@@ -209,8 +212,8 @@ TransformerV4:
                 decay_rate: 0.2
         # Data Augmenters:
         random_augmenters:
-                time_augmenters: ["permutation"]
-                freq_augmenters: ["phase_shift"]
+                time_augmenters: ["no"]
+                freq_augmenters: ["no"]
         fixed_augmenters:
                 time_augmenters: ["mixup"]
                 freq_augmenters: ["no"]

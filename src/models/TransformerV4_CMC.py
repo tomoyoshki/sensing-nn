@@ -314,7 +314,6 @@ class TransformerV4_CMC(nn.Module):
                 
                 self.decoder_pred[loc][mod] = nn.Sequential(
                     nn.Linear(self.config["time_freq_out_channels"], self.config["time_freq_out_channels"]),
-                    nn.GELU(),
                     nn.Linear(self.config["time_freq_out_channels"], patch_area * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]),
                 )
 
@@ -489,7 +488,6 @@ class TransformerV4_CMC(nn.Module):
 
                 # Patch Partition and Linear Embedding
                 embeded_input = self.patch_embed[loc][mod](freq_input)
-
                 # we only mask images for pretraining
                 if self.args.train_mode == "MAE" and class_head == False:
                     embeded_input, mod_loc_mask = window_masking(

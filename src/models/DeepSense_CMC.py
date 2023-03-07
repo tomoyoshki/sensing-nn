@@ -138,7 +138,7 @@ class DeepSense_CMC(nn.Module):
             for mod in self.modalities:
                 self.encoded_mod_extract_layer[loc][mod] = nn.Sequential(
                     nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
-                    nn.GELU(),
+                    nn.GELU(), # remove last loss
                     nn.Linear(self.config["fc_dim"], self.config["loc_out_channels"]),
                 )
 
@@ -216,7 +216,7 @@ class DeepSense_CMC(nn.Module):
                 mask_ratio = self.config["masked_ratio"][mod]
                 b, c, i, s = freq_x[loc][mod].shape
 
-                patch_h, patch_w = find_patch_size(i), find_patch_size(s)
+                patch_h, patch_w = self.config["patch_size"][mod][0], self.config["patch_size"][mod][1]
                 patch_resolution_h, patch_resolution_w = i // patch_h, s // patch_w
 
                 # generate random mask
@@ -313,7 +313,7 @@ class DeepSense_CMC(nn.Module):
         return dict(zip(self.modalities, mod_features))
 
     def forward_decoder(self, mod_features, hidden_features):
-        # Step 1: Interval Fusion Decoder for each modality, [b, c, i]
+        # Step 1: Interval Fusion Decoder from each modality, [b, c, i]
         dec_mod_features = {}
         for mod in self.modalities:
             dec_mod_feature = self.dec_recurrent_layers[mod](mod_features[mod], hidden_features[mod])
@@ -334,7 +334,7 @@ class DeepSense_CMC(nn.Module):
             # TODO: Stack -> UnStack
             dec_mod_interval_features[mod] = dec_mod_interval_features[mod].squeeze(3)
 
-        # Step 1: Single (loc, mod) feature extraction, (b, c, i)
+        # Step 3: Single (loc, mod) feature extraction, (b, c, i)
         dec_loc_mod_input = {}
         for loc in self.locations:
             dec_loc_mod_input[loc] = {}
