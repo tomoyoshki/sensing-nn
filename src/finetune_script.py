@@ -4,6 +4,7 @@ import time
 import subprocess
 
 from collections import OrderedDict
+from params.output_paths import find_most_recent_weight, get_train_mode
 
 
 def init_execution_flags(status_log_file):
@@ -117,6 +118,14 @@ def schedule_loop(status_log_file):
                             if check_execution_flags(
                                 status_log_file, dataset, model, task, learn_framework, label_ratio
                             ):
+                                continue
+
+                            # check if we have pretrained weight
+                            newest_id, _ = find_most_recent_weight(
+                                dataset, model, get_train_mode(learn_framework), learn_framework
+                            )
+                            if newest_id < 0:
+                                print(f"Skip {dataset}-{model}-{learn_framework}-{task}-{label_ratio}")
                                 continue
 
                             # wait until a valid cuda device is available
