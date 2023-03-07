@@ -100,9 +100,6 @@ DeepSense:
         fixed_augmenters:
                 time_augmenters: ["mixup"]
                 freq_augmenters: ["no"]
-        patch_size:
-                audio: [1, 20]
-                seismic: [1, 1]
         
 # ResNet config              
 ResNet:
@@ -582,6 +579,9 @@ MAE:
         masked_ratio:
                 audio: 0.75
                 seismic: 0.75
+        patch_size:
+                audio: [1, 20]
+                seismic: [1, 1]
         pretrain_optimizer:
                 name: "AdamW"
                 start_lr: 0.0001

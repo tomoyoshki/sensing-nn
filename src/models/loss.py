@@ -514,3 +514,16 @@ class CosmoLoss(nn.Module):
         loss = loss.view(anchor_count, batch_size).mean()
 
         return loss
+
+class CosmoLoss(nn.Module):
+    def __init__(self, args):
+        """Cocoa loss similar to CMC
+        Reference: https://github.com/cruiseresearchgroup/COCOA/blob/main/src/losses.py
+        Paper: https://dl.acm.org/doi/10.1145/3550316
+        """
+        super(CosmoLoss, self).__init__()
+        self.args = args
+        self.config = args.dataset_config["Cocoa"]
+        self.temperature = self.config["temperature"]
+        self.contrast_mode = self.config["contrast_mode"]
+        self.base_temperature = self.config["temperature"]

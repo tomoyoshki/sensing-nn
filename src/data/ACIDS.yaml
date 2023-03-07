@@ -211,13 +211,6 @@ TransformerV4:
         fixed_augmenters:
                 time_augmenters: ["channel_shuffle", "mixup"]
                 freq_augmenters: ["phase_shift"]
-       # MAE
-        fusion: "concat"
-        # decoders
-        # decoders
-        masked_ratio:
-                audio: 0.25
-                seismic: 0.75
 
 SimCLR:
         emb_dim: 512
@@ -592,6 +585,9 @@ MAE:
         masked_ratio:
                 audio: 0.75
                 seismic: 0.75
+        patch_size:
+                audio: [1, 8]
+                seismic: [1, 8]
         pretrain_optimizer:
                 name: "AdamW"
                 start_lr: 0.0001
