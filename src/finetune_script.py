@@ -4,61 +4,7 @@ import time
 import subprocess
 
 from collections import OrderedDict
-
-
-def init_execution_flags(status_log_file):
-    """Init the log of finetuning status."""
-    if os.path.exists(status_log_file):
-        status = json.load(open(status_log_file))
-    else:
-        status = {}
-
-    for dataset in datasets:
-        for model in models:
-            for task in tasks:
-                for learn_framework in learn_frameworks:
-                    for label_ratio in label_ratios:
-                        if f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}" not in status:
-                            status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = False
-
-    with open(status_log_file, "w") as f:
-        f.write(json.dumps(status, indent=4))
-
-
-def update_execution_flags(status_log_file, dataset, model, task, learn_framework, label_ratio):
-    """
-    Update the status of finetuning status.
-    """
-    status = json.load(open(status_log_file))
-    status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = True
-
-    with open(status_log_file, "w") as f:
-        f.write(json.dumps(status, indent=4))
-
-
-def reset_execution_flags(status_log_file, dataset, model, task, learn_framework, label_ratio):
-    """
-    Update the status of finetuning status.
-    """
-    status = json.load(open(status_log_file))
-    status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = False
-
-    with open(status_log_file, "w") as f:
-        f.write(json.dumps(status, indent=4))
-
-
-def check_execution_flags(status_log_file, dataset, model, task, learn_framework, label_ratio):
-    """
-    Check the status of finetuning status.
-    """
-    status = json.load(open(status_log_file))
-    flag = (
-        status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"]
-        if f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}" in status
-        else False
-    )
-
-    return flag
+from output_utils.schedule_log_utils import init_execution_flags, update_execution_flags, check_execution_flags
 
 
 def check_cuda_slot(status_log_file, subprocess_pool, cuda_device_utils):
@@ -95,14 +41,14 @@ def claim_cuda_slot(cuda_device_utils):
     return assigned_cuda_device, cuda_device_utils
 
 
-def schedule_loop(status_log_file):
+def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, label_ratios):
     """
     Schedule the finetuning jobs.
     """
     start = time.time()
 
     # init the execution flags
-    init_execution_flags(status_log_file)
+    init_execution_flags(status_log_file, datasets, models, tasks, learn_frameworks, label_ratios)
     subprocess_pool = {}
     cuda_device_utils = {device: 0 for device in cuda_device_slots}
 

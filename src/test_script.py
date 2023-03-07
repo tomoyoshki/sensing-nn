@@ -8,26 +8,7 @@ import numpy as np
 from test import test
 from params.base_params import parse_base_args
 from params.params_util import set_auto_params
-from finetune_script import check_execution_flags, reset_execution_flags
-
-
-def update_finetune_result(result, result_file):
-    """
-    dataset --> model --> task --> learn_framework --> label_ratio -- > {acc, f1}
-    """
-    if os.path.exists(result_file):
-        complete_result = json.load(open(result_file))
-    else:
-        complete_result = {}
-
-    for config in result:
-        complete_result[config] = result[config]
-
-    # sort the result
-    complete_result = dict(sorted(complete_result.items()))
-
-    with open(result_file, "w") as f:
-        f.write(json.dumps(complete_result, indent=4))
+from output_utils.schedule_log_utils import check_execution_flags, reset_execution_flags
 
 
 def test_loop(result_file, status_log_file):
