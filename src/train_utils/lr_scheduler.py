@@ -8,7 +8,7 @@ def define_lr_scheduler(args, optimizer):
     """
     Define the learning rate scheduler
     """
-    if args.train_mode == "supervised":
+    if args.train_mode in {"supervised"}:
         classifier_config = args.dataset_config[args.model]
         optimizer_config = classifier_config["optimizer"]
         scheduler_config = classifier_config["lr_scheduler"]

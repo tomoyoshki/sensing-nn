@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
+from einops import rearrange
 
 
 class Mlp(nn.Module):
@@ -83,7 +84,6 @@ class WindowAttention(nn.Module):
     """
 
     def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0.0, proj_drop=0.0):
-
         super().__init__()
         self.dim = dim
         self.window_size = window_size  # Wh, Ww
@@ -230,7 +230,6 @@ class SwinTransformerBlock(nn.Module):
             self.shift_size[1] = 0
             self.window_width = self.input_resolution[1]
             self.window_size[1] = self.window_width
-                
 
             self.window_width = self.input_resolution[1]
             self.window_size[1] = self.window_width
@@ -448,10 +447,10 @@ class BasicLayer(nn.Module):
         drop_path=0.0,
         norm_layer=nn.LayerNorm,
         downsample=None,
+        patch_expanding=None,
         use_checkpoint=False,
         fused_window_process=False,
     ):
-
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -486,6 +485,11 @@ class BasicLayer(nn.Module):
         else:
             self.downsample = None
 
+        if patch_expanding is not None:
+            self.patch_expanding = patch_expanding(input_resolution, dim, norm_layer)
+        else:
+            self.patch_expanding = None
+
     def forward(self, x):
         for blk in self.blocks:
             if self.use_checkpoint:
@@ -494,6 +498,8 @@ class BasicLayer(nn.Module):
                 x = blk(x)
         if self.downsample is not None:
             x = self.downsample(x)
+        if self.patch_expanding is not None:
+            x = self.patch_expanding(x)
         return x
 
     def extra_repr(self) -> str:
@@ -556,3 +562,24 @@ class PatchEmbed(nn.Module):
         if self.norm is not None:
             flops += Ho * Wo * self.embed_dim
         return flops
+
+
+class PatchExpanding(nn.Module):
+    def __init__(self, input_resolution, embed_dim, norm_layer=nn.LayerNorm):
+        super(PatchExpanding, self).__init__()
+        self.input_resolution = input_resolution
+        self.embed_dim = embed_dim
+        self.expand = nn.Linear(embed_dim, 2 * embed_dim, bias=False)
+        self.norm = norm_layer(embed_dim // 2)
+
+    def forward(self, x):
+        x = self.expand(x)
+        x = rearrange(
+            x,
+            "B (L) (P1 P2 C) -> B (L P1 P2) C",
+            P1=2,
+            P2=2,
+        )
+        x = self.norm(x)
+        # x = rearrange(x, "B H W C -> B (H W) C")
+        return x

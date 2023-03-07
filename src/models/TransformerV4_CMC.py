@@ -1,7 +1,8 @@
-# python train.py -gpu=3 -dataset=Parkland -train_mode=supervised -model=TransformerV4
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+import numpy as np
 
 from torch.nn import TransformerEncoderLayer
 from input_utils.padding_utils import get_padded_size
@@ -14,8 +15,11 @@ import logging
 from models.SwinModules import (
     BasicLayer,
     PatchEmbed,
+    PatchExpanding,
     PatchMerging,
 )
+
+from models.MAEModule import window_masking
 
 
 class TransformerV4_CMC(nn.Module):
@@ -52,7 +56,15 @@ class TransformerV4_CMC(nn.Module):
         self.drop_rate = self.config["dropout_ratio"]
         self.norm_layer = nn.LayerNorm
         self.avgpool = nn.AdaptiveAvgPool1d(1)
+        
+        self.init_encoder()
+        
+        if args.train_mode == "generative":
+            self.generative_config = args.dataset_config[args.learn_framework]
+            self.init_feature_encoder()
+            self.init_decoder()
 
+    def init_encoder(self) -> None:
         # Single sensor
         self.freq_interval_layers = nn.ModuleDict()  # Frequency & Interval layers
         self.patch_embed = nn.ModuleDict()
@@ -60,16 +72,21 @@ class TransformerV4_CMC(nn.Module):
         self.mod_patch_embed = nn.ModuleDict()
         self.mod_in_layers = nn.ModuleDict()
 
+        self.layer_dims = {}
+        self.img_sizes = {}
+
         for loc in self.locations:
             self.freq_interval_layers[loc] = nn.ModuleDict()
             self.patch_embed[loc] = nn.ModuleDict()
             self.absolute_pos_embed[loc] = nn.ParameterDict()
             self.mod_in_layers[loc] = nn.ModuleDict()
 
+            self.layer_dims[loc] = {}
+            self.img_sizes[loc] = {}
             for mod in self.modalities:
                 # Decide the spatial size for "image"
                 stride = self.config["in_stride"][mod]
-                spectrum_len = args.dataset_config["loc_mod_spectrum_len"][loc][mod]
+                spectrum_len = self.args.dataset_config["loc_mod_spectrum_len"][loc][mod]
                 img_size = (self.num_segments, spectrum_len // stride)
 
                 # get the padded image size
@@ -79,18 +96,17 @@ class TransformerV4_CMC(nn.Module):
                     self.config["patch_size"]["freq"][mod],
                     len(self.config["time_freq_block_num"][mod]),
                 )
-                logging.info(f"=\tPadded image size for {mod}: {padded_img_size}")
+                self.img_sizes[loc][mod] = padded_img_size
 
                 # Patch embedding and Linear embedding (H, W, in_channel) -> (H / p_size, W / p_size, C)
                 self.patch_embed[loc][mod] = PatchEmbed(
                     img_size=padded_img_size,
                     patch_size=self.config["patch_size"]["freq"][mod],
-                    in_chans=args.dataset_config["loc_mod_in_freq_channels"][loc][mod] * stride,
+                    in_chans=self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod] * stride,
                     embed_dim=self.config["time_freq_out_channels"],
                     norm_layer=self.norm_layer,
                 )
                 patches_resolution = self.patch_embed[loc][mod].patches_resolution
-                logging.info(f"=\tPatch resolution for {mod}: {patches_resolution}")
 
                 # Absolute positional embedding (optional)
                 self.absolute_pos_embed[loc][mod] = nn.Parameter(
@@ -170,7 +186,7 @@ class TransformerV4_CMC(nn.Module):
                 )
 
         # mod fusion layer
-        if args.learn_framework == "Cosmo":
+        if self.args.train_mode == "contrastive" and self.args.learn_framework == "Cosmo":
             "Attention fusion for Cosmo"
             self.mod_fusion_layer = TransformerFusionBlock(
                 self.config["loc_out_channels"],
@@ -178,61 +194,169 @@ class TransformerV4_CMC(nn.Module):
                 self.config["dropout_ratio"],
                 self.config["dropout_ratio"],
             )
-            sample_dim = self.config["loc_out_channels"]
+            self.sample_dim = self.config["loc_out_channels"]
         else:
-            sample_dim = self.config["loc_out_channels"] * len(self.modalities)
+            self.sample_dim = self.config["loc_out_channels"] * len(self.modalities)
 
         # Classification layer
-        if args.train_mode == "supervised" or self.config["pretrained_head"] == "linear":
+        if self.args.train_mode == "supervised" or self.config["pretrained_head"] == "linear":
             """Linear classification layers for supervised learning or finetuning."""
             self.class_layer = nn.Sequential(
-                nn.Linear(sample_dim, args.dataset_config[args.task]["num_classes"]),
-                # nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
+                nn.Linear(self.sample_dim, self.args.dataset_config[self.args.task]["num_classes"]),
             )
         else:
             """Non-linear classification layers for self-supervised learning."""
             self.class_layer = nn.Sequential(
-                nn.Linear(sample_dim, self.config["fc_dim"]),
+                nn.Linear(self.sample_dim, self.config["fc_dim"]),
                 nn.GELU(),
-                nn.Linear(self.config["fc_dim"], args.dataset_config[args.task]["num_classes"]),
-                # nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
+                nn.Linear(self.config["fc_dim"], self.args.dataset_config[self.args.task]["num_classes"]),
             )
 
-    def forward(self, freq_x, class_head=True):
+    def init_feature_encoder(self) -> None:
+        """Context encoding and modality separation
+        1. Merged Context -> Non linear fully connexted layers
+        2. Non linear layer to extract context for each modality
+        """
+        # [mod1_feature, mod2_feature, mod3_feature, ...] -> fc_dim layer
+        self.encoded_features_layer = nn.Sequential(
+            nn.Linear(self.sample_dim, self.config["fc_dim"]),
+            nn.GELU(),
+            nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
+        )
+
+        # [fc_dim layer] -> [mod1_feature, mod2_feature, mod3_feature]
+        self.encoded_mod_extract_layer = nn.ModuleDict()
+        for loc in self.locations:
+            self.encoded_mod_extract_layer[loc] = nn.ModuleDict()
+            for mod in self.modalities:
+                self.encoded_mod_extract_layer[loc][mod] = nn.Sequential(
+                    nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
+                    nn.GELU(),
+                    nn.Linear(self.config["fc_dim"], self.config["loc_out_channels"]),
+                )
+
+    def init_decoder(self) -> None:
+        self.patch_expand = nn.ModuleDict()
+        self.mask_token = nn.ModuleDict()
+        self.decoder_blocks = nn.ModuleDict()
+        self.decoder_pred = nn.ModuleDict()
+        self.decoder_norm = nn.LayerNorm(self.config["time_freq_out_channels"])
+        self.masked_ratio = self.generative_config["masked_ratio"]
+
+        self.mod_out_layers = nn.ModuleDict()
+
+        for loc in self.locations:
+            self.patch_expand[loc] = nn.ModuleDict()
+            self.mask_token[loc] = nn.ParameterDict()
+            self.decoder_blocks[loc] = nn.ModuleDict()
+            self.decoder_pred[loc] = nn.ModuleDict()
+            self.mod_out_layers[loc] = nn.ModuleDict()
+
+            for mod in self.modalities:
+                self.mask_token[loc][mod] = nn.Parameter(torch.zeros(1, 1, self.config["time_freq_out_channels"]))
+
+                self.patch_expand[loc][mod] = PatchExpanding(
+                    self.img_sizes[loc][mod],
+                    embed_dim=self.config["time_freq_out_channels"]
+                    * 2 ** (len(self.config["time_freq_block_num"][mod]) - 1),
+                    norm_layer=self.norm_layer,
+                )
+
+                self.decoder_blocks[loc][mod] = nn.ModuleList()
+
+                patches_resolution = self.patch_embed[loc][mod].patches_resolution
+
+                # Drop path rate
+                dpr = [
+                    x.item()
+                    for x in torch.linspace(
+                        0, self.config["drop_path_rate"], sum(self.config["time_freq_block_num"][mod])
+                    )
+                ]  # stochastic depth decay rule
+
+                for i_layer, block_num in enumerate(
+                    self.config["time_freq_block_num"][mod][:-1]
+                ):  # different downsample ratios
+                    inverse_i_layer = len(self.config["time_freq_block_num"][mod]) - i_layer - 2
+                    down_ratio = 2**inverse_i_layer
+                    layer_dim = int(self.config["time_freq_out_channels"] * down_ratio)
+                    layer = BasicLayer(
+                        dim=layer_dim,  # C in SWIN
+                        input_resolution=(
+                            patches_resolution[0] // down_ratio,  # Patch resolution = (H/4, W/4)
+                            patches_resolution[1] // down_ratio,
+                        ),
+                        num_heads=self.config["time_freq_head_num"],
+                        window_size=self.config["window_size"][mod].copy(),
+                        depth=block_num,
+                        drop=self.drop_rate,
+                        attn_drop=self.config["attn_drop_rate"],
+                        drop_path=dpr[
+                            sum(self.config["time_freq_block_num"][mod][:inverse_i_layer]) : sum(
+                                self.config["time_freq_block_num"][mod][: inverse_i_layer + 1]
+                            )
+                        ],
+                        norm_layer=self.norm_layer,
+                        patch_expanding=PatchExpanding
+                        if (i_layer < len(self.config["time_freq_block_num"][mod]) - 2)
+                        else None,
+                    )
+                    self.decoder_blocks[loc][mod].append(layer)
+
+                down_ratio = 2 ** (len(self.config["time_freq_block_num"][mod]) - 1)
+                layer_dim = int(self.config["time_freq_out_channels"] * down_ratio)
+                self.layer_dims[loc][mod] = layer_dim
+
+                self.mod_out_layers[loc][mod] = nn.Linear(
+                    self.config["loc_out_channels"],
+                    (patches_resolution[0] // down_ratio) * (patches_resolution[1] // down_ratio) * layer_dim,
+                )
+
+                patch_area = self.config["patch_size"]["freq"][mod][0] * self.config["patch_size"]["freq"][mod][1]
+                
+                self.decoder_pred[loc][mod] = nn.Sequential(
+                    nn.Linear(self.config["time_freq_out_channels"], self.config["time_freq_out_channels"]),
+                    nn.Linear(self.config["time_freq_out_channels"], patch_area * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]),
+                )
+
+    def pad_input(self, freq_x, loc, mod):
+        stride = self.config["in_stride"][mod]
+        spectrum_len = self.args.dataset_config["loc_mod_spectrum_len"][loc][mod]
+        img_size = (self.num_segments, spectrum_len // stride)
+        freq_input = freq_x[loc][mod]
+
+        # [b, c, i, spectrum] -- > [b, i, spectrum, c]
+        freq_input = torch.permute(freq_input, [0, 2, 3, 1])
+        b, i, s, c = freq_input.shape
+
+        # Forces both audio and seismic to have the same "img" size
+        freq_input = torch.reshape(freq_input, (b, i, s // stride, c * stride))
+
+        # Repermute back to [b, c, i, spectrum], (b, c, h, w) required in PatchEmbed
+        freq_input = torch.permute(freq_input, [0, 3, 1, 2])
+
+        # Pad [i, spectrum] to the required padding size
+        padded_img_size = self.patch_embed[loc][mod].img_size
+        padded_height = padded_img_size[0] - img_size[0]
+        padded_width = padded_img_size[1] - img_size[1]
+
+        # test different padding
+        freq_input = F.pad(input=freq_input, pad=(0, padded_width, 0, padded_height), mode="constant", value=0)
+
+        return freq_input, padded_img_size
+
+    def forward_encode(self, patched_input, class_head=True):
         """
         If class_head is False, we return the modality features; otherwise, we return the classification results.
         time-freq feature extraction --> loc fusion --> mod concatenation --> class layer
         """
-        args = self.args
+
         # Step 1: Feature extractions on time interval (i) and spectrum (s) domains
         mod_loc_features = {mod: [] for mod in self.modalities}
         for loc in self.locations:
             for mod in self.modalities:
-                stride = self.config["in_stride"][mod]
-                spectrum_len = args.dataset_config["loc_mod_spectrum_len"][loc][mod]
-                img_size = (self.num_segments, spectrum_len // stride)
-                freq_input = freq_x[loc][mod]
-
-                # [b, c, i, spectrum] -- > [b, i, spectrum, c]
-                freq_input = torch.permute(freq_input, [0, 2, 3, 1])
-                b, i, s, c = freq_input.shape
-
-                # Forces both audio and seismic to have the same "img" size
-                freq_input = torch.reshape(freq_input, (b, i, s // stride, c * stride))
-
-                # Repermute back to [b, c, i, spectrum], (b, c, h, w) required in PatchEmbed
-                freq_input = torch.permute(freq_input, [0, 3, 1, 2])
-
-                # Pad [i, spectrum] to the required padding size
-                padded_img_size = self.patch_embed[loc][mod].img_size
-                padded_height = padded_img_size[0] - img_size[0]
-                padded_width = padded_img_size[1] - img_size[1]
-
-                # test different padding
-                freq_input = F.pad(input=freq_input, pad=(0, padded_width, 0, padded_height), mode="constant", value=0)
-
-                # Patch Partition and Linear Embedding
-                embeded_input = self.patch_embed[loc][mod](freq_input)
+                embeded_input = patched_input[loc][mod]
+                b = embeded_input.shape[0]
 
                 # Absolute positional embedding
                 if self.config["APE"]:
@@ -245,8 +369,8 @@ class TransformerV4_CMC(nn.Module):
 
                 # Unify the input channels for each modality
                 freq_interval_output = self.mod_in_layers[loc][mod](freq_interval_output.reshape([b, -1]))
-                freq_interval_output = freq_interval_output.reshape(b, 1, -1)
 
+                freq_interval_output = freq_interval_output.reshape(b, 1, -1)
                 # Append the modality feature to the list
                 mod_loc_features[mod].append(freq_interval_output)
 
@@ -275,7 +399,7 @@ class TransformerV4_CMC(nn.Module):
         if not class_head:
             return dict(zip(self.modalities, mod_features))
         else:
-            if self.args.learn_framework == "Cosmo":
+            if self.args.train_mode == "contrastive" and self.args.learn_framework == "Cosmo":
                 """Attention-based fusion."""
                 mod_features = torch.stack(mod_features, dim=1)
                 mod_features = mod_features.unsqueeze(dim=1)
@@ -286,3 +410,117 @@ class TransformerV4_CMC(nn.Module):
 
             logits = self.class_layer(sample_features)
             return logits
+
+    def forward_decode(self, encoded_features):
+        """
+        Decode the latent features
+        """
+        # encoded_features = {mod: mod_features[mod] for mod in self.modalities}
+        decoded_out = {}
+        for loc in self.locations:
+            decoded_out[loc] = {}
+            for mod in self.modalities:
+                decoded_out[loc][mod] = []
+                mod_encoded_layer = self.mod_out_layers[loc][mod](encoded_features[mod])
+                mod_encoded_layer = mod_encoded_layer.reshape(mod_encoded_layer.shape[0], -1, self.layer_dims[loc][mod])
+                mod_encoded_layer = self.patch_expand[loc][mod](mod_encoded_layer)
+                # SwinTransformer Layer block
+                for layer in self.decoder_blocks[loc][mod]:
+                    decoded_tokens = layer(mod_encoded_layer)
+                    mod_encoded_layer = decoded_tokens
+
+                decoded_tokens = self.decoder_norm(decoded_tokens)
+                # predictor projection
+                decoded_tokens = self.decoder_pred[loc][mod](decoded_tokens)
+                decoded_out[loc][mod] = decoded_tokens
+
+        return decoded_out
+
+    def forward_feature_encode(self, mod_features):
+        """Encode the features by merging and then demerge
+
+        Args:
+            mod_features (dict): mod_features[mod] = features extracted for mod
+        """
+        mod_features = [mod_features[mod] for mod in mod_features]
+
+        # fusion basede on attention or concatnation
+        if self.generative_config["fusion"] == "attention":
+            """Attention-based fusion."""
+            mod_features = torch.stack(mod_features, dim=1)
+            mod_features = mod_features.unsqueeze(dim=1)
+            sample_features = self.mod_fusion_layer(mod_features).flatten(start_dim=1)
+        else:
+            """Concatenation-based fusion."""
+            sample_features = torch.cat(mod_features, dim=1)
+
+        # fully connected layer
+        encoded_sample_features = self.encoded_features_layer(sample_features)
+
+        # extract feature for each modality
+        encoded_mod_features = []
+        for loc in self.locations:
+            for mod in self.modalities:
+                encoded_mod_feature = self.encoded_mod_extract_layer[loc][mod](encoded_sample_features)
+                encoded_mod_features.append(encoded_mod_feature)
+
+        return dict(zip(self.modalities, mod_features))
+
+    def patch_forward(self, freq_x, class_head=True):
+        """Patch the input and mask for pretrianing
+
+        Args:
+            freq_x (_type_): [loc][mod] data
+            class_head (bool, optional): whether to include classification layer. Defaults to True.
+
+        Returns:
+            [loc][mod]: patched input
+        """
+        embeded_inputs = {}
+        padded_inputs = {}
+        mod_loc_masks = {}
+        for loc in self.locations:
+            embeded_inputs[loc] = {}
+            padded_inputs[loc] = {}
+            mod_loc_masks[loc] = {}
+            for mod in self.modalities:
+                # Pad the input and store the padded input
+                freq_input, padded_img_size = self.pad_input(freq_x, loc, mod)
+                padded_inputs[loc][mod] = freq_input
+
+                # Patch Partition and Linear Embedding
+                embeded_input = self.patch_embed[loc][mod](freq_input)
+                # we only mask images for pretraining
+                if self.args.train_mode == "generative" and class_head == False:
+                    embeded_input, mod_loc_mask = window_masking(
+                        embeded_input,
+                        padded_img_size,
+                        self.patch_embed[loc][mod].patches_resolution,
+                        self.config["window_size"][mod],
+                        self.mask_token[loc][mod],
+                        remove=False,
+                        mask_len_sparse=False,
+                        mask_ratio=self.masked_ratio[mod]
+                    )
+                    mod_loc_masks[loc][mod] = mod_loc_mask
+
+                embeded_inputs[loc][mod] = embeded_input
+        return embeded_inputs, padded_inputs, mod_loc_masks
+
+    def forward(self, freq_x, class_head=True):
+        
+        # PatchEmbed the input, window mask if MAE
+        patched_inputs, padded_inputs, masks = self.patch_forward(freq_x, class_head)
+
+        mod_features = self.forward_encode(patched_inputs, class_head)
+        
+        if self.args.train_mode != "generative" or class_head:
+            return mod_features
+
+        # intermediate encodings
+        encoded_mod_features = self.forward_feature_encode(mod_features)
+        
+        # decide the features
+        recovered_input = self.forward_decode(encoded_mod_features)
+        return recovered_input, padded_inputs, masks
+        

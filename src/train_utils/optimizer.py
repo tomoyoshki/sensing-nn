@@ -6,7 +6,7 @@ import re
 
 def define_optimizer(args, parameters):
     """Define the optimizer."""
-    if args.train_mode == "supervised":
+    if args.train_mode in {"supervised"}:
         optimizer_config = args.dataset_config[args.model]["optimizer"]
     elif args.stage == "pretrain":
         optimizer_config = args.dataset_config[args.learn_framework]["pretrain_optimizer"]

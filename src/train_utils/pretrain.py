@@ -12,8 +12,8 @@ from train_utils.eval_functions import val_and_logging
 from train_utils.optimizer import define_optimizer
 from train_utils.lr_scheduler import define_lr_scheduler
 from train_utils.knn import compute_embedding, compute_knn
-from train_utils.model_selection import init_predictive_framework, init_contrastive_framework
-from train_utils.loss_calc_utils import calc_predictive_loss, calc_contrastive_loss
+from train_utils.model_selection import init_predictive_framework, init_contrastive_framework, init_generative_framework
+from train_utils.loss_calc_utils import calc_predictive_loss, calc_contrastive_loss, calc_generative_loss
 from general_utils.weight_utils import load_feature_extraction_weight, freeze_patch_embedding
 
 # utils
@@ -40,6 +40,8 @@ def pretrain(
         default_model = init_predictive_framework(args, backbone_model)
     elif args.train_mode in {"contrastive"}:
         default_model = init_contrastive_framework(args, backbone_model)
+    elif args.train_mode in {"generative"}:
+        default_model = init_generative_framework(args, backbone_model)
     else:
         raise Exception("Invalid train mode")
 
@@ -86,8 +88,13 @@ def pretrain(
 
             # move to target device, FFT, and augmentations
             if args.train_mode in {"predictive", "predictive_fusion"}:
+                # predicitve, predictive fusion loss
                 loss = calc_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs)
+            elif args.train_mode in {"generative"}:
+                # masked autoencoder loss
+                loss = calc_generative_loss(args, default_model, augmenter, loss_func, time_loc_inputs)
             else:
+                # contrastive learning loss
                 loss = calc_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx)
 
             # back propagation
@@ -106,17 +113,21 @@ def pretrain(
 
         if epoch % 10 == 0:
             # compute embedding for the validation dataloader
-            embs, imgs, labels_ = compute_embedding(args, default_model.backbone, augmenter, val_dataloader)
-            tb_writer.add_embedding(
-                embs,
-                metadata=labels_,
-                label_img=imgs,
-                global_step=((epoch / 10) % 5),  # storing the latest 5 only
-                tag=f"embedding",
-            )
+            
+            if args.train_mode == "contrastive":
+                embs, imgs, labels_ = compute_embedding(args, default_model.backbone, augmenter, val_dataloader)
+                tb_writer.add_embedding(
+                    embs,
+                    metadata=labels_,
+                    label_img=imgs,
+                    global_step=((epoch / 10) % 5),  # storing the latest 5 only
+                    tag=f"embedding",
+                )
 
-            # Use KNN classifier for validation
-            knn_estimator = compute_knn(args, default_model.backbone, augmenter, train_dataloader)
+                # Use KNN classifier for validation
+                knn_estimator = compute_knn(args, default_model.backbone, augmenter, train_dataloader)
+            else:
+                knn_estimator = None
 
             # validation and logging
             train_loss = np.mean(train_loss_list)

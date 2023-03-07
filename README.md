@@ -18,21 +18,45 @@ python3 train.py -gpu=0 -dataset=Parkland -task=vehicle_classification -model=Tr
 python3 test.py -gpu=0 -dataset=Parkland -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised
 ```
 
+### Masked Auto Encoder
+
+#### Pretraining
+```
+CUDA_VISIBLE_DEVICES=0 python3 train.py -dataset=Parkland -train_mode=MAE -stage=pretrain -model=DeepSense
+```
+
 ### Contrastive/Predictive Learning
 
 #### Pretraining
 ```
-python3 train.py -gpu=0 -dataset=Parkland -learn_framework=SimCLR -stage=pretrain -model=TransformerV4 -batch_size=256
+python3 train.py -gpu=0 -dataset=Parkland -learn_framework=SimCLR -stage=pretrain -model=TransformerV4
 ```
 
 #### Finetuning
 ```
-python3 train.py -gpu=0 -dataset=Parkland -learn_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4 -batch_size=128
+python3 train.py -gpu=0 -dataset=Parkland -learn_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4
 ```
 
 #### Testing 
 ```
 python3 test.py -gpu=0 -dataset=Parkland -learn_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive
+```
+
+### Generative Learning
+
+#### Pretraining
+```
+python3 train.py -gpu=0 -dataset=Parkland -learn_framework=MAE -stage=pretrain -model=TransformerV4
+```
+
+#### Finetuning
+```
+python3 train.py -gpu=0 -dataset=Parkland -learn_framework=MAE -stage=finetune -task=vehicle_classification -model=TransformerV4
+```
+
+#### Testing 
+```
+python3 test.py -gpu=0 -dataset=Parkland -learn_framework=MAE -stage=finetune -task=vehicle_classification -model=TransformerV4 -model_weight=[model_weight]
 ```
 
 ### Parkland Results
