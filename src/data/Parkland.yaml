@@ -234,7 +234,7 @@ SimCLR:
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
-                weight_decay: 0.005
+                weight_decay: 0.0001
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -271,11 +271,11 @@ MoCo:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.00001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 0.00001
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -321,7 +321,7 @@ CMC:
                 min_lr: 0.0000001
                 clip_grad: 5.0
                 weight_decay: 0.05
-                decay_rate: 0.2
+                decay_rate: 0.00001
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -359,11 +359,11 @@ Cosmo:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.0001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.005
+                weight_decay: 0.00001
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -406,7 +406,7 @@ MTSS:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 600
+                train_epochs: 500
                 start_epoch: 0
                 decay_epochs: 150
                 decay_rate: 0.2
@@ -514,11 +514,11 @@ SimCLRFusion:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.0001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 0.00001
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -555,11 +555,11 @@ MoCoFusion:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.0001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.005
+                weight_decay: 0.00001
         finetune_lr_scheduler:
                 name: "cosine"
                 warmup_prefix: True
