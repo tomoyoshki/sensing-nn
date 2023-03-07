@@ -59,7 +59,8 @@ class TransformerV4_CMC(nn.Module):
         
         self.init_encoder()
         
-        if args.train_mode == "MAE":
+        if args.train_mode == "generative":
+            self.generative_config = args.dataset_config[args.learn_framework]
             self.init_feature_encoder()
             self.init_decoder()
 
@@ -159,32 +160,33 @@ class TransformerV4_CMC(nn.Module):
                 )
 
         # Loc fusion, [b, i, c], loc contextual feature extraction + loc fusion
-        self.loc_context_layers = nn.ModuleDict()
-        self.loc_fusion_layer = nn.ModuleDict()
-        for mod in self.modalities:
-            """Single mod contextual feature extraction"""
-            module_list = [
-                TransformerEncoderLayer(
-                    d_model=self.config["loc_out_channels"],
-                    nhead=self.config["loc_head_num"],
-                    dim_feedforward=self.config["loc_out_channels"],
-                    dropout=self.config["dropout_ratio"],
-                    batch_first=True,
-                )
-                for _ in range(self.config["loc_block_num"])
-            ]
-            self.loc_context_layers[mod] = nn.Sequential(*module_list)
+        if len(self.locations) > 1:
+            self.loc_context_layers = nn.ModuleDict()
+            self.loc_fusion_layer = nn.ModuleDict()
+            for mod in self.modalities:
+                """Single mod contextual feature extraction"""
+                module_list = [
+                    TransformerEncoderLayer(
+                        d_model=self.config["loc_out_channels"],
+                        nhead=self.config["loc_head_num"],
+                        dim_feedforward=self.config["loc_out_channels"],
+                        dropout=self.config["dropout_ratio"],
+                        batch_first=True,
+                    )
+                    for _ in range(self.config["loc_block_num"])
+                ]
+                self.loc_context_layers[mod] = nn.Sequential(*module_list)
 
-            """Loc fusion layer for each mod"""
-            self.loc_fusion_layer[mod] = TransformerFusionBlock(
-                self.config["loc_out_channels"],
-                self.config["loc_head_num"],
-                self.config["dropout_ratio"],
-                self.config["dropout_ratio"],
-            )
+                """Loc fusion layer for each mod"""
+                self.loc_fusion_layer[mod] = TransformerFusionBlock(
+                    self.config["loc_out_channels"],
+                    self.config["loc_head_num"],
+                    self.config["dropout_ratio"],
+                    self.config["dropout_ratio"],
+                )
 
         # mod fusion layer
-        if self.args.contrastive_framework == "Cosmo":
+        if self.args.train_mode == "contrastive" and self.args.learn_framework == "Cosmo":
             "Attention fusion for Cosmo"
             self.mod_fusion_layer = TransformerFusionBlock(
                 self.config["loc_out_channels"],
@@ -239,7 +241,7 @@ class TransformerV4_CMC(nn.Module):
         self.decoder_blocks = nn.ModuleDict()
         self.decoder_pred = nn.ModuleDict()
         self.decoder_norm = nn.LayerNorm(self.config["time_freq_out_channels"])
-        self.masked_ratio = self.config["masked_ratio"]
+        self.masked_ratio = self.generative_config["masked_ratio"]
 
         self.mod_out_layers = nn.ModuleDict()
 
@@ -397,7 +399,7 @@ class TransformerV4_CMC(nn.Module):
         if not class_head:
             return dict(zip(self.modalities, mod_features))
         else:
-            if self.args.train_mode == "contrastive" and self.args.contrastive_framework == "Cosmo":
+            if self.args.train_mode == "contrastive" and self.args.learn_framework == "Cosmo":
                 """Attention-based fusion."""
                 mod_features = torch.stack(mod_features, dim=1)
                 mod_features = mod_features.unsqueeze(dim=1)
@@ -443,7 +445,7 @@ class TransformerV4_CMC(nn.Module):
         mod_features = [mod_features[mod] for mod in mod_features]
 
         # fusion basede on attention or concatnation
-        if self.config["fusion"] == "attention":
+        if self.generative_config["fusion"] == "attention":
             """Attention-based fusion."""
             mod_features = torch.stack(mod_features, dim=1)
             mod_features = mod_features.unsqueeze(dim=1)
@@ -489,7 +491,7 @@ class TransformerV4_CMC(nn.Module):
                 # Patch Partition and Linear Embedding
                 embeded_input = self.patch_embed[loc][mod](freq_input)
                 # we only mask images for pretraining
-                if self.args.train_mode == "MAE" and class_head == False:
+                if self.args.train_mode == "generative" and class_head == False:
                     embeded_input, mod_loc_mask = window_masking(
                         embeded_input,
                         padded_img_size,
@@ -498,7 +500,7 @@ class TransformerV4_CMC(nn.Module):
                         self.mask_token[loc][mod],
                         remove=False,
                         mask_len_sparse=False,
-                        mask_ratio=self.config["masked_ratio"][mod]
+                        mask_ratio=self.masked_ratio[mod]
                     )
                     mod_loc_masks[loc][mod] = mod_loc_mask
 
@@ -512,7 +514,7 @@ class TransformerV4_CMC(nn.Module):
 
         mod_features = self.forward_encode(patched_inputs, class_head)
         
-        if self.args.train_mode != "MAE" or class_head:
+        if self.args.train_mode != "generative" or class_head:
             return mod_features
 
         # intermediate encodings

@@ -2,6 +2,7 @@ import os
 import json
 import torch
 import getpass
+import logging
 
 from params.output_paths import set_model_weight_file, set_output_paths, set_model_weight_folder
 from input_utils.yaml_utils import load_yaml
@@ -25,11 +26,12 @@ def str_to_bool(flag):
 
 
 def select_device(device="", batch_size=0, newline=True):
-    # device = 'cpu' or '0' or '0,1,2,3'
-    s = f"Torch {torch.__version__} "  # string
-    device = str(device).strip().lower().replace("cuda:", "")  # to string, 'cuda:0' to '0'
+    # device = None or 'cpu' or 0 or '0' or '0,1,2,3'
+    s = f"Torch-{torch.__version__} "
+    device = str(device).strip().lower().replace("cuda:", "").replace("none", "")  # to string, 'cuda:0' to '0'
     cpu = device == "cpu"
-    if cpu:
+    mps = device == "mps"  # Apple Metal Performance Shaders (MPS)
+    if cpu or mps:
         os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # force torch.cuda.is_available() = False
     elif device:  # non-cpu device requested
         os.environ["CUDA_VISIBLE_DEVICES"] = device  # set environment variable - must be before assert is_available()
@@ -37,9 +39,7 @@ def select_device(device="", batch_size=0, newline=True):
             device.replace(",", "")
         ), f"Invalid CUDA '--device {device}' requested, use '--device cpu' or pass valid CUDA device(s)"
 
-    # set GPU config
-    cuda = (not cpu) and torch.cuda.is_available()
-    if cuda:
+    if not cpu and not mps and torch.cuda.is_available():  # prefer GPU if available
         devices = device.split(",") if device else "0"  # range(torch.cuda.device_count())  # i.e. 0,1,6,7
         n = len(devices)  # device count
         if n > 1 and batch_size > 0:  # check batch_size is divisible by device_count
@@ -47,29 +47,46 @@ def select_device(device="", batch_size=0, newline=True):
         space = " " * (len(s) + 1)
         for i, d in enumerate(devices):
             p = torch.cuda.get_device_properties(i)
-            s += f"{'' if i == 0 else space}CUDA:{d} ({p.name}, {p.total_memory / (1 << 20):.0f}MiB)"  # bytes to MB
-    else:
-        s += "CPU"
+            s += f"{'' if i == 0 else space}CUDA:{d} ({p.name}, {p.total_memory / (1 << 20):.0f}MiB)\n"  # bytes to MB
+        arg = f"cuda:0"
+    elif mps and getattr(torch, "has_mps", False) and torch.backends.mps.is_available():  # prefer MPS if available
+        s += "MPS\n"
+        arg = "mps"
+    else:  # revert to CPU
+        s += "CPU\n"
+        arg = "cpu"
 
     if not newline:
         s = s.rstrip()
-
-    print("-----------------------------GPU Setting--------------------------------")
     print(s)
 
-    return torch.device("cuda:0" if cuda else "cpu")
+    return torch.device(arg)
 
 
-def auto_select_augmenter(args):
-    """Automatically select the data augmenter, mainly for separate training mode."""
-    if args.option == "train":
-        if args.train_mode == "supervised" and len(args.miss_modalities) > 0:
-            args.augmenter = "SeparateAugmenter"
+def set_train_mode(args):
+    """
+    Automatically set the train mode according to the learn_framework.
+    NOTE: Add the learn framework to this register when adding a new learn framework.
+    """
+    learn_framework_register = {
+        "SimCLR": "contrastive",
+        "SimCLRFusion": "contrastive",
+        "MoCo": "contrastive",
+        "MoCoFusion": "contrastive",
+        "Cosmo": "contrastive",
+        "CMC": "contrastive",
+        "MTSS": "predictive",
+        "ModPred": "predictive",
+        "ModPredFusion": "predictive",
+        "MAE": "generative",
+        "no": "supervised",
+    }
+
+    if args.learn_framework in learn_framework_register:
+        args.train_mode = learn_framework_register[args.learn_framework]
+        print(f"Setting train mode: {args.train_mode}")
     else:
-        if args.train_mode == "supervised" and len(args.miss_modalities) > 0:
-            args.augmenter = "SeparateAugmenter"
-        else:
-            args.augmenter = "NoAugmenter"
+        raise ValueError(f"Invalid learn_framework provided: {args.learn_framework}")
 
     return args
 
@@ -92,16 +109,13 @@ def set_auto_params(args):
     # verbose
     args.verbose = str_to_bool(args.verbose)
     args.count_range = str_to_bool(args.count_range)
-    args.balanced_sample = str_to_bool(args.balanced_sample) and args.dataset in {"ACIDS"}
+    args.balanced_sample = str_to_bool(args.balanced_sample) and args.dataset in {"ACIDS", "Parkland_Miata"}
 
     # threshold
     args.threshold = 0.5
 
     # dataloader config
     args.workers = 10
-
-    # triplet batch size
-    # args.triplet_batch_size = int(args.batch_size / 3)
 
     # Sing-class problem or multi-class problem
     if args.dataset in {}:
@@ -116,8 +130,8 @@ def set_auto_params(args):
     else:
         args.miss_modalities = set()
 
-    # automatically set the miss generator and the detector
-    args = auto_select_augmenter(args)
+    # set the train mode
+    args = set_train_mode(args)
 
     # set output path
     args = set_model_weight_folder(args)

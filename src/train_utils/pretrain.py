@@ -12,14 +12,15 @@ from train_utils.eval_functions import val_and_logging
 from train_utils.optimizer import define_optimizer
 from train_utils.lr_scheduler import define_lr_scheduler
 from train_utils.knn import compute_embedding, compute_knn
-from train_utils.model_selection import init_contrastive_framework
-from train_utils.loss_calc_utils import calc_contrastive_loss
+from train_utils.model_selection import init_predictive_framework, init_contrastive_framework, init_generative_framework
+from train_utils.loss_calc_utils import calc_predictive_loss, calc_contrastive_loss, calc_generative_loss
+from general_utils.weight_utils import load_feature_extraction_weight, freeze_patch_embedding
 
 # utils
 from general_utils.time_utils import time_sync
 
 
-def contrastive_pretrain(
+def pretrain(
     args,
     backbone_model,
     augmenter,
@@ -35,16 +36,26 @@ def contrastive_pretrain(
     used in train of supervised mode or fine-tune of foundation models.
     """
     # Initialize contrastive model
-    default_model = init_contrastive_framework(args, backbone_model)
+    if args.train_mode in {"predictive"}:
+        default_model = init_predictive_framework(args, backbone_model)
+    elif args.train_mode in {"contrastive"}:
+        default_model = init_contrastive_framework(args, backbone_model)
+    elif args.train_mode in {"generative"}:
+        default_model = init_generative_framework(args, backbone_model)
+    else:
+        raise Exception("Invalid train mode")
+
+    # Load feature extractor for fusion pretraining
+    if "Fusion" in args.learn_framework:
+        default_model = load_feature_extraction_weight(args, default_model)
 
     # Define the optimizer and learning rate scheduler
     optimizer = define_optimizer(args, default_model.parameters())
     lr_scheduler = define_lr_scheduler(args, optimizer)
 
-    # Fix the patch embedding layer, from MOCOv3
-    for name, param in default_model.backbone.named_parameters():
-        if "patch_embed" in name:
-            param.requires_grad = False
+    # Fix the patch embedding layer of TransformerV4, from MOCOv3
+    if "Fusion" not in args.learn_framework:
+        default_model = freeze_patch_embedding(args, default_model)
 
     # Print the trainable parameters
     if args.verbose:
@@ -59,7 +70,7 @@ def contrastive_pretrain(
     best_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_best.pt")
     latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.stage}_latest.pt")
 
-    for epoch in range(args.dataset_config[args.contrastive_framework]["pretrain_lr_scheduler"]["train_epochs"]):
+    for epoch in range(args.dataset_config[args.learn_framework]["pretrain_lr_scheduler"]["train_epochs"]):
         if epoch > 0:
             logging.info("-" * 40 + f"Epoch {epoch}" + "-" * 40)
 
@@ -76,15 +87,22 @@ def contrastive_pretrain(
             idx = idx.to(args.device)
 
             # move to target device, FFT, and augmentations
-            loss = calc_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx)
+            if args.train_mode in {"predictive", "predictive_fusion"}:
+                # predicitve, predictive fusion loss
+                loss = calc_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs)
+            elif args.train_mode in {"generative"}:
+                # masked autoencoder loss
+                loss = calc_generative_loss(args, default_model, augmenter, loss_func, time_loc_inputs)
+            else:
+                # contrastive learning loss
+                loss = calc_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx)
 
             # back propagation
             loss.backward()
 
             # update
             # torch.nn.utils.clip_grad_norm(
-            #     default_model.parameters(),
-            #     args.dataset_config[args.contrastive_framework]["pretrain_optimizer"]["clip_grad"],
+            #     backbone_model.parameters(), args.dataset_config[args.model]["optimizer"]["clip_grad"]
             # )
             optimizer.step()
             train_loss_list.append(loss.item())
@@ -95,17 +113,21 @@ def contrastive_pretrain(
 
         if epoch % 10 == 0:
             # compute embedding for the validation dataloader
-            embs, imgs, labels_ = compute_embedding(args, default_model.backbone, augmenter, val_dataloader)
-            tb_writer.add_embedding(
-                embs,
-                metadata=labels_,
-                label_img=imgs,
-                global_step=epoch,
-                tag="embeddings",
-            )
+            
+            if args.train_mode == "contrastive":
+                embs, imgs, labels_ = compute_embedding(args, default_model.backbone, augmenter, val_dataloader)
+                tb_writer.add_embedding(
+                    embs,
+                    metadata=labels_,
+                    label_img=imgs,
+                    global_step=((epoch / 10) % 5),  # storing the latest 5 only
+                    tag=f"embedding",
+                )
 
-            # Use KNN classifier for validation
-            knn_estimator = compute_knn(args, default_model.backbone, augmenter, train_dataloader)
+                # Use KNN classifier for validation
+                knn_estimator = compute_knn(args, default_model.backbone, augmenter, train_dataloader)
+            else:
+                knn_estimator = None
 
             # validation and logging
             train_loss = np.mean(train_loss_list)

@@ -8,22 +8,16 @@ def define_lr_scheduler(args, optimizer):
     """
     Define the learning rate scheduler
     """
-    if args.train_mode in {"supervised", "MAE"}:
+    if args.train_mode in {"supervised"}:
         classifier_config = args.dataset_config[args.model]
         optimizer_config = classifier_config["optimizer"]
         scheduler_config = classifier_config["lr_scheduler"]
-    elif args.train_mode == "contrastive" and args.stage == "pretrain":
-        optimizer_config = args.dataset_config[args.contrastive_framework]["pretrain_optimizer"]
-        scheduler_config = args.dataset_config[args.contrastive_framework]["pretrain_lr_scheduler"]
-    elif args.train_mode == "contrastive" and args.stage == "finetune":
-        optimizer_config = args.dataset_config[args.contrastive_framework]["finetune_optimizer"]
-        scheduler_config = args.dataset_config[args.contrastive_framework]["finetune_lr_scheduler"]
-    elif args.train_mode == "predictive" and args.stage == "pretrain":
-        optimizer_config = args.dataset_config[args.predictive_framework]["pretrain_optimizer"]
-        scheduler_config = args.dataset_config[args.predictive_framework]["pretrain_lr_scheduler"]
-    elif args.train_mode == "predictive" and args.stage == "finetune":
-        optimizer_config = args.dataset_config[args.predictive_framework]["finetune_optimizer"]
-        scheduler_config = args.dataset_config[args.predictive_framework]["finetune_lr_scheduler"]
+    elif args.stage == "pretrain":
+        optimizer_config = args.dataset_config[args.learn_framework]["pretrain_optimizer"]
+        scheduler_config = args.dataset_config[args.learn_framework]["pretrain_lr_scheduler"]
+    elif args.stage == "finetune":
+        optimizer_config = args.dataset_config[args.learn_framework]["finetune_optimizer"]
+        scheduler_config = args.dataset_config[args.learn_framework]["finetune_lr_scheduler"]
     else:
         raise Exception(f"Mode: {args.mode} and stage: {args.stage} not defined.")
 

@@ -36,7 +36,7 @@ class DINOLoss(nn.Module):
 
     def __init__(self, args):
         super().__init__()
-        self.config = args.dataset_config[args.contrastive_framework]
+        self.config = args.dataset_config[args.learn_framework]
 
         # hyperparameters
         self.temperature_s = self.config["temperature_student"]
@@ -113,7 +113,7 @@ class SimCLRLoss(nn.Module):
     def __init__(self, args):
         super(SimCLRLoss, self).__init__()
         self.batch_size = args.batch_size
-        self.temperature = args.dataset_config[args.contrastive_framework]["temperature"]
+        self.temperature = args.dataset_config[args.learn_framework]["temperature"]
 
         self.mask = self.mask_correlated_samples(self.batch_size)
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
@@ -248,7 +248,7 @@ class CMCLoss(nn.Module):
         self.args = args
         self.config = args.dataset_config["CMC"]
         self.batch_size = args.batch_size
-        self.temperature = args.dataset_config[args.contrastive_framework]["temperature"]
+        self.temperature = args.dataset_config[args.learn_framework]["temperature"]
 
         # h(x) in paper
         self.contrast = NCEAverage(args, N)

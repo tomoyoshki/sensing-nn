@@ -32,7 +32,10 @@ def eval_task_metrics(args, labels, predictions):
     else:
         mean_acc = accuracy_score(labels, predictions)
         mean_f1 = f1_score(labels, predictions, average="macro", zero_division=1)
-        conf_matrix = confusion_matrix(labels, predictions)
+        try:
+            conf_matrix = confusion_matrix(labels, predictions)
+        except:
+            conf_matrix = []
 
     return mean_acc, mean_f1, conf_matrix
 
@@ -87,7 +90,7 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
 def eval_pretrained_model(args, default_model, estimator, augmenter, dataloader, loss_func):
     """Evaluate the downstream task performance with KNN estimator."""
     default_model.eval()
-    if args.train_mode == "contrastive" and args.contrastive_framework in {"CMC"}:
+    if args.train_mode == "contrastive" and args.learn_framework in {"CMC"}:
         loss_func.contrast.eval()
 
     sample_embeddings = []
@@ -139,8 +142,8 @@ def eval_predictive_task(args, default_model, augmenter, dataloader):
             aug_freq_loc_inputs, pretrain_labels = augmenter.forward(
                 "random",
                 time_loc_inputs,
-                return_aug_id=True if args.predictive_framework == "MTSS" else False,
-                return_aug_mods=True if args.predictive_framework == "ModPred" else False,
+                return_aug_id=True if args.learn_framework == "MTSS" else False,
+                return_aug_mods=True if args.learn_framework in {"ModPred", "ModPredFusion"} else False,
             )
 
             # forward pass
@@ -148,8 +151,8 @@ def eval_predictive_task(args, default_model, augmenter, dataloader):
 
             # get the predictions from the logits
             pretrain_predictions = (
-                (nn.Sigmoid(pretrain_logits) > 0.5).float()
-                if args.predictive_framework == "ModPred"
+                (nn.Sigmoid()(pretrain_logits) > 0.5).float()
+                if args.learn_framework in {"ModPred", "ModPredFusion"}
                 else pretrain_logits.argmax(dim=1, keepdim=False)
             )
 
@@ -169,7 +172,7 @@ def eval_predictive_task(args, default_model, augmenter, dataloader):
     return mean_acc, mean_f1, conf_matrix
 
 
-def eval_mae_model(args, model, estimator, augmenter, data_loader, loss_func):
+def eval_generative_model(args, model, estimator, augmenter, data_loader, loss_func):
     """Evaluate the performance with KNN estimator."""
     model.eval()
 
@@ -178,7 +181,7 @@ def eval_mae_model(args, model, estimator, augmenter, data_loader, loss_func):
         for time_loc_inputs, label, index in tqdm(data_loader, total=len(data_loader)):
             """Eval contrastive loss."""
             aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
-            decoded_x, padded_x, masks = model(aug_freq_loc_inputs_1, False)
+            decoded_x, padded_x, masks = model(aug_freq_loc_inputs_1)
 
             # forward pass
             loss = loss_func(padded_x, decoded_x, masks).item()
@@ -225,12 +228,12 @@ def val_and_logging(
         test_loss, test_acc, test_f1, test_conf_matrix = eval_supervised_model(
             args, model, augmenter, test_loader, loss_func
         )
-    elif args.train_mode == "MAE":
+    elif args.train_mode == "generative":
         """MAE pretraining"""
-        val_loss, val_f1, val_acc, val_conf_matrix = eval_mae_model(
+        val_loss, val_f1, val_acc, val_conf_matrix = eval_generative_model(
             args, model, estimator, augmenter, val_loader, loss_func
         )
-        test_loss, test_f1, test_acc, test_conf_matrix = eval_mae_model(
+        test_loss, test_f1, test_acc, test_conf_matrix = eval_generative_model(
             args, model, estimator, augmenter, test_loader, loss_func
         )
     else:

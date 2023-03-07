@@ -192,14 +192,8 @@ class Augmenter:
             "time_mask": TimeMaskAugmenter,
         }
 
-        if args.train_mode == "contrastive" and args.stage == "pretrain":
-            self.time_aug_names = args.dataset_config[args.contrastive_framework]["random_augmenters"][
-                "time_augmenters"
-            ]
-        elif args.train_mode == "predictive" and args.stage == "pretrain":
-            self.time_aug_names = args.dataset_config[args.predictive_framework]["random_augmenters"]["time_augmenters"]
-        elif args.train_mode == "MAE" and args.stage == "pretrain":
-            self.time_aug_names = args.dataset_config[args.model]["random_augmenters"]["time_augmenters"]
+        if args.train_mode != "supervised" and args.stage == "pretrain":
+            self.time_aug_names = args.dataset_config[args.learn_framework]["random_augmenters"]["time_augmenters"]
         else:
             """Supervised training and fine-tuning"""
             self.time_aug_names = args.dataset_config[args.model]["fixed_augmenters"]["time_augmenters"]
@@ -220,14 +214,8 @@ class Augmenter:
             "phase_shift": PhaseShiftAugmenter,
         }
 
-        if args.train_mode == "contrastive" and args.stage == "pretrain":
-            self.freq_aug_names = args.dataset_config[args.contrastive_framework]["random_augmenters"][
-                "freq_augmenters"
-            ]
-        elif args.train_mode == "predictive" and args.stage == "pretrain":
-            self.freq_aug_names = args.dataset_config[args.predictive_framework]["random_augmenters"]["freq_augmenters"]
-        elif args.train_mode == "MAE" and args.stage == "pretrain":
-            self.freq_aug_names = args.dataset_config[args.model]["random_augmenters"]["freq_augmenters"]
+        if args.train_mode != "supervised" and args.stage == "pretrain":
+            self.freq_aug_names = args.dataset_config[args.learn_framework]["random_augmenters"]["freq_augmenters"]
         else:
             """Supervised training and fine-tuning"""
             self.freq_aug_names = args.dataset_config[args.model]["fixed_augmenters"]["freq_augmenters"]

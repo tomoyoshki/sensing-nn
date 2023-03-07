@@ -13,16 +13,9 @@ import sys
 np.set_printoptions(threshold=sys.maxsize)
 torch.set_printoptions(threshold=sys.maxsize)
 
-from tqdm import tqdm
-
-# import models
-from data_augmenter.Augmenter import Augmenter
-
 # train utils
 from train_utils.supervised_train import supervised_train
-from train_utils.contrastive_train import contrastive_pretrain
-from train_utils.mae_train import mae_train
-from train_utils.predictive_train import predictive_pretrain
+from train_utils.pretrain import pretrain
 from train_utils.finetune import finetune
 
 
@@ -47,6 +40,9 @@ def train(args):
     logging.info(f"=\tVal: {len(val_dataloader)}")
     logging.info(f"=\tTest: {len(test_dataloader)}")
     logging.info(f"{'='*70}")
+
+    # Only import augmenter after parse arguments so the device is correct
+    from data_augmenter.Augmenter import Augmenter
 
     # Init the miss modality simulator
     augmenter = Augmenter(args)
@@ -83,32 +79,8 @@ def train(args):
             tb_writer,
             num_batches,
         )
-    elif args.train_mode == "contrastive" and args.stage == "pretrain":
-        contrastive_pretrain(
-            args,
-            classifier,
-            augmenter,
-            train_dataloader,
-            val_dataloader,
-            test_dataloader,
-            loss_func,
-            tb_writer,
-            num_batches,
-        )
-    elif args.train_mode == "predictive" and args.stage == "pretrain":
-        predictive_pretrain(
-            args,
-            classifier,
-            augmenter,
-            train_dataloader,
-            val_dataloader,
-            test_dataloader,
-            loss_func,
-            tb_writer,
-            num_batches,
-        )
-    elif args.train_mode == "MAE" and args.stage == "pretrain":
-        mae_train(
+    elif args.stage == "pretrain":
+        pretrain(
             args,
             classifier,
             augmenter,
@@ -138,10 +110,6 @@ def train(args):
 def main_train():
     """The main function of training"""
     args = parse_train_params()
-    logging.basicConfig(
-        level=logging.INFO, handlers=[logging.FileHandler(args.train_log_file), logging.StreamHandler()]
-    )
-    # logging.basicConfig(level=logging.DEBUG, handlers=[logging.FileHandler(args.train_log_file)])
     train(args)
 
 

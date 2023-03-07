@@ -16,6 +16,9 @@ from models.MoCoModule import MoCoWrapper
 from models.CMCModules import CMC
 from models.CosmoModules import Cosmo
 
+# Generative Learning utils
+from models.MAEModule import MAE
+
 # Predictive Learning utils
 from models.MTSSModules import MTSS
 from models.ModPredModules import ModPred
@@ -27,20 +30,28 @@ from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss, MAEL
 def init_model(args):
     """Automatically select the model according to args."""
     if args.model == "DeepSense":
-        if args.train_mode == "contrastive" and args.stage == "pretrain" and args.contrastive_framework in {"MoCo"}:
+        if (
+            args.train_mode == "contrastive"
+            and args.stage == "pretrain"
+            and args.learn_framework in {"MoCo", "MoCoFusion"}
+        ):
             return DeepSense
-        elif args.train_mode == "contrastive" and args.contrastive_framework in {"CMC", "Cosmo"}:
+        elif args.train_mode == "contrastive" and args.learn_framework in {"CMC", "Cosmo"}:
             classifier = DeepSense_CMC(args)
-        elif args.train_mode == "MAE":
+        elif args.train_mode == "generative":
             classifier = DeepSense_CMC(args)
         else:
             classifier = DeepSense(args, self_attention=False)
     elif args.model == "TransformerV4":
-        if args.train_mode == "contrastive" and args.stage == "pretrain" and args.contrastive_framework in {"MoCo"}:
+        if (
+            args.train_mode == "contrastive"
+            and args.stage == "pretrain"
+            and args.learn_framework in {"MoCo", "MoCoFusion"}
+        ):
             return TransformerV4
-        elif (
-            args.train_mode == "contrastive" and args.contrastive_framework in {"CMC", "Cosmo"}
-        ) or args.train_mode == "MAE":
+        elif args.train_mode == "contrastive" and args.learn_framework in {"CMC", "Cosmo"}:
+            classifier = TransformerV4_CMC(args)
+        elif args.train_mode in {"generative"}:
             classifier = TransformerV4_CMC(args)
         else:
             classifier = TransformerV4(args)
@@ -57,15 +68,15 @@ def init_model(args):
 
 def init_contrastive_framework(args, backbone_model):
     # model config
-    if args.contrastive_framework == "SimCLR":
+    if args.learn_framework in {"SimCLR", "SimCLRFusion"}:
         default_model = SimCLR(args, backbone_model)
-    elif args.contrastive_framework == "DINO":
+    elif args.learn_framework == "DINO":
         default_model = DINO(args, backbone_model)
-    elif args.contrastive_framework == "MoCo":
+    elif args.learn_framework in {"MoCo", "MoCoFusion"}:
         default_model = MoCoWrapper(args, backbone_model)
-    elif args.contrastive_framework == "CMC":
+    elif args.learn_framework == "CMC":
         default_model = CMC(args, backbone_model)
-    elif args.contrastive_framework == "Cosmo":
+    elif args.learn_framework == "Cosmo":
         default_model = Cosmo(args, backbone_model)
     else:
         raise NotImplementedError
@@ -77,9 +88,9 @@ def init_predictive_framework(args, backbone_model):
     """
     Initialize the predictive framework according to args.
     """
-    if args.predictive_framework == "MTSS":
+    if args.learn_framework == "MTSS":
         default_model = MTSS(args, backbone_model)
-    elif args.predictive_framework == "ModPred":
+    elif args.learn_framework in {"ModPred", "ModPredFusion"}:
         default_model = ModPred(args, backbone_model)
     else:
         raise NotImplementedError
@@ -87,39 +98,48 @@ def init_predictive_framework(args, backbone_model):
     default_model = default_model.to(args.device)
     return default_model
 
+def init_generative_framework(args, backbone_model):
+    if args.learn_framework == "MAE":
+        default_model = MAE(args, backbone_model)
+    else:
+        raise NotImplementedError(f"Invalid learninig framework {args.learn_framework} provided")
+
+    default_model = default_model.to(args.device)
+    return default_model
 
 def init_loss_func(args, train_dataloader):
     """Initialize the loss function according to the config."""
-    if args.multi_class:
-        loss_func = nn.BCELoss()
-    else:
-        if args.train_mode == "supervised" or args.stage == "finetune":
-            loss_func = nn.CrossEntropyLoss()
-        elif args.train_mode == "predictive":
-            """Predictive pretraining only."""
-            if args.predictive_framework == "MTSS":
-                loss_func = nn.BCEWithLogitsLoss()
-            elif args.predictive_framework == "ModPred":
-                loss_func = nn.CrossEntropyLoss()
-            else:
-                raise NotImplementedError(f"Loss function for {args.predictive_framework} yet implemented")
-        elif args.train_mode == "contrastive":
-            """Contrastive pretraining only."""
-            if args.contrastive_framework == "DINO":
-                loss_func = DINOLoss(args).to(args.device)
-            elif args.contrastive_framework in {"MoCo"}:
-                loss_func = MoCoLoss(args).to(args.device)
-            elif args.contrastive_framework in {"CMC"}:
-                loss_func = CMCLoss(args, len(train_dataloader.dataset)).to(args.device)
-            elif args.contrastive_framework in {"SimCLR"}:
-                loss_func = SimCLRLoss(args).to(args.device)
-            elif args.contrastive_framework in {"Cosmo"}:
-                loss_func = CosmoLoss(args).to(args.device)
-            else:
-                raise NotImplementedError(f"Loss function for {args.contrastive_framework} yet implemented")
-        elif args.train_mode == "MAE":
-            loss_func = MAELoss(args).to(args.device)
+    if args.train_mode == "supervised" or args.stage == "finetune":
+        if args.multi_class:
+            loss_func = nn.BCELoss()
         else:
-            raise Exception(f"Invalid train mode provided: {args.train_mode}")
+            loss_func = nn.CrossEntropyLoss()
+    elif args.train_mode == "predictive":
+        """Predictive pretraining only."""
+        if args.learn_framework == "MTSS":
+            loss_func = nn.BCEWithLogitsLoss()
+        elif args.learn_framework in {"ModPred", "ModPredFusion"}:
+            loss_func = nn.BCEWithLogitsLoss()
+        else:
+            raise NotImplementedError(f"Loss function for {args.learn_framework} yet implemented")
+    elif args.train_mode == "contrastive":
+        """Contrastive pretraining only."""
+        if args.learn_framework == "DINO":
+            loss_func = DINOLoss(args).to(args.device)
+        elif args.learn_framework in {"MoCo", "MoCoFusion"}:
+            loss_func = MoCoLoss(args).to(args.device)
+        elif args.learn_framework in {"CMC"}:
+            loss_func = CMCLoss(args, len(train_dataloader.dataset)).to(args.device)
+        elif args.learn_framework in {"SimCLR", "SimCLRFusion"}:
+            loss_func = SimCLRLoss(args).to(args.device)
+        elif args.learn_framework in {"Cosmo"}:
+            loss_func = CosmoLoss(args).to(args.device)
+        else:
+            raise NotImplementedError(f"Loss function for {args.learn_framework} yet implemented")
+    elif args.train_mode == "generative":
+        if args.learn_framework == "MAE":
+            loss_func = MAELoss(args).to(args.device)
+    else:
+        raise Exception(f"Invalid train mode provided: {args.train_mode}")
 
     return loss_func

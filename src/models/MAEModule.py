@@ -1,7 +1,24 @@
-import torch
 import logging
 import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
+class MAE(nn.Module):
+    """
+    Masked Auto Encoder
+    """
+
+    def __init__(self, args, backbone):
+        super(MAE, self).__init__()
+
+        self.args = args
+        self.config = args.dataset_config["MAE"]
+        self.backbone = backbone
+
+    def forward(self, freq_input):
+        # compute features
+        return self.backbone(freq_input, class_head=False)
 
 def window_masking(
     x: torch.Tensor,

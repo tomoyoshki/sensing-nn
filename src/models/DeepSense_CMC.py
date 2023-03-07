@@ -37,7 +37,8 @@ class DeepSense_CMC(nn.Module):
 
         """define the architecture"""
         self.init_encoder(args)
-        if args.train_mode == "MAE":
+        if args.train_mode == "generative":
+            self.generative_config = args.dataset_config["MAE"]
             self.init_feature_encoding(args)
             self.init_decoder(args)
 
@@ -95,7 +96,7 @@ class DeepSense_CMC(nn.Module):
             )
 
         # mod fusion layer
-        if args.contrastive_framework == "Cosmo":
+        if args.learn_framework == "Cosmo":
             "Attention fusion for Cosmo"
             self.mod_fusion_layer = TransformerFusionBlock(
                 self.config["recurrent_dim"] * 2,
@@ -203,7 +204,7 @@ class DeepSense_CMC(nn.Module):
         Masking input for MAE
         Only mask for MAE pretraining
         """
-        if self.args.train_mode != "MAE" or class_head:
+        if self.args.train_mode != "generative" or class_head:
             return freq_x, None
 
         masked_x = {}
@@ -213,7 +214,7 @@ class DeepSense_CMC(nn.Module):
             masks[loc] = {}
             for mod in self.modalities:
                 # get mask ratio for each modality
-                mask_ratio = self.config["masked_ratio"][mod]
+                mask_ratio = self.generative_config["masked_ratio"][mod]
                 b, c, i, s = freq_x[loc][mod].shape
 
                 patch_h, patch_w = self.config["patch_size"][mod][0], self.config["patch_size"][mod][1]
@@ -270,7 +271,7 @@ class DeepSense_CMC(nn.Module):
         if not class_head:
             return dict(zip(self.modalities, mod_features)), dict(zip(self.modalities, hidden_features))
         else:
-            if self.args.contrastive_framework == "Cosmo":
+            if self.args.learn_framework == "Cosmo":
                 """Attention-based Fusion"""
                 mod_features = torch.stack(mod_features, dim=1)
                 mod_features = mod_features.unsqueeze(dim=1)
@@ -291,7 +292,7 @@ class DeepSense_CMC(nn.Module):
         mod_features = [mod_features[mod] for mod in mod_features]
 
         # fusion basede on attention or concatnation
-        if self.config["fusion"] == "attention":
+        if self.generative_config["fusion"] == "attention":
             """Attention-based fusion."""
             mod_features = torch.stack(mod_features, dim=1)
             mod_features = mod_features.unsqueeze(dim=1)
@@ -350,7 +351,7 @@ class DeepSense_CMC(nn.Module):
         mod_features, hidden_features = self.forward_encoder(processed_freq_x, class_head)
 
         # Encoded features
-        if self.args.train_mode != "MAE" or class_head:
+        if self.args.train_mode != "generative" or class_head:
             return mod_features
 
         # MAE specific forward for pretraining
