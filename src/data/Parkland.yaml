@@ -75,7 +75,7 @@ DeepSense:
         
         # FC layer
         fc_dim: 512
-        pretrained_head: "mlp"
+        pretrained_head: "linear"
         # Optimizer config
         optimizer:
                 name: "AdamW"
@@ -182,7 +182,7 @@ TransformerV4:
                         seismic: [1, 1]
         # FC layer
         fc_dim: 512
-        pretrained_head: "mlp"
+        pretrained_head: "linear"
         # Optimizer config
         optimizer:
                 name: "AdamW"
@@ -230,11 +230,11 @@ SimCLR:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.00001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 0.005
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
