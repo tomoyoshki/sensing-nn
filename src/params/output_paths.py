@@ -49,11 +49,13 @@ def set_model_weight_suffix(train_mode, learn_framework=None, task=None, label_r
     return suffix
 
 
-def find_most_recent_weight(args, train_mode, learn_framework, task=None, label_ratio=None, return_suffix=False):
+def find_most_recent_weight(
+    dataset, model, train_mode, learn_framework, task=None, label_ratio=None, return_suffix=False
+):
     """Find the most recent weight path for the given (model, train_mode, framework).)"""
     # base model path
     base_path = f"{os.path.abspath(os.path.join(os.getcwd(), os.pardir))}/weights"
-    dataset_model_path = os.path.join(base_path, f"{args.dataset}_{args.model}")
+    dataset_model_path = os.path.join(base_path, f"{dataset}_{model}")
 
     # identify the proper suffix
     suffix = set_model_weight_suffix(train_mode, learn_framework, task, label_ratio)
@@ -91,7 +93,8 @@ def set_model_weight_folder(args):
 
     # get the newest id matching the current config
     newest_id, newest_weight, suffix = find_most_recent_weight(
-        args,
+        args.dataset,
+        args.model,
         args.train_mode,
         args.learn_framework,
         args.task,

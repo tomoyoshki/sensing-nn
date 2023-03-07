@@ -65,6 +65,14 @@ def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, la
                             ):
                                 continue
 
+                            # check if we have pretrained weight
+                            newest_id, _ = find_most_recent_weight(
+                                dataset, model, get_train_mode(learn_framework), learn_framework
+                            )
+                            if newest_id < 0:
+                                print(f"Skip {dataset}-{model}-{learn_framework}-{task}-{label_ratio}")
+                                continue
+
                             # wait until a valid cuda device is available
                             cuda_device = -1
                             while cuda_device == -1:
