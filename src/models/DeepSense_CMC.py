@@ -12,7 +12,6 @@ from models.FusionModules import TransformerFusionBlock
 
 
 from models.SwinModules import PatchEmbed
-from models.MAEModule import find_patch_size
 
 
 class DeepSense_CMC(nn.Module):
@@ -217,7 +216,7 @@ class DeepSense_CMC(nn.Module):
                 mask_ratio = self.generative_config["masked_ratio"][mod]
                 b, c, i, s = freq_x[loc][mod].shape
 
-                patch_h, patch_w = self.config["patch_size"][mod][0], self.config["patch_size"][mod][1]
+                patch_h, patch_w = self.generative_config["patch_size"][mod][0], self.generative_config["patch_size"][mod][1]
                 patch_resolution_h, patch_resolution_w = i // patch_h, s // patch_w
 
                 # generate random mask
