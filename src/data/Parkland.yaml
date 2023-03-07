@@ -155,14 +155,14 @@ TransformerV4:
                 audio: 1
                 seismic: 1
         # single modality
-        time_freq_out_channels: 128
+        time_freq_out_channels: 64
         time_freq_head_num: 4
         time_freq_block_num: 
                 audio: [2, 2, 4]
                 seismic: [2, 2, 4]
         # modality fusion
         mod_out_channels: 256
-        mod_head_num: 8
+        mod_head_num: 4
         mod_block_num: 2
         # location fusion
         loc_out_channels: 256 # loc_out_channels == mod_out_channels
