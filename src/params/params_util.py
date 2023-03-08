@@ -131,7 +131,7 @@ def set_auto_params(args):
 
     # set the train mode
     args.train_mode = get_train_mode(args.learn_framework)
-    print(f"Settign train mode: {args.train_mode}")
+    print(f"Set train mode: {args.train_mode}")
 
     # set output path
     args = set_model_weight_folder(args)

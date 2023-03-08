@@ -8,14 +8,26 @@ import numpy as np
 from test import test
 from params.base_params import parse_base_args
 from params.params_util import set_auto_params
-from output_utils.schedule_log_utils import check_execution_flags, reset_execution_flags
+from output_utils.schedule_log_utils import check_execution_flags, reset_execution_flags, update_finetune_result
 
 
 def test_loop(result_file, status_log_file):
     """The main testing script"""
-    datasets = ["ACIDS"]
-    models = ["DeepSense", "TransformerV4"]
-    learn_frameworks = ["SimCLR", "MoCo", "CMC", "Cosmo", "MTSS", "MoCoFusion"]
+    datasets = ["ACIDS", "Parkland"]
+    models = ["TransformerV4", "DeepSense"]
+    learn_frameworks = [
+        "SimCLR",
+        "MoCo",
+        "CMC",
+        "Cosmo",
+        "MTSS",
+        "ModPred",
+        "MoCoFusion",
+        "SimCLRFusion",
+        "ModPredFusion",
+    ]
+    tasks = ["vehicle_classification", "terrain_classification", "speed_classification"]
+    label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
     tasks = ["vehicle_classification", "terrain_classification", "speed_classification"]
     label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
 

@@ -495,6 +495,7 @@ ModPredFusion:
 SimCLRFusion:
         emb_dim: 512
         temperature: 0.07
+        feature_learn_framework: "CMC"
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
@@ -507,9 +508,9 @@ SimCLRFusion:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 1500
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 300
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
@@ -536,6 +537,7 @@ MoCoFusion:
         emb_dim: 512
         temperature: 0.07
         momentum: 0.99
+        feature_learn_framework: "CMC"
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
@@ -548,9 +550,9 @@ MoCoFusion:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 1500
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 300
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
