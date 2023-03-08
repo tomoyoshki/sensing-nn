@@ -28,8 +28,6 @@ def test_loop(result_file, status_log_file):
     ]
     tasks = ["vehicle_classification", "terrain_classification", "speed_classification"]
     label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
-    tasks = ["vehicle_classification", "terrain_classification", "speed_classification"]
-    label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
 
     # check status before testing
     for dataset in datasets:
@@ -68,13 +66,16 @@ def test_loop(result_file, status_log_file):
                                         "f1": f1,
                                     },
                                 }
-                                update_finetune_result(result, result_file)
                             except:
                                 """No model available, reset the execution flag"""
                                 print(f"Resetting {dataset}-{model}-{learn_framework}-{task}-{label_ratio}.")
                                 reset_execution_flags(
                                     status_log_file, dataset, model, task, learn_framework, label_ratio
                                 )
+                                continue
+
+                            # update result
+                            update_finetune_result(result, result_file)
 
 
 if __name__ == "__main__":
