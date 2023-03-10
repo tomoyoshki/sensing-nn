@@ -378,15 +378,13 @@ Cosmo:
                 freq_augmenters: []
 
 Cocoa:
-        temperature: 1
-        num_positive: 10
-        emb_dim: 256
+        temperature: 0.5
         scale_loss: 0.03125
         lambd: 3.9e-3
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.00001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0

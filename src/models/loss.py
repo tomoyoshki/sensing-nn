@@ -368,40 +368,76 @@ class CocoaLoss(nn.Module):
         self.args = args
         self.config = args.dataset_config["Cocoa"]
         self.modalities = args.dataset_config["modality_names"]
+        
+        self.criterion = nn.BCEWithLogitsLoss(reduction='sum')
 
         self.temperature = self.config["temperature"]
         self.scale_loss = self.config["scale_loss"]
         self.lambd = self.config["lambd"]
 
     def calc_loss(self, features):
-        mod_size, batch_size, dim_size = features.shape
-        features = torch.permute(features, (2, 1, 0))
+        dim_size, batch_size, mod_size = features.shape
 
         # Positive Pairs
         pos_error = []
         for i in range(batch_size):
+            # similarity of each modality S_vw of
             sim = torch.matmul(features[:, i, :], features[:, i, :].T)
+            # 1 - S
             sim = torch.subtract(torch.ones((dim_size, dim_size), dtype=torch.float32).to(self.args.device), sim)
+            # (1 - s) / t
+            # e ^ ((1 - s) / tau)
             sim = torch.exp(sim/self.temperature)
             pos_error.append(torch.mean(sim))
-        
+
+        pos_error = torch.stack(pos_error)
+
+        # Negative Pairs
+        neg_error = 0
+        for i in range(dim_size):
+            sim = torch.matmul(features[i], features[i].T)
+            sim = torch.exp(sim/self.temperature)
+            tri_mask = np.ones(batch_size ** 2, dtype=np.bool).reshape(batch_size, batch_size)
+            tri_mask[np.diag_indices(batch_size)] = False
+            
+            off_diag_sim = torch.masked_select(sim, torch.from_numpy(tri_mask).to(sim.device))
+            off_diag_sim = torch.reshape(off_diag_sim, (batch_size, batch_size - 1))
+            neg_error += (torch.mean(off_diag_sim, dim=-1))
+
+
+        # neg_error = torch.Tensor(neg_error)
+
+        cross_mod_loss = torch.multiply(torch.sum(pos_error), self.scale_loss)
+        discriminator_loss = self.lambd * torch.sum(neg_error)
+
+        return cross_mod_loss + discriminator_loss
+        # return cross_mod_loss
+
+    def calc_loss_2(self, features):
+        batch_size, dim_size = features.shape[1], features.shape[0]
+
+        # Positive Pairs
+        pos_error=[]
+        for i in range(batch_size):
+            sim = torch.exp(torch.matmul(features[:,i,:], features[:,i,:].T)/self.temperature)
+            tri_mask = np.ones(dim_size ** 2, dtype=np.bool).reshape(dim_size, dim_size)
+            tri_mask[np.diag_indices(dim_size)] = False
+            off_diag_sim = torch.reshape(sim[tri_mask], (dim_size, dim_size - 1))
+            pos_error.append(torch.sum(off_diag_sim))
+
+        # Negative pairs
         neg_error = 0
         for i in range(dim_size):
             sim = torch.matmul(features[i], features[i].T).to(torch.float32)
             sim = torch.exp(sim/self.temperature)
-            # sim = tf.add(sim, tf.ones([batch_size, batch_size]))
             tri_mask = np.ones(batch_size ** 2, dtype=np.bool).reshape(batch_size, batch_size)
             tri_mask[np.diag_indices(batch_size)] = False
-
             off_diag_sim = torch.reshape(sim[tri_mask], (batch_size, batch_size - 1))
             neg_error += (torch.mean(off_diag_sim, axis=-1))
 
-
-        pos_error = torch.Tensor(pos_error)
-        neg_error = torch.Tensor(neg_error)
-
-        error = torch.multiply(torch.sum(pos_error), self.scale_loss) + self.lambd * torch.sum(neg_error)
-
+        logits = torch.divide(pos_error, pos_error+neg_error)
+        lbl = np.ones(batch_size)
+        error = self.criterion(logits, lbl)
         return error
 
     def forward(self, mod_features):
@@ -410,6 +446,9 @@ class CocoaLoss(nn.Module):
             features.append(mod_features[mod])
         
         features = torch.stack(features)
-        featrues_norm = F.normalize(features, dim=1)
         
-        return self.calc_loss(featrues_norm)
+        # normalize each features
+        featrues_norm = F.normalize(features, dim=-1)
+        
+        loss = self.calc_loss(featrues_norm)
+        return loss

@@ -90,8 +90,6 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
 def eval_pretrained_model(args, default_model, estimator, augmenter, dataloader, loss_func):
     """Evaluate the downstream task performance with KNN estimator."""
     default_model.eval()
-    if args.train_mode == "contrastive" and args.learn_framework in {"CMC"}:
-        loss_func.contrast.eval()
 
     sample_embeddings = []
     labels = []
