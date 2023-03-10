@@ -370,10 +370,40 @@ class CocoaLoss(nn.Module):
         self.modalities = args.dataset_config["modality_names"]
 
         self.temperature = self.config["temperature"]
+        self.scale_loss = self.config["scale_loss"]
+        self.lambd = self.config["lambd"]
 
     def calc_loss(self, features):
-        pass
+        mod_size, batch_size, dim_size = features.shape
+        features = torch.permute(features, (2, 1, 0))
+
+        # Positive Pairs
+        pos_error = []
+        for i in range(batch_size):
+            sim = torch.matmul(features[:, i, :], features[:, i, :].T)
+            sim = torch.subtract(torch.ones((dim_size, dim_size), dtype=torch.float32).to(self.args.device), sim)
+            sim = torch.exp(sim/self.temperature)
+            pos_error.append(torch.mean(sim))
         
+        neg_error = 0
+        for i in range(dim_size):
+            sim = torch.matmul(features[i], features[i].T).to(torch.float32)
+            sim = torch.exp(sim/self.temperature)
+            # sim = tf.add(sim, tf.ones([batch_size, batch_size]))
+            tri_mask = np.ones(batch_size ** 2, dtype=np.bool).reshape(batch_size, batch_size)
+            tri_mask[np.diag_indices(batch_size)] = False
+
+            off_diag_sim = torch.reshape(sim[tri_mask], (batch_size, batch_size - 1))
+            neg_error += (torch.mean(off_diag_sim, axis=-1))
+
+
+        pos_error = torch.Tensor(pos_error)
+        neg_error = torch.Tensor(neg_error)
+
+        error = torch.multiply(torch.sum(pos_error), self.scale_loss) + self.lambd * torch.sum(neg_error)
+
+        return error
+
     def forward(self, mod_features):
         features = []
         for mod in self.modalities:

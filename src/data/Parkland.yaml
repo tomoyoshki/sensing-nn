@@ -381,7 +381,8 @@ Cocoa:
         temperature: 1
         num_positive: 10
         emb_dim: 256
-        contrast_mode: all
+        scale_loss: 0.03125
+        lambd: 3.9e-3
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
