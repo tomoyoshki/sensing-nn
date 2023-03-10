@@ -75,6 +75,7 @@ def get_train_mode(learn_framework):
         "MoCoFusion": "contrastive",
         "Cosmo": "contrastive",
         "CMC": "contrastive",
+        "Cocoa": "contrastive",
         "MTSS": "predictive",
         "ModPred": "predictive",
         "ModPredFusion": "predictive",

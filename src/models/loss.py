@@ -243,19 +243,13 @@ class MAELoss(nn.Module):
 
 
 class CMCLoss(nn.Module):
-    def __init__(self, args, N):
+    def __init__(self, args):
         super(CMCLoss, self).__init__()
         self.args = args
         self.config = args.dataset_config["CMC"]
         self.batch_size = args.batch_size
         self.temperature = args.dataset_config[args.learn_framework]["temperature"]
 
-        # h(x) in paper
-        self.contrast = NCEAverage(args, N)
-
-        # Softmaxs
-        self.criterion_seismic = NCESoftmaxLoss() if self.config["softmax"] else NCECriterion(N)
-        self.criterion_audio = NCESoftmaxLoss() if self.config["softmax"] else NCECriterion(N)
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
         self.similarity_f = nn.CosineSimilarity(dim=2)
 
@@ -528,24 +522,15 @@ class CocoaLoss(nn.Module):
         self.contrast_mode = self.config["contrast_mode"]
         self.base_temperature = self.config["temperature"]
 
-    def forward(feature1, feature2):
-        batch_size, dim_size = feature2.shape[1], feature2.shape[0]
-        # Positive Pairs
-        pos_error = []
-        for i in range(batch_size):
-            sim = tf.linalg.matmul(feature2[:, i, :], feature2[:, i, :], transpose_b=True)
-            sim = tf.subtract(tf.ones([dim_size, dim_size], dtype=tf.dtypes.float32), sim)
-            sim = tf.exp(sim/self.temperature)
-            pos_error.append(tf.reduce_mean(sim))
-        # Negative pairs
-        neg_error = 0
-        for i in range(dim_size):
-            sim = tf.cast(tf.linalg.matmul(feature2[i], feature2[i], transpose_b=True), dtype=tf.dtypes.float32)
-            sim = tf.exp(sim / self.temperature)
-            # sim = tf.add(sim, tf.ones([batch_size, batch_size]))
-            tri_mask = np.ones(batch_size ** 2, dtype=np.bool).reshape(batch_size, batch_size)
-            tri_mask[np.diag_indices(batch_size)] = False
-            off_diag_sim = tf.reshape(tf.boolean_mask(sim, tri_mask), [batch_size, batch_size - 1])
-            neg_error += (tf.reduce_mean(off_diag_sim, axis=-1))
-
-        error = tf.multiply(tf.reduce_sum(pos_error),self.scale_loss) + self.lambd * tf.reduce_sum(neg_error)
+    def calc_loss(features):
+        pass
+        
+    def forward(mod_features):
+        features = []
+        for mod in self.modalities:
+            features.append(mod_features[mod])
+        
+        features = torch.stack(features)
+        featrues_norm = F.normalize(features, axis=-1)
+        
+        return calc_loss(featrues_norm)

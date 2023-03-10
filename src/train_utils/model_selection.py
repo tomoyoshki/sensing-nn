@@ -15,6 +15,7 @@ from models.SimCLRModules import SimCLR
 from models.MoCoModule import MoCoWrapper
 from models.CMCModules import CMC
 from models.CosmoModules import Cosmo
+from models.CocoaModules import Cocoa
 
 # Generative Learning utils
 from models.MAEModule import MAE
@@ -36,7 +37,7 @@ def init_model(args):
             and args.learn_framework in {"MoCo", "MoCoFusion"}
         ):
             return DeepSense
-        elif args.train_mode == "contrastive" and args.learn_framework in {"CMC", "Cosmo"}:
+        elif args.train_mode == "contrastive" and args.learn_framework in {"CMC", "Cosmo", "Cocoa"}:
             classifier = DeepSense_CMC(args)
         elif args.train_mode == "generative":
             classifier = DeepSense_CMC(args)
@@ -49,7 +50,7 @@ def init_model(args):
             and args.learn_framework in {"MoCo", "MoCoFusion"}
         ):
             return TransformerV4
-        elif args.train_mode == "contrastive" and args.learn_framework in {"CMC", "Cosmo"}:
+        elif args.train_mode == "contrastive" and args.learn_framework in {"CMC", "Cosmo", "Cocoa"}:
             classifier = TransformerV4_CMC(args)
         elif args.train_mode in {"generative"}:
             classifier = TransformerV4_CMC(args)
@@ -78,6 +79,8 @@ def init_contrastive_framework(args, backbone_model):
         default_model = CMC(args, backbone_model)
     elif args.learn_framework == "Cosmo":
         default_model = Cosmo(args, backbone_model)
+    elif args.learn_framework == "Cocoa":
+        default_model = Cocoa(args, backbone_model)
     else:
         raise NotImplementedError
     default_model = default_model.to(args.device)
@@ -129,11 +132,13 @@ def init_loss_func(args, train_dataloader):
         elif args.learn_framework in {"MoCo", "MoCoFusion"}:
             loss_func = MoCoLoss(args).to(args.device)
         elif args.learn_framework in {"CMC"}:
-            loss_func = CMCLoss(args, len(train_dataloader.dataset)).to(args.device)
+            loss_func = CMCLoss(args).to(args.device)
         elif args.learn_framework in {"SimCLR", "SimCLRFusion"}:
             loss_func = SimCLRLoss(args).to(args.device)
         elif args.learn_framework in {"Cosmo"}:
             loss_func = CosmoLoss(args).to(args.device)
+        elif args.learn_framework in {"Cocoa"}:
+            loss_func = CocoaLoss(args).to(args.device)
         else:
             raise NotImplementedError(f"Loss function for {args.learn_framework} yet implemented")
     elif args.train_mode == "generative":
