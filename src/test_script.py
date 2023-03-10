@@ -26,13 +26,19 @@ def test_loop(result_file, status_log_file):
         "SimCLRFusion",
         "ModPredFusion",
     ]
-    tasks = ["vehicle_classification", "terrain_classification", "speed_classification"]
+    tasks = ["vehicle_classification", "terrain_classification", "speed_classification", "distance_classification"]
     label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
 
     # check status before testing
     for dataset in datasets:
         for model in models:
             for task in tasks:
+                # skip useless task
+                if (dataset == "ACIDS" and task == "distance_classification") or (
+                    dataset == "Parkland" and task == "terrain_classification"
+                ):
+                    continue
+
                 for learn_framework in learn_frameworks:
                     for label_ratio in label_ratios:
                         finetuned_flag = check_execution_flags(

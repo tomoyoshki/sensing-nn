@@ -59,6 +59,12 @@ def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, la
         for dataset in datasets:
             for model in models:
                 for task in tasks:
+                    # skip useless task
+                    if (dataset == "ACIDS" and task == "distance_classification") or (
+                        dataset == "Parkland" and task == "terrain_classification"
+                    ):
+                        continue
+
                     for learn_framework in learn_frameworks:
                         for label_ratio in label_ratios:
                             # check if the job is done
@@ -150,7 +156,7 @@ if __name__ == "__main__":
         "SimCLRFusion",
         "ModPredFusion",
     ]
-    tasks = ["vehicle_classification", "terrain_classification", "speed_classification"]
+    tasks = ["vehicle_classification", "terrain_classification", "speed_classification", "distance_classification"]
     label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
 
     # hardware
