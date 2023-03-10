@@ -25,7 +25,7 @@ from models.MTSSModules import MTSS
 from models.ModPredModules import ModPred
 
 # loss functions
-from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss, MAELoss
+from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss, MAELoss, CocoaLoss
 
 
 def init_model(args):

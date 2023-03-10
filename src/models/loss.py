@@ -294,157 +294,6 @@ class CMCLoss(nn.Module):
 
         return loss
 
-
-class NCECriterion(nn.Module):
-    """
-    Eq. (11): L_{NCE}
-    https://github.com/HobbitLong/CMC/tree/master/NCE
-    """
-
-    def __init__(self, n_data):
-        super(NCECriterion, self).__init__()
-        self.n_data = n_data
-
-    def forward(self, x):
-        eps = 1e-7
-        bsz = x.shape[0]
-        m = x.size(1) - 1
-
-        # noise distribution
-        Pn = 1 / float(self.n_data)
-
-        # loss for positive pair
-        P_pos = x.select(1, 0)
-        log_D1 = torch.div(P_pos, P_pos.add(m * Pn + eps)).log_()
-
-        # loss for K negative pair
-        P_neg = x.narrow(1, 1, m)
-        log_D0 = torch.div(P_neg.clone().fill_(m * Pn), P_neg.add(m * Pn + eps)).log_()
-
-        loss = -(log_D1.sum(0) + log_D0.view(-1, 1).sum(0)) / bsz
-
-        return loss
-
-
-class NCESoftmaxLoss(nn.Module):
-    """Softmax cross-entropy loss (a.k.a., info-NCE loss in CPC paper)"""
-
-    def __init__(self):
-        super(NCESoftmaxLoss, self).__init__()
-        self.criterion = nn.CrossEntropyLoss()
-
-    def forward(self, x):
-        bsz = x.shape[0]
-        x = x.squeeze()
-        label = torch.zeros([bsz]).cuda().long()
-        loss = self.criterion(x, label)
-        return loss
-
-
-class NCEAverage(nn.Module):
-    """https://github.com/HobbitLong/CMC/tree/master/NCE"""
-
-    def __init__(self, args, output_size):
-        super(NCEAverage, self).__init__()
-
-        self.args = args
-        self.config = args.dataset_config["CMC"]
-
-        self.K = self.config["nce_k"]
-        self.T = self.config["nce_t"]
-        self.momentum = self.config["nce_momentum"]
-        self.use_softmax = self.config["softmax"]
-
-        # embed_dim
-        self.input_size = self.config["input_size"]
-
-        # length of the dataset
-        self.output_size = output_size
-
-        self.nLem = self.output_size
-        self.unigrams = torch.ones(self.nLem)
-        self.multinomial = AliasMethod(self.unigrams)
-        self.multinomial.cuda()
-
-        self.register_buffer(
-            "params",
-            torch.tensor([self.config["nce_k"], self.config["nce_t"], -1, -1, self.config["nce_momentum"]]),
-        )
-        stdv = 1.0 / math.sqrt(self.input_size / 3)
-        self.register_buffer("memory_l", torch.rand(self.output_size, self.input_size).mul_(2 * stdv).add_(-stdv))
-        self.register_buffer("memory_ab", torch.rand(self.output_size, self.input_size).mul_(2 * stdv).add_(-stdv))
-
-    def forward(self, l, ab, y, idx=None):
-        K = int(self.params[0].item())
-        T = self.params[1].item()
-        Z_l = self.params[2].item()
-        Z_ab = self.params[3].item()
-
-        momentum = self.params[4].item()
-        batchSize = l.size(0)
-        outputSize = self.memory_l.size(0)
-        inputSize = self.memory_l.size(1)
-
-        # score computation
-        if idx is None:
-            idx = self.multinomial.draw(batchSize * (self.K + 1)).view(batchSize, -1)
-            idx.select(1, 0).copy_(y.data)
-            idx = idx.to(self.args.device)
-
-        # sample
-        weight_l = torch.index_select(self.memory_l, 0, idx.view(-1)).detach()
-        weight_l = weight_l.view(batchSize, K + 1, inputSize)
-
-        ab_view = ab.view(batchSize, inputSize, 1)
-        out_ab = torch.bmm(weight_l, ab_view)
-
-        # sample
-        weight_ab = torch.index_select(self.memory_ab, 0, idx.view(-1)).detach()
-        weight_ab = weight_ab.view(batchSize, K + 1, inputSize)
-        l_view = l.view(batchSize, inputSize, 1)
-        out_l = torch.bmm(weight_ab, l_view)
-
-        if self.use_softmax:
-            out_ab = torch.div(out_ab, T)
-            out_l = torch.div(out_l, T)
-            out_l = out_l.contiguous()
-            out_ab = out_ab.contiguous()
-        else:
-            out_ab = torch.exp(torch.div(out_ab, T))
-            out_l = torch.exp(torch.div(out_l, T))
-            # set Z_0 if haven't been set yet,
-            # Z_0 is used as a constant approximation of Z, to scale the probs
-            if self.training:
-                if Z_l < 0:
-                    self.params[2] = out_l.mean() * outputSize
-                    Z_l = self.params[2].clone().detach().item()
-                if Z_ab < 0:
-                    self.params[3] = out_ab.mean() * outputSize
-                    Z_ab = self.params[3].clone().detach().item()
-            # compute out_l, out_ab
-            out_l = torch.div(out_l, Z_l).contiguous()
-            out_ab = torch.div(out_ab, Z_ab).contiguous()
-
-        # # update memory
-        with torch.no_grad():
-            if self.training:
-                l_pos = torch.index_select(self.memory_l, 0, y.view(-1))
-                l_pos.mul_(momentum)
-                l_pos.add_(torch.mul(l, 1 - momentum))
-                l_norm = l_pos.pow(2).sum(1, keepdim=True).pow(0.5)
-                updated_l = l_pos.div(l_norm)
-                self.memory_l.index_copy_(0, y, updated_l)
-
-                ab_pos = torch.index_select(self.memory_ab, 0, y.view(-1))
-                ab_pos.mul_(momentum)
-                ab_pos.add_(torch.mul(ab, 1 - momentum))
-                ab_norm = ab_pos.pow(2).sum(1, keepdim=True).pow(0.5)
-                updated_ab = ab_pos.div(ab_norm)
-                self.memory_ab.index_copy_(0, y, updated_ab)
-
-        return out_l, out_ab
-
-
 class CosmoLoss(nn.Module):
     def __init__(self, args):
         """Based on SupConLoss from "Supervised Contrastive Loss" paper."""
@@ -510,27 +359,27 @@ class CosmoLoss(nn.Module):
         return loss
 
 class CocoaLoss(nn.Module):
-    def __init__(self, args):
+    def __init__(self, args, idx=None):
         """Cocoa loss similar to CMC
         Reference: https://github.com/cruiseresearchgroup/COCOA/blob/main/src/losses.py
         Paper: https://dl.acm.org/doi/10.1145/3550316
         """
-        super(CosmoLoss, self).__init__()
+        super(CocoaLoss, self).__init__()
         self.args = args
         self.config = args.dataset_config["Cocoa"]
-        self.temperature = self.config["temperature"]
-        self.contrast_mode = self.config["contrast_mode"]
-        self.base_temperature = self.config["temperature"]
+        self.modalities = args.dataset_config["modality_names"]
 
-    def calc_loss(features):
+        self.temperature = self.config["temperature"]
+
+    def calc_loss(self, features):
         pass
         
-    def forward(mod_features):
+    def forward(self, mod_features):
         features = []
         for mod in self.modalities:
             features.append(mod_features[mod])
         
         features = torch.stack(features)
-        featrues_norm = F.normalize(features, axis=-1)
+        featrues_norm = F.normalize(features, dim=1)
         
-        return calc_loss(featrues_norm)
+        return self.calc_loss(featrues_norm)
