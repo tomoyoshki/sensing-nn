@@ -12,6 +12,10 @@ def extract_sample_features(args, classifier, aug_freq_loc_inputs):
         mod_features = classifier(aug_freq_loc_inputs, class_head=False)
         mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
         features = torch.cat(mod_features, dim=1)
+    elif args.train_mode == "contrastive" and args.learn_framework == "Cocoa":
+        mod_features = classifier(aug_freq_loc_inputs, class_head=False)
+        mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
+        features = torch.cat(mod_features, dim=1)
     elif args.train_mode == "contrastive" and args.learn_framework == "Cosmo":
         mod_features = classifier(aug_freq_loc_inputs, class_head=False)
         mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
