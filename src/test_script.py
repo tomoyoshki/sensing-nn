@@ -8,40 +8,37 @@ import numpy as np
 from test import test
 from params.base_params import parse_base_args
 from params.params_util import set_auto_params
-from finetune_script import check_execution_flags
-
-
-def update_finetune_result(result, result_file):
-    """
-    dataset --> model --> task --> learn_framework --> label_ratio -- > {acc, f1}
-    """
-    if os.path.exists(result_file):
-        complete_result = json.load(open(result_file))
-    else:
-        complete_result = {}
-
-    for config in result:
-        complete_result[config] = result[config]
-
-    # sort the result
-    complete_result = dict(sorted(complete_result.items()))
-
-    with open(result_file, "w") as f:
-        f.write(json.dumps(complete_result, indent=4))
+from output_utils.schedule_log_utils import check_execution_flags, reset_execution_flags, update_finetune_result
 
 
 def test_loop(result_file, status_log_file):
     """The main testing script"""
-    datasets = ["ACIDS"]
-    models = ["DeepSense", "TransformerV4"]
-    learn_frameworks = ["SimCLR", "MoCo", "CMC", "Cosmo", "MTSS", "MoCoFusion"]
-    tasks = ["vehicle_classification", "terrain_classification", "speed_classification"]
+    datasets = ["ACIDS", "Parkland"]
+    models = ["TransformerV4", "DeepSense"]
+    learn_frameworks = [
+        "SimCLR",
+        "MoCo",
+        "CMC",
+        "Cosmo",
+        "MTSS",
+        "ModPred",
+        "MoCoFusion",
+        "SimCLRFusion",
+        "ModPredFusion",
+    ]
+    tasks = ["vehicle_classification", "terrain_classification", "speed_classification", "distance_classification"]
     label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
 
     # check status before testing
     for dataset in datasets:
         for model in models:
             for task in tasks:
+                # skip useless task
+                if (dataset == "ACIDS" and task == "distance_classification") or (
+                    dataset == "Parkland" and task == "terrain_classification"
+                ):
+                    continue
+
                 for learn_framework in learn_frameworks:
                     for label_ratio in label_ratios:
                         finetuned_flag = check_execution_flags(
@@ -54,25 +51,36 @@ def test_loop(result_file, status_log_file):
                             )
                         else:
                             print(f"Testing {dataset}-{model}-{learn_framework}-{task}-{label_ratio}.")
-                            # set args
-                            args = parse_base_args("test")
-                            args.dataset = dataset
-                            args.model = model
-                            args.learn_framework = learn_framework
-                            args.task = task
-                            args.label_ratio = label_ratio
-                            args.stage = "finetune"
-                            args = set_auto_params(args)
-
                             # get result
-                            classifier_loss, acc, f1 = test(args)
-                            result = {
-                                f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
-                                    "loss": classifier_loss,
-                                    "acc": acc,
-                                    "f1": f1,
-                                },
-                            }
+                            try:
+                                # set args
+                                args = parse_base_args("test")
+                                args.dataset = dataset
+                                args.model = model
+                                args.learn_framework = learn_framework
+                                args.task = task
+                                args.label_ratio = label_ratio
+                                args.stage = "finetune"
+                                args = set_auto_params(args)
+
+                                # eval the model
+                                classifier_loss, acc, f1 = test(args)
+                                result = {
+                                    f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
+                                        "loss": classifier_loss,
+                                        "acc": acc,
+                                        "f1": f1,
+                                    },
+                                }
+                            except:
+                                """No model available, reset the execution flag"""
+                                print(f"Resetting {dataset}-{model}-{learn_framework}-{task}-{label_ratio}.")
+                                reset_execution_flags(
+                                    status_log_file, dataset, model, task, learn_framework, label_ratio
+                                )
+                                continue
+
+                            # update result
                             update_finetune_result(result, result_file)
 
 

@@ -4,50 +4,9 @@ import time
 import subprocess
 
 from collections import OrderedDict
-
-
-def init_execution_flags(status_log_file):
-    """Init the log of finetuning status."""
-    if os.path.exists(status_log_file):
-        status = json.load(open(status_log_file))
-    else:
-        status = {}
-
-    for dataset in datasets:
-        for model in models:
-            for task in tasks:
-                for learn_framework in learn_frameworks:
-                    for label_ratio in label_ratios:
-                        if f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}" not in status:
-                            status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = False
-
-    with open(status_log_file, "w") as f:
-        f.write(json.dumps(status, indent=4))
-
-
-def update_execution_flags(status_log_file, dataset, model, task, learn_framework, label_ratio):
-    """
-    Update the status of finetuning status.
-    """
-    status = json.load(open(status_log_file))
-    status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = True
-
-    with open(status_log_file, "w") as f:
-        f.write(json.dumps(status, indent=4))
-
-
-def check_execution_flags(status_log_file, dataset, model, task, learn_framework, label_ratio):
-    """
-    Check the status of finetuning status.
-    """
-    status = json.load(open(status_log_file))
-    flag = (
-        status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"]
-        if f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}" in status
-        else False
-    )
-
-    return flag
+from output_utils.schedule_log_utils import init_execution_flags, update_execution_flags, check_execution_flags
+from params.output_paths import find_most_recent_weight
+from params.params_util import get_train_mode
 
 
 def check_cuda_slot(status_log_file, subprocess_pool, cuda_device_utils):
@@ -84,14 +43,14 @@ def claim_cuda_slot(cuda_device_utils):
     return assigned_cuda_device, cuda_device_utils
 
 
-def schedule_loop(status_log_file):
+def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, label_ratios):
     """
     Schedule the finetuning jobs.
     """
     start = time.time()
 
     # init the execution flags
-    init_execution_flags(status_log_file)
+    init_execution_flags(status_log_file, datasets, models, tasks, learn_frameworks, label_ratios)
     subprocess_pool = {}
     cuda_device_utils = {device: 0 for device in cuda_device_slots}
 
@@ -100,12 +59,26 @@ def schedule_loop(status_log_file):
         for dataset in datasets:
             for model in models:
                 for task in tasks:
+                    # skip useless task
+                    if (dataset == "ACIDS" and task == "distance_classification") or (
+                        dataset == "Parkland" and task == "terrain_classification"
+                    ):
+                        continue
+
                     for learn_framework in learn_frameworks:
                         for label_ratio in label_ratios:
                             # check if the job is done
                             if check_execution_flags(
                                 status_log_file, dataset, model, task, learn_framework, label_ratio
                             ):
+                                continue
+
+                            # check if we have pretrained weight
+                            newest_id, _ = find_most_recent_weight(
+                                dataset, model, get_train_mode(learn_framework), learn_framework
+                            )
+                            if newest_id < 0:
+                                print(f"Skip {dataset}-{model}-{learn_framework}-{task}-{label_ratio}")
                                 continue
 
                             # wait until a valid cuda device is available
@@ -170,15 +143,27 @@ def schedule_loop(status_log_file):
 
 
 if __name__ == "__main__":
-    datasets = ["ACIDS"]
+    datasets = ["ACIDS", "Parkland"]
     models = ["TransformerV4", "DeepSense"]
-    learn_frameworks = ["SimCLR", "MoCo", "CMC", "Cosmo", "MTSS", "MoCoFusion"]
-    tasks = ["vehicle_classification", "terrain_classification", "speed_classification"]
+    learn_frameworks = [
+        "SimCLR",
+        "MoCo",
+        "CMC",
+        "Cosmo",
+        "MTSS",
+        "ModPred",
+        "MoCoFusion",
+        "SimCLRFusion",
+        "ModPredFusion",
+    ]
+    tasks = ["vehicle_classification", "terrain_classification", "speed_classification", "distance_classification"]
     label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
 
     # hardware
-    cuda_device_slots = {0: 2, 2: 2}
+    cuda_device_slots = {0: 2, 1: 2, 2: 2, 3: 2}
 
     # for logging
     status_log_file = "/home/sl29/FoundationSense/result/finetune_status.json"
-    schedule_loop(status_log_file)
+
+    # scheduling loop
+    schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, label_ratios)

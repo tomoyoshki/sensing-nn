@@ -3,6 +3,7 @@ import torch
 import logging
 
 from params.output_paths import find_most_recent_weight
+from params.params_util import get_train_mode
 
 
 def load_model_weight(model, weight_file, load_class_layer=True):
@@ -33,7 +34,9 @@ def load_feature_extraction_weight(args, model):
 
     # find pretrained weight for feature extraction part
     feature_learn_framework = config["feature_learn_framework"]
-    newest_id, newest_weight_path = find_most_recent_weight(args, "contrastive", feature_learn_framework)
+    newest_id, newest_weight_path = find_most_recent_weight(
+        args.dataset, args.model, get_train_mode(feature_learn_framework), feature_learn_framework
+    )
     if newest_id < 0:
         raise Exception(f"No pretrained weight for feature extraction part found for {feature_learn_framework}.")
     logging.info(f"=\tLoading pretrained weight for feature extraction from: {newest_weight_path}")

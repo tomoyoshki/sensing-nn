@@ -63,7 +63,7 @@ def select_device(device="", batch_size=0, newline=True):
     return torch.device(arg)
 
 
-def set_train_mode(args):
+def get_train_mode(learn_framework):
     """
     Automatically set the train mode according to the learn_framework.
     NOTE: Add the learn framework to this register when adding a new learn framework.
@@ -82,13 +82,12 @@ def set_train_mode(args):
         "no": "supervised",
     }
 
-    if args.learn_framework in learn_framework_register:
-        args.train_mode = learn_framework_register[args.learn_framework]
-        print(f"Setting train mode: {args.train_mode}")
+    if learn_framework in learn_framework_register:
+        train_mode = learn_framework_register[learn_framework]
     else:
-        raise ValueError(f"Invalid learn_framework provided: {args.learn_framework}")
+        raise ValueError(f"Invalid learn_framework provided: {learn_framework}")
 
-    return args
+    return train_mode
 
 
 def set_auto_params(args):
@@ -131,7 +130,8 @@ def set_auto_params(args):
         args.miss_modalities = set()
 
     # set the train mode
-    args = set_train_mode(args)
+    args.train_mode = get_train_mode(args.learn_framework)
+    print(f"Set train mode: {args.train_mode}")
 
     # set output path
     args = set_model_weight_folder(args)

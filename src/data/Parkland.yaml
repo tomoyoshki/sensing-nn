@@ -75,7 +75,7 @@ DeepSense:
         
         # FC layer
         fc_dim: 512
-        pretrained_head: "mlp"
+        pretrained_head: "linear"
         # Optimizer config
         optimizer:
                 name: "AdamW"
@@ -155,14 +155,14 @@ TransformerV4:
                 audio: 1
                 seismic: 1
         # single modality
-        time_freq_out_channels: 128
+        time_freq_out_channels: 64
         time_freq_head_num: 4
         time_freq_block_num: 
                 audio: [2, 2, 4]
                 seismic: [2, 2, 4]
         # modality fusion
         mod_out_channels: 256
-        mod_head_num: 8
+        mod_head_num: 4
         mod_block_num: 2
         # location fusion
         loc_out_channels: 256 # loc_out_channels == mod_out_channels
@@ -182,7 +182,7 @@ TransformerV4:
                         seismic: [1, 1]
         # FC layer
         fc_dim: 512
-        pretrained_head: "mlp"
+        pretrained_head: "linear"
         # Optimizer config
         optimizer:
                 name: "AdamW"
@@ -230,11 +230,11 @@ SimCLR:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.00001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 0.0001
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -271,11 +271,11 @@ MoCo:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.00001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 0.00001
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -321,7 +321,7 @@ CMC:
                 min_lr: 0.0000001
                 clip_grad: 5.0
                 weight_decay: 0.05
-                decay_rate: 0.2
+                decay_rate: 0.00001
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -359,11 +359,11 @@ Cosmo:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.0001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.005
+                weight_decay: 0.00001
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -448,7 +448,7 @@ MTSS:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 600
+                train_epochs: 500
                 start_epoch: 0
                 decay_epochs: 150
                 decay_rate: 0.2
@@ -537,6 +537,7 @@ ModPredFusion:
 SimCLRFusion:
         emb_dim: 512
         temperature: 0.07
+        feature_learn_framework: "CMC"
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
@@ -549,18 +550,18 @@ SimCLRFusion:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2500
+                train_epochs: 1500
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 300
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.0001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 0.00001
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -578,6 +579,7 @@ MoCoFusion:
         emb_dim: 512
         temperature: 0.07
         momentum: 0.99
+        feature_learn_framework: "CMC"
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
@@ -590,18 +592,18 @@ MoCoFusion:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2500
+                train_epochs: 1500
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 300
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.0001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.005
+                weight_decay: 0.00001
         finetune_lr_scheduler:
                 name: "cosine"
                 warmup_prefix: True

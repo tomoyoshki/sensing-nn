@@ -147,7 +147,7 @@ class DeepSense(nn.Module):
             extracted_interval_feature = self.interval_extractor(fused_interval_feature)
 
         # Step 5: Time recurrent layer
-        recurrent_feature = self.recurrent_layer(extracted_interval_feature)
+        recurrent_feature, _ = self.recurrent_layer(extracted_interval_feature)
         sample_features = self.sample_embd_layer(recurrent_feature)
 
         # Step 6: Classification
