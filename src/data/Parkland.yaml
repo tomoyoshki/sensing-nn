@@ -384,7 +384,7 @@ Cocoa:
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.001
+                start_lr: 0.0001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
@@ -415,8 +415,8 @@ Cocoa:
                 decay_rate: 0.2
         # data augmenters
         random_augmenters:
-                time_augmenters: ["no"]
-                freq_augmenters: []
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
+                freq_augmenters: ["phase_shift"]
 
 MTSS:
         # Pre training  

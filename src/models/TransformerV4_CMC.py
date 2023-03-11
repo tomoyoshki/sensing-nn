@@ -220,7 +220,7 @@ class TransformerV4_CMC(nn.Module):
         # [mod1_feature, mod2_feature, mod3_feature, ...] -> fc_dim layer
         self.encoded_features_layer = nn.Sequential(
             nn.Linear(self.sample_dim, self.config["fc_dim"]),
-            nn.GELU(),
+            # nn.GELU(),
             nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
         )
 
@@ -231,7 +231,7 @@ class TransformerV4_CMC(nn.Module):
             for mod in self.modalities:
                 self.encoded_mod_extract_layer[loc][mod] = nn.Sequential(
                     nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
-                    nn.GELU(),
+                    # nn.GELU(),
                     nn.Linear(self.config["fc_dim"], self.config["loc_out_channels"]),
                 )
 
