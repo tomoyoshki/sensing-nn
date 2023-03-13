@@ -174,8 +174,10 @@ class DeepSense_CMC(nn.Module):
         # step 3: Single (loc, mod) feature decoder - DeConv Blocks
         # Step 1: Single (loc, mod) feature
         self.dec_loc_mod_extractors = nn.ModuleDict()
+        self.decoder_pred = nn.ModuleDict()
         for loc in self.locations:
             self.dec_loc_mod_extractors[loc] = nn.ModuleDict()
+            self.decoder_pred[loc] = nn.ModuleDict()
             for mod in self.modalities:
                 if type(self.config["loc_mod_conv_lens"]) is dict:
                     """for acoustic processing in Parkland data"""
@@ -196,6 +198,12 @@ class DeepSense_CMC(nn.Module):
                     num_inter_layers=self.config["loc_mod_conv_inter_layers"],
                     in_stride=in_stride,
                 )
+                
+                input_dim = self.args.dataset_config["num_segments"] * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod] * self.args.dataset_config["loc_mod_spectrum_len"][loc][mod]
+                input_dim = self.args.dataset_config["loc_mod_spectrum_len"][loc][mod]
+
+                # Add another linear layer
+                self.decoder_pred[loc][mod] = nn.Linear(input_dim, input_dim)
 
     @torch.no_grad()
     def process_input(self, freq_x, class_head):
@@ -340,6 +348,7 @@ class DeepSense_CMC(nn.Module):
             dec_loc_mod_input[loc] = {}
             for mod in self.modalities:
                 decoded_input = self.dec_loc_mod_extractors[loc][mod](dec_mod_interval_features[mod])
+                decoded_input = self.decoder_pred[loc][mod](decoded_input)
                 dec_loc_mod_input[loc][mod] = decoded_input
 
         return dec_loc_mod_input
