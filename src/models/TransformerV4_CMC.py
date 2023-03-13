@@ -240,7 +240,6 @@ class TransformerV4_CMC(nn.Module):
         self.mask_token = nn.ModuleDict()
         self.decoder_blocks = nn.ModuleDict()
         self.decoder_pred = nn.ModuleDict()
-        self.decoder_norm = nn.LayerNorm(self.config["time_freq_out_channels"])
         self.masked_ratio = self.generative_config["masked_ratio"]
 
         self.mod_out_layers = nn.ModuleDict()
@@ -428,8 +427,6 @@ class TransformerV4_CMC(nn.Module):
                 for layer in self.decoder_blocks[loc][mod]:
                     decoded_tokens = layer(mod_encoded_layer)
                     mod_encoded_layer = decoded_tokens
-
-                decoded_tokens = self.decoder_norm(decoded_tokens)
                 # predictor projection
                 decoded_tokens = self.decoder_pred[loc][mod](decoded_tokens)
                 decoded_out[loc][mod] = decoded_tokens

@@ -147,9 +147,9 @@ ResNet:
                 freq_augmenters: ["no"]
 
 TransformerV4:
-        dropout_ratio: 0
-        drop_path_rate: 0
-        attn_drop_rate: 0
+        dropout_ratio: 0.2
+        drop_path_rate: 0.1
+        attn_drop_rate: 0.2
         # loc mod freq feature
         in_stride:
                 audio: 1
@@ -384,7 +384,7 @@ Cocoa:
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.0001
+                start_lr: 0.00001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
@@ -627,7 +627,7 @@ MAE:
                 seismic: [1, 1]
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.0001
+                start_lr: 0.0000005
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
