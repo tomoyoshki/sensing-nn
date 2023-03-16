@@ -18,7 +18,7 @@ python3 train.py -gpu=0 -dataset=Parkland -task=vehicle_classification -model=Tr
 python3 test.py -gpu=0 -dataset=Parkland -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp10_supervised
 ```
 
-### Contrastive/Predictive Learning
+### Contrastive/Predictive/Generative Learning
 
 #### Pretraining
 ```
@@ -35,23 +35,6 @@ python3 train.py -gpu=0 -dataset=Parkland -learn_framework=SimCLR -stage=finetun
 python3 test.py -gpu=0 -dataset=Parkland -learn_framework=SimCLR -stage=finetune -task=vehicle_classification -model=TransformerV4 -model_weight=/home/sl29/FoundationSense/weights/Parkland_TransformerV4/exp22_contrastive
 ```
 
-### Generative Learning
-
-#### Pretraining
-```
-python3 train.py -gpu=0 -dataset=Parkland -learn_framework=MAE -stage=pretrain -model=TransformerV4
-```
-
-#### Finetuning
-```
-python3 train.py -gpu=0 -dataset=Parkland -learn_framework=MAE -stage=finetune -task=vehicle_classification -model=TransformerV4
-```
-
-#### Testing 
-```
-python3 test.py -gpu=0 -dataset=Parkland -learn_framework=MAE -stage=finetune -task=vehicle_classification -model=TransformerV4 -model_weight=[model_weight]
-```
-
 ### Parkland Results
 #### 1. Augmenter performance with supervised train
 |  Date       | Model | Augmenter   |  Accuracy  | User| Weight Checkpoint |
@@ -62,7 +45,7 @@ python3 test.py -gpu=0 -dataset=Parkland -learn_framework=MAE -stage=finetune -t
 | 20230116    | TransformerV4 | HorizontalFlip     | 84.59%   | sl29 |  Parkland_TransformerV4/exp10_supervised|
 | 20230116    | TransformerV4 | Jitter             | 84.46%   | sl29 |  Parkland_TransformerV4/exp11_supervised|
 | 20230116    | TransformerV4 | MagWarp            | 82.18%   | sl29 |  Parkland_TransformerV4/exp12_supervised|
-| 20230116    | TransformerV4 | TimeWarp           | 90.95%   | sl29 |  Parkland_TransformerV4/exp13_supervised|
+| 20230116    | TransformerV4 | TimeWarp           | 9095%   | sl29 |  Parkland_TransformerV4/exp13_supervised|
 | 20230117    | TransformerV4 | Negation           | 86.06%   | sl29 |  Parkland_TransformerV4/exp14_supervised|
 | 20230117    | TransformerV4 | Permutation        | 84.26%   | sl29 |  Parkland_TransformerV4/exp15_supervised|
 
