@@ -111,6 +111,7 @@ python3 test.py -gpu=0 -dataset=Parkland -learn_framework=SimCLR -stage=finetune
 | 20230221    | DeepSense | CMC | 89.04%   | tkimura4 | ACIDS_DeepSense/exp3_contrastive_CMC | batch size 128 |
 | 20230228    | DeepSense | MTSS | 43.28% | sl29 | | ||
 | 20230228    | DeepSense | ModPred | 51.37% | sl29 | | ||
+| 20230317    | DeepSense | MAE | 52.8% | sl29 | | ||
 | 20230206    | TransformerV4 | Supervised | 91.14%   | sl29 | ACIDS_TransformerV4/exp0_supervised_vehicle_classification_1.0 | channel_shuffle, mixup, phase_shift |
 | 20230206    | TransformerV4 | SimCLR | 88.41%   | sl29 | ACIDS_TransformerV4/exp1_contrastive_SimCLR |  |
 | 20230207    | TransformerV4 | MoCo | 87.67%   | sl29 | ACIDS_TransformerV4/exp2_contrastive_MoCo | temperature 0.2 |
@@ -118,6 +119,7 @@ python3 test.py -gpu=0 -dataset=Parkland -learn_framework=SimCLR -stage=finetune
 | 20230221    | TransformerV4 | CMC | 84.80%   | tkimura4 | ACIDS_TransformerV4/exp10_contrastive_CMC | batch size 128 |
 | 20230228    | TransformerV4 | MTSS | 43.65% | sl29 | | ||
 | 20230228    | TransformerV4 | ModPred | 51.68% | sl29 | | ||
+| 20230317    | TransformerV5 | MAE | 85.62% | sl29 | | ||
 
 #### 2. Terrain Classification
 |  Date       | Model | Framework |   Accuracy  | User | Weight | Comment | 
