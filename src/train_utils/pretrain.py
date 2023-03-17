@@ -12,8 +12,8 @@ from train_utils.eval_functions import val_and_logging
 from train_utils.optimizer import define_optimizer
 from train_utils.lr_scheduler import define_lr_scheduler
 from train_utils.knn import compute_embedding, compute_knn
-from train_utils.model_selection import init_predictive_framework, init_contrastive_framework, init_generative_framework
-from train_utils.loss_calc_utils import calc_predictive_loss, calc_contrastive_loss, calc_generative_loss
+from train_utils.model_selection import init_pretrain_framework
+from train_utils.loss_calc_utils import calc_pretrain_loss
 from general_utils.weight_utils import load_feature_extraction_weight, freeze_patch_embedding
 
 # utils
@@ -36,14 +36,7 @@ def pretrain(
     used in train of supervised mode or fine-tune of foundation models.
     """
     # Initialize contrastive model
-    if args.train_mode in {"predictive"}:
-        default_model = init_predictive_framework(args, backbone_model)
-    elif args.train_mode in {"contrastive"}:
-        default_model = init_contrastive_framework(args, backbone_model)
-    elif args.train_mode in {"generative"}:
-        default_model = init_generative_framework(args, backbone_model)
-    else:
-        raise Exception("Invalid train mode")
+    default_model = init_pretrain_framework(args, backbone_model)
 
     # Load feature extractor for fusion pretraining
     if "Fusion" in args.learn_framework:
@@ -87,23 +80,17 @@ def pretrain(
             idx = idx.to(args.device)
 
             # move to target device, FFT, and augmentations
-            if args.train_mode in {"predictive"}:
-                # predicitve, predictive fusion loss
-                loss = calc_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs)
-            elif args.train_mode in {"generative"}:
-                # masked autoencoder loss
-                loss = calc_generative_loss(args, default_model, augmenter, loss_func, time_loc_inputs)
-            else:
-                # contrastive learning loss
-                loss = calc_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx)
+            loss = calc_pretrain_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx)
 
             # back propagation
             loss.backward()
 
-            # update
+            # [optional] gradient clipping
             # torch.nn.utils.clip_grad_norm(
             #     backbone_model.parameters(), args.dataset_config[args.model]["optimizer"]["clip_grad"]
             # )
+
+            # update
             optimizer.step()
             train_loss_list.append(loss.item())
 
@@ -113,20 +100,17 @@ def pretrain(
 
         if epoch % 10 == 0:
             # compute embedding for the validation dataloader
-            if args.train_mode in {"contrastive", "predictive"}:
-                embs, imgs, labels_ = compute_embedding(args, default_model.backbone, augmenter, val_dataloader)
-                tb_writer.add_embedding(
-                    embs,
-                    metadata=labels_,
-                    label_img=imgs,
-                    global_step=((epoch / 10) % 5),  # storing the latest 5 only
-                    tag=f"embedding",
-                )
+            embs, imgs, labels_ = compute_embedding(args, default_model.backbone, augmenter, val_dataloader)
+            tb_writer.add_embedding(
+                embs,
+                metadata=labels_,
+                label_img=imgs,
+                global_step=((epoch / 10) % 5),  # storing the latest 5 only
+                tag=f"embedding",
+            )
 
-                # Use KNN classifier for validation
-                knn_estimator = compute_knn(args, default_model.backbone, augmenter, train_dataloader)
-            else:
-                knn_estimator = None
+            # Use KNN classifier for validation
+            knn_estimator = compute_knn(args, default_model.backbone, augmenter, train_dataloader)
 
             # validation and logging
             train_loss = np.mean(train_loss_list)

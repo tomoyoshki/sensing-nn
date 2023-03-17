@@ -61,7 +61,6 @@ class TransformerV4_CMC(nn.Module):
         
         if args.train_mode == "generative":
             self.generative_config = args.dataset_config[args.learn_framework]
-            self.init_feature_encoder()
             self.init_decoder()
 
     def init_encoder(self) -> None:
@@ -186,7 +185,7 @@ class TransformerV4_CMC(nn.Module):
                 )
 
         # mod fusion layer
-        if self.args.train_mode == "contrastive" and self.args.learn_framework == "Cosmo":
+        if self.args.learn_framework == "Cosmo":
             "Attention fusion for Cosmo"
             self.mod_fusion_layer = TransformerFusionBlock(
                 self.config["loc_out_channels"],
@@ -195,6 +194,14 @@ class TransformerV4_CMC(nn.Module):
                 self.config["dropout_ratio"],
             )
             self.sample_dim = self.config["loc_out_channels"]
+        elif self.args.learn_framework == "MAE":
+            """Linear fusion for MAE"""
+            self.mae_mod_fusion_layer = nn.Sequential(
+                nn.Linear(self.config["loc_out_channels"] * len(self.modalities), self.config["fc_dim"]),
+                nn.GELU(),
+                nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
+            )
+            self.sample_dim = self.config["fc_dim"]
         else:
             self.sample_dim = self.config["loc_out_channels"] * len(self.modalities)
 
@@ -212,36 +219,26 @@ class TransformerV4_CMC(nn.Module):
                 nn.Linear(self.config["fc_dim"], self.args.dataset_config[self.args.task]["num_classes"]),
             )
 
-    def init_feature_encoder(self) -> None:
-        """Context encoding and modality separation
-        1. Merged Context -> Non linear fully connexted layers
-        2. Non linear layer to extract context for each modality
+    def init_decoder(self) -> None:
         """
-        # [mod1_feature, mod2_feature, mod3_feature, ...] -> fc_dim layer
-        self.encoded_features_layer = nn.Sequential(
-            nn.Linear(self.sample_dim, self.config["fc_dim"]),
-            # nn.GELU(),
-            nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
-        )
-
-        # [fc_dim layer] -> [mod1_feature, mod2_feature, mod3_feature]
-        self.encoded_mod_extract_layer = nn.ModuleDict()
+        Sample feature --> modality feature --> location feature --> input signal
+        """
+        # Step 0: Separate sample features into mod features
+        self.mod_feature_sep_layer = nn.ModuleDict()
         for loc in self.locations:
-            self.encoded_mod_extract_layer[loc] = nn.ModuleDict()
+            self.mod_feature_sep_layer[loc] = nn.ModuleDict()
             for mod in self.modalities:
-                self.encoded_mod_extract_layer[loc][mod] = nn.Sequential(
+                self.mod_feature_sep_layer[loc][mod] = nn.Sequential(
                     nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
-                    # nn.GELU(),
+                    nn.GELU(),  
                     nn.Linear(self.config["fc_dim"], self.config["loc_out_channels"]),
                 )
-
-    def init_decoder(self) -> None:
+                
         self.patch_expand = nn.ModuleDict()
         self.mask_token = nn.ModuleDict()
         self.decoder_blocks = nn.ModuleDict()
         self.decoder_pred = nn.ModuleDict()
         self.masked_ratio = self.generative_config["masked_ratio"]
-
         self.mod_out_layers = nn.ModuleDict()
 
         for loc in self.locations:
@@ -344,12 +341,11 @@ class TransformerV4_CMC(nn.Module):
 
         return freq_input, padded_img_size
 
-    def forward_encode(self, patched_input, class_head=True):
+    def forward_encoder(self, patched_input, class_head=True):
         """
         If class_head is False, we return the modality features; otherwise, we return the classification results.
         time-freq feature extraction --> loc fusion --> mod concatenation --> class layer
         """
-
         # Step 1: Feature extractions on time interval (i) and spectrum (s) domains
         mod_loc_features = {mod: [] for mod in self.modalities}
         for loc in self.locations:
@@ -396,72 +392,66 @@ class TransformerV4_CMC(nn.Module):
 
         # Step 3: Mod concatenation, [b, 1, mod, c]
         if not class_head:
-            return dict(zip(self.modalities, mod_features))
+            if self.args.learn_framework == "MAE":
+                """Return the merged sample features"""
+                sample_features = self.forward_mae_fusion(mod_features)
+                return sample_features
+            else:
+                """CMC, Cosmo, and Cocoa, return the dict of mod features"""
+                return dict(zip(self.modalities, mod_features))
         else:
             if self.args.train_mode == "contrastive" and self.args.learn_framework == "Cosmo":
                 """Attention-based fusion."""
                 mod_features = torch.stack(mod_features, dim=1)
                 mod_features = mod_features.unsqueeze(dim=1)
                 sample_features = self.mod_fusion_layer(mod_features).flatten(start_dim=1)
+            elif self.args.learn_framework == "MAE":
+                """FC fusion for MAE"""
+                sample_features = self.forward_mae_fusion(mod_features)
             else:
                 """Concatenation-based fusion."""
                 sample_features = torch.cat(mod_features, dim=1)
 
             logits = self.class_layer(sample_features)
             return logits
+        
+    def forward_mae_fusion(self, mod_features):
+        """MAE fusion layer"""
+        concat_mod_features = torch.cat(mod_features, dim=1)
+        sample_features = self.mae_mod_fusion_layer(concat_mod_features)
+        return sample_features
 
-    def forward_decode(self, encoded_features):
+    def forward_decoder(self, sample_features):
         """
         Decode the latent features
         """
+        # Setep 0: Mod feature fusion (concat + fc --> [b, c])--> Mod feature separation
+        sep_mod_features = []
+        for loc in self.locations:
+            for mod in self.modalities:
+                sep_mod_feature = self.mod_feature_sep_layer[loc][mod](sample_features)
+                sep_mod_features.append(sep_mod_feature)
+                
         # encoded_features = {mod: mod_features[mod] for mod in self.modalities}
         decoded_out = {}
         for loc in self.locations:
             decoded_out[loc] = {}
-            for mod in self.modalities:
+            for i, mod in enumerate(self.modalities):
                 decoded_out[loc][mod] = []
-                mod_encoded_layer = self.mod_out_layers[loc][mod](encoded_features[mod])
+                mod_encoded_layer = self.mod_out_layers[loc][mod](sep_mod_features[i])
                 mod_encoded_layer = mod_encoded_layer.reshape(mod_encoded_layer.shape[0], -1, self.layer_dims[loc][mod])
                 mod_encoded_layer = self.patch_expand[loc][mod](mod_encoded_layer)
+                
                 # SwinTransformer Layer block
                 for layer in self.decoder_blocks[loc][mod]:
                     decoded_tokens = layer(mod_encoded_layer)
                     mod_encoded_layer = decoded_tokens
+                    
                 # predictor projection
                 decoded_tokens = self.decoder_pred[loc][mod](decoded_tokens)
                 decoded_out[loc][mod] = decoded_tokens
 
         return decoded_out
-
-    def forward_feature_encode(self, mod_features):
-        """Encode the features by merging and then demerge
-
-        Args:
-            mod_features (dict): mod_features[mod] = features extracted for mod
-        """
-        mod_features = [mod_features[mod] for mod in mod_features]
-
-        # fusion basede on attention or concatnation
-        if self.generative_config["fusion"] == "attention":
-            """Attention-based fusion."""
-            mod_features = torch.stack(mod_features, dim=1)
-            mod_features = mod_features.unsqueeze(dim=1)
-            sample_features = self.mod_fusion_layer(mod_features).flatten(start_dim=1)
-        else:
-            """Concatenation-based fusion."""
-            sample_features = torch.cat(mod_features, dim=1)
-
-        # fully connected layer
-        encoded_sample_features = self.encoded_features_layer(sample_features)
-
-        # extract feature for each modality
-        encoded_mod_features = []
-        for loc in self.locations:
-            for mod in self.modalities:
-                encoded_mod_feature = self.encoded_mod_extract_layer[loc][mod](encoded_sample_features)
-                encoded_mod_features.append(encoded_mod_feature)
-
-        return dict(zip(self.modalities, mod_features))
 
     def patch_forward(self, freq_x, class_head=True):
         """Patch the input and mask for pretrianing
@@ -504,20 +494,29 @@ class TransformerV4_CMC(nn.Module):
                 embeded_inputs[loc][mod] = embeded_input
         return embeded_inputs, padded_inputs, mod_loc_masks
 
-    def forward(self, freq_x, class_head=True):
-        
+    def forward(self, freq_x, class_head=True, decoding=True):
         # PatchEmbed the input, window mask if MAE
         patched_inputs, padded_inputs, masks = self.patch_forward(freq_x, class_head)
-
-        mod_features = self.forward_encode(patched_inputs, class_head)
         
-        if self.args.train_mode != "generative" or class_head:
-            return mod_features
+        if class_head:
+            """Finetuning the classifier"""
+            logits = self.forward_encoder(patched_inputs, class_head)
+            return logits
+        else:
+            """Pretraining the framework"""
+            if self.args.train_mode != "generative":
+                """CMC, Cosmo, Cocoa"""
+                mod_features = self.forward_encoder(patched_inputs, class_head)
+                return mod_features
+            else:
+                enc_sample_features = self.forward_encoder(patched_inputs, class_head)
+                
+                if not decoding:
+                    """Used in KNN eval"""
+                    return enc_sample_features
+                else:
+                    # Decoding
+                    decoded_output = self.forward_decoder(enc_sample_features)
 
-        # intermediate encodings
-        encoded_mod_features = self.forward_feature_encode(mod_features)
-        
-        # decide the features
-        recovered_input = self.forward_decode(encoded_mod_features)
-        return recovered_input, padded_inputs, masks
+                    return decoded_output, padded_inputs, masks, enc_sample_features
         

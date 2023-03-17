@@ -38,7 +38,6 @@ class DeepSense_CMC(nn.Module):
         self.init_encoder(args)
         if args.train_mode == "generative":
             self.generative_config = args.dataset_config["MAE"]
-            self.init_feature_encoding(args)
             self.init_decoder(args)
 
     def init_encoder(self, args):
@@ -94,16 +93,24 @@ class DeepSense_CMC(nn.Module):
                 dropout_ratio=self.config["dropout_ratio"],
             )
 
-        # mod fusion layer
+        # mod fusion layer, Cosmo --> attention fusion, MAE --> linear fusion
         if args.learn_framework == "Cosmo":
             "Attention fusion for Cosmo"
-            self.mod_fusion_layer = TransformerFusionBlock(
+            self.cosmo_mod_fusion_layer = TransformerFusionBlock(
                 self.config["recurrent_dim"] * 2,
                 4,
                 self.config["dropout_ratio"],
                 self.config["dropout_ratio"],
             )
             self.sample_dim = self.config["recurrent_dim"] * 2
+        elif args.learn_framework == "MAE":
+            """Linear fusion for MAE"""
+            self.mae_mod_fusion_layer = nn.Sequential(
+                nn.Linear(self.config["recurrent_dim"] * 2 * len(self.modalities), self.config["fc_dim"]),
+                nn.GELU(),
+                nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
+            )
+            self.sample_dim = self.config["fc_dim"]
         else:
             self.sample_dim = self.config["recurrent_dim"] * 2 * len(self.modalities)
 
@@ -112,7 +119,6 @@ class DeepSense_CMC(nn.Module):
             """Linear classification layers for supervised learning or finetuning."""
             self.class_layer = nn.Sequential(
                 nn.Linear(self.sample_dim, args.dataset_config[args.task]["num_classes"]),
-                # nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
             )
         else:
             """Non-linear classification layers for self-supervised learning."""
@@ -120,29 +126,23 @@ class DeepSense_CMC(nn.Module):
                 nn.Linear(self.sample_dim, self.config["fc_dim"]),
                 nn.GELU(),
                 nn.Linear(self.config["fc_dim"], args.dataset_config[args.task]["num_classes"]),
-                # nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
             )
 
-    def init_feature_encoding(self, args):
-        # feature dimension of each encoded sample to fc dimension
-        self.encoded_features_layer = nn.Sequential(
-            nn.Linear(self.sample_dim, self.config["fc_dim"]),
-            nn.GELU(),
-            nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
-        )
-
-        # [fc_dim layer] -> [mod1_feature, mod2_feature, mod3_feature]
-        self.encoded_mod_extract_layer = nn.ModuleDict()
+    def init_decoder(self, args):
+        """
+        Sample feature --> modality feature --> location feature --> input signal
+        """
+        # Step 0: Separate sample features into mod features
+        self.mod_feature_sep_layer = nn.ModuleDict()
         for loc in self.locations:
-            self.encoded_mod_extract_layer[loc] = nn.ModuleDict()
+            self.mod_feature_sep_layer[loc] = nn.ModuleDict()
             for mod in self.modalities:
-                self.encoded_mod_extract_layer[loc][mod] = nn.Sequential(
+                self.mod_feature_sep_layer[loc][mod] = nn.Sequential(
                     nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
-                    nn.GELU(), # remove last loss
-                    nn.Linear(self.config["fc_dim"], self.config["loc_out_channels"]),
+                    nn.GELU(),  # remove last loss
+                    nn.Linear(self.config["fc_dim"], self.config["recurrent_dim"] * 2),
                 )
 
-    def init_decoder(self, args):
         # step 1: GRU decoder
         self.dec_recurrent_layers = nn.ModuleDict()
         for mod in self.modalities:
@@ -172,7 +172,6 @@ class DeepSense_CMC(nn.Module):
                 num_inter_layers=self.config["loc_conv_inter_layers"],
             )
         # step 3: Single (loc, mod) feature decoder - DeConv Blocks
-        # Step 1: Single (loc, mod) feature
         self.dec_loc_mod_extractors = nn.ModuleDict()
         self.decoder_pred = nn.ModuleDict()
         for loc in self.locations:
@@ -198,8 +197,12 @@ class DeepSense_CMC(nn.Module):
                     num_inter_layers=self.config["loc_mod_conv_inter_layers"],
                     in_stride=in_stride,
                 )
-                
-                input_dim = self.args.dataset_config["num_segments"] * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod] * self.args.dataset_config["loc_mod_spectrum_len"][loc][mod]
+
+                input_dim = (
+                    self.args.dataset_config["num_segments"]
+                    * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]
+                    * self.args.dataset_config["loc_mod_spectrum_len"][loc][mod]
+                )
                 input_dim = self.args.dataset_config["loc_mod_spectrum_len"][loc][mod]
 
                 # Add another linear layer
@@ -213,32 +216,36 @@ class DeepSense_CMC(nn.Module):
         """
         if self.args.train_mode != "generative" or class_head:
             return freq_x, None
+        else:
+            masked_x = {}
+            masks = {}
+            for loc in self.locations:
+                masked_x[loc] = {}
+                masks[loc] = {}
+                for mod in self.modalities:
+                    # get mask ratio for each modality
+                    mask_ratio = self.generative_config["masked_ratio"][mod]
+                    b, c, i, s = freq_x[loc][mod].shape
 
-        masked_x = {}
-        masks = {}
-        for loc in self.locations:
-            masked_x[loc] = {}
-            masks[loc] = {}
-            for mod in self.modalities:
-                # get mask ratio for each modality
-                mask_ratio = self.generative_config["masked_ratio"][mod]
-                b, c, i, s = freq_x[loc][mod].shape
+                    patch_h, patch_w = (
+                        self.generative_config["patch_size"][mod][0],
+                        self.generative_config["patch_size"][mod][1],
+                    )
+                    patch_resolution_h, patch_resolution_w = i // patch_h, s // patch_w
 
-                patch_h, patch_w = self.generative_config["patch_size"][mod][0], self.generative_config["patch_size"][mod][1]
-                patch_resolution_h, patch_resolution_w = i // patch_h, s // patch_w
+                    # generate random mask
+                    bit_mask = torch.cuda.FloatTensor(b, patch_resolution_h, patch_resolution_w).uniform_() > mask_ratio
+                    patch_mask = bit_mask.repeat_interleave(patch_h, dim=1)
+                    patch_mask = patch_mask.repeat_interleave(patch_w, dim=2)
+                    patch_mask = patch_mask.int().float()
+                    patch_mask_channel = torch.stack([patch_mask] * c, dim=1)
 
-                # generate random mask
-                bit_mask = torch.cuda.FloatTensor(b, patch_resolution_h, patch_resolution_w).uniform_() > mask_ratio
-                patch_mask = bit_mask.repeat_interleave(patch_h, dim=1)
-                patch_mask = patch_mask.repeat_interleave(patch_w, dim=2)
-                patch_mask = patch_mask.int().float()
-                patch_mask_channel = torch.stack([patch_mask] * c, dim=1)
+                    # mask the input
+                    masked_input = freq_x[loc][mod].clone() * patch_mask_channel
+                    masked_x[loc][mod] = masked_input
+                    masks[loc][mod] = patch_mask
 
-                # mask the input
-                masked_input = freq_x[loc][mod].clone() * patch_mask_channel
-                masked_x[loc][mod] = masked_input
-                masks[loc][mod] = patch_mask
-        return (masked_x, masks)
+            return (masked_x, masks)
 
     def forward_encoder(self, freq_x, class_head=True):
         """The encoder function of DeepSense.
@@ -266,7 +273,7 @@ class DeepSense_CMC(nn.Module):
                 extracted_mod_features = self.mod_extractors[mod](fused_mod_feature)
                 mod_interval_features[mod] = extracted_mod_features
 
-        # Step 3: Interval Fusion for each modality, [b, c, i]
+        # Step 3: Interval Fusion for each modality, [b, c, i] --> [b, c]
         mod_features = []
         hidden_features = []
         for mod in self.modalities:
@@ -276,55 +283,49 @@ class DeepSense_CMC(nn.Module):
 
         # Step 4: Mod concatenation, [b, 1, mod, c]
         if not class_head:
-            return dict(zip(self.modalities, mod_features)), dict(zip(self.modalities, hidden_features))
+            """Used in pretraining the framework"""
+            if self.args.learn_framework == "MAE":
+                """Return the merged sample features"""
+                sample_features = self.forward_mae_fusion(mod_features)
+                return sample_features, hidden_features
+            else:
+                """CMC, Cosmo, and Cocoa, return the dict of mod features"""
+                return dict(zip(self.modalities, mod_features))
         else:
+            """Used in finetuning the classifier, return the sample features"""
             if self.args.learn_framework == "Cosmo":
-                """Attention-based Fusion"""
+                """Attention-based Fusion for Cosmo"""
                 mod_features = torch.stack(mod_features, dim=1)
                 mod_features = mod_features.unsqueeze(dim=1)
-                sample_features = self.mod_fusion_layer(mod_features).flatten(start_dim=1)
+                sample_features = self.cosmo_mod_fusion_layer(mod_features).flatten(start_dim=1)
+            elif self.args.learn_framework == "MAE":
+                """FC fusion for MAE"""
+                sample_features = self.forward_mae_fusion(mod_features)
             else:
-                """Concatenation-based Fusion"""
+                """Concatenation-based Fusion for CMC, Cocoa frameworks"""
                 sample_features = torch.cat(mod_features, dim=1)
 
             logits = self.class_layer(sample_features)
-            return logits, None
+            return logits
 
-    def forward_feature_encoder(self, mod_features):
-        """Encode the features by merging and then demerge
+    def forward_mae_fusion(self, mod_features):
+        """MAE fusion layer"""
+        concat_mod_features = torch.cat(mod_features, dim=1)
+        sample_features = self.mae_mod_fusion_layer(concat_mod_features)
+        return sample_features
 
-        Args:
-            mod_features (dict): mod_features[mod] = features extracted for mod
-        """
-        mod_features = [mod_features[mod] for mod in mod_features]
-
-        # fusion basede on attention or concatnation
-        if self.generative_config["fusion"] == "attention":
-            """Attention-based fusion."""
-            mod_features = torch.stack(mod_features, dim=1)
-            mod_features = mod_features.unsqueeze(dim=1)
-            sample_features = self.mod_fusion_layer(mod_features).flatten(start_dim=1)
-        else:
-            """Concatenation-based fusion."""
-            sample_features = torch.cat(mod_features, dim=1)
-
-        # fully connected layer
-        encoded_sample_features = self.encoded_features_layer(sample_features)
-
-        # extract feature for each modality
-        encoded_mod_features = []
+    def forward_decoder(self, sample_features, hidden_features):
+        # Setep 0: Mod feature fusion (concat + fc --> [b, c])--> Mod feature separation
+        sep_mod_features = []
         for loc in self.locations:
             for mod in self.modalities:
-                encoded_mod_feature = self.encoded_mod_extract_layer[loc][mod](encoded_sample_features)
-                encoded_mod_features.append(encoded_mod_feature)
+                sep_mod_feature = self.mod_feature_sep_layer[loc][mod](sample_features)
+                sep_mod_features.append(sep_mod_feature)
 
-        return dict(zip(self.modalities, mod_features))
-
-    def forward_decoder(self, mod_features, hidden_features):
         # Step 1: Interval Fusion Decoder from each modality, [b, c, i]
         dec_mod_features = {}
-        for mod in self.modalities:
-            dec_mod_feature = self.dec_recurrent_layers[mod](mod_features[mod], hidden_features[mod])
+        for i, mod in enumerate(self.modalities):
+            dec_mod_feature = self.dec_recurrent_layers[mod](sep_mod_features[i], hidden_features[i])
             dec_mod_features[mod] = dec_mod_feature
 
         # Step 2: Location fusion decoder, (b, c, i)
@@ -353,16 +354,28 @@ class DeepSense_CMC(nn.Module):
 
         return dec_loc_mod_input
 
-    def forward(self, freq_x, class_head=True):
+    def forward(self, freq_x, class_head=True, decoding=True):
         processed_freq_x, masks = self.process_input(freq_x, class_head)
 
-        mod_features, hidden_features = self.forward_encoder(processed_freq_x, class_head)
+        if class_head:
+            """Finetuning the classifier"""
+            logits = self.forward_encoder(processed_freq_x, class_head)
+            return logits
+        else:
+            """Pretraining the framework"""
+            if self.args.train_mode != "generative":
+                """CMC, Cosmo, Cocoa"""
+                mod_features = self.forward_encoder(processed_freq_x, class_head)
+                return mod_features
+            else:
+                # Encoding
+                enc_sample_features, hidden_features = self.forward_encoder(processed_freq_x, class_head)
 
-        # Encoded features
-        if self.args.train_mode != "generative" or class_head:
-            return mod_features
+                if not decoding:
+                    """Used in KNN eval"""
+                    return enc_sample_features
+                else:
+                    # Decoding
+                    decoded_output = self.forward_decoder(enc_sample_features, hidden_features)
 
-        # MAE specific forward for pretraining
-        encoded_mod_features = self.forward_feature_encoder(mod_features)
-        decoded_output = self.forward_decoder(encoded_mod_features, hidden_features)
-        return decoded_output, freq_x, masks
+                    return decoded_output, freq_x, masks, enc_sample_features

@@ -8,7 +8,7 @@ import torch.nn as nn
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 from sklearn.neighbors import KNeighborsClassifier
 from train_utils.knn import extract_sample_features
-from train_utils.loss_calc_utils import calc_predictive_loss, calc_contrastive_loss
+from train_utils.loss_calc_utils import calc_pretrain_loss
 
 
 def eval_task_metrics(args, labels, predictions):
@@ -100,11 +100,9 @@ def eval_pretrained_model(args, default_model, estimator, augmenter, dataloader,
             index = index.to(args.device)
             label = label.argmax(dim=1, keepdim=False) if label.dim() > 1 else label
             labels.append(label.cpu().numpy())
+
             """Eval pretrain loss."""
-            if args.train_mode == "contrastive":
-                loss = calc_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, index).item()
-            elif args.train_mode == "predictive":
-                loss = calc_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs).item()
+            loss = calc_pretrain_loss(args, default_model, augmenter, loss_func, time_loc_inputs, index).item()
             loss_list.append(loss)
 
             """Eval KNN estimator."""
@@ -112,6 +110,7 @@ def eval_pretrained_model(args, default_model, estimator, augmenter, dataloader,
             feat = extract_sample_features(args, default_model.backbone, aug_freq_loc_inputs)
             sample_embeddings.append(feat.detach().cpu().numpy())
 
+    # knn predictions
     sample_embeddings = np.concatenate(sample_embeddings)
     labels = np.concatenate(labels)
     predictions = torch.Tensor(estimator.predict(sample_embeddings))
@@ -213,7 +212,7 @@ def val_and_logging(
         classifier_dataloader (_type_): _description_
         classifier_loss_func (_type_): _description_
     """
-    if args.train_mode in {"contrastive", "predictive"} and args.stage == "pretrain":
+    if args.train_mode in {"contrastive", "predictive", "generative"} and args.stage == "pretrain":
         logging.info(f"Train {args.train_mode} loss: {train_loss: .5f} \n")
     else:
         logging.info(f"Train classifier loss: {train_loss: .5f} \n")
@@ -225,14 +224,6 @@ def val_and_logging(
         )
         test_loss, test_acc, test_f1, test_conf_matrix = eval_supervised_model(
             args, model, augmenter, test_loader, loss_func
-        )
-    elif args.train_mode == "generative":
-        """MAE pretraining"""
-        val_loss, val_f1, val_acc, val_conf_matrix = eval_generative_model(
-            args, model, estimator, augmenter, val_loader, loss_func
-        )
-        test_loss, test_f1, test_acc, test_conf_matrix = eval_generative_model(
-            args, model, estimator, augmenter, test_loader, loss_func
         )
     else:
         """Predictive pretrain task"""

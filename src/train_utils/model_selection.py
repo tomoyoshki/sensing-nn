@@ -96,10 +96,11 @@ def init_predictive_framework(args, backbone_model):
     elif args.learn_framework in {"ModPred", "ModPredFusion"}:
         default_model = ModPred(args, backbone_model)
     else:
-        raise NotImplementedError
+        raise NotImplementedError(f"Invalid learninig framework {args.learn_framework} provided")
 
     default_model = default_model.to(args.device)
     return default_model
+
 
 def init_generative_framework(args, backbone_model):
     if args.learn_framework == "MAE":
@@ -109,6 +110,23 @@ def init_generative_framework(args, backbone_model):
 
     default_model = default_model.to(args.device)
     return default_model
+
+
+def init_pretrain_framework(args, backbone_model):
+    """
+    Initialize the pretraining framework according to args.
+    """
+    if args.train_mode in {"predictive"}:
+        default_model = init_predictive_framework(args, backbone_model)
+    elif args.train_mode in {"contrastive"}:
+        default_model = init_contrastive_framework(args, backbone_model)
+    elif args.train_mode in {"generative"}:
+        default_model = init_generative_framework(args, backbone_model)
+    else:
+        raise Exception("Invalid train mode")
+
+    return default_model
+
 
 def init_loss_func(args, train_dataloader):
     """Initialize the loss function according to the config."""

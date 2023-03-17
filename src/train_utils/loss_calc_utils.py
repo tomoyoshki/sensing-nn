@@ -41,11 +41,26 @@ def calc_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inp
 
     return loss
 
+
 def calc_generative_loss(args, default_model, augmenter, loss_func, time_loc_inputs):
     if args.learn_framework == "MAE":
         aug_freq_loc_inputs = augmenter.forward("random", time_loc_inputs)
-        decoded_x, padded_x, masks = default_model(aug_freq_loc_inputs)
+        decoded_x, padded_x, masks, sample_features = default_model(aug_freq_loc_inputs)
         loss = loss_func(padded_x, decoded_x, masks)
     else:
         raise NotImplementedError(f"Generative framwork {args.learn_framework} yet implemented")
+    return loss
+
+
+def calc_pretrain_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx):
+    """Choose the corrent loss function according to the train mode,"""
+    if args.train_mode == "predictive":
+        loss = calc_predictive_loss(args, default_model, augmenter, loss_func, time_loc_inputs)
+    elif args.train_mode == "generative":
+        loss = calc_generative_loss(args, default_model, augmenter, loss_func, time_loc_inputs)
+    elif args.train_mode == "contrastive":
+        loss = calc_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_inputs, idx)
+    else:
+        raise NotImplementedError(f"Train mode {args.train_mode} yet implemented")
+
     return loss
