@@ -72,14 +72,13 @@ DeepSense:
         # recurrent layer
         recurrent_dim: 256
         recurrent_layers: 2
-        
         # FC layer
         fc_dim: 512
         pretrained_head: "linear"
         # Optimizer config
         optimizer:
                 name: "AdamW"
-                start_lr: 0.000005
+                start_lr: 0.00001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
@@ -621,13 +620,13 @@ MAE:
         decoder_channels: 256
         masked_ratio:
                 audio: 0.75
-                seismic: 0.75
+                seismic: 0.5
         patch_size:
-                audio: [1, 20]
+                audio: [1, 40]
                 seismic: [1, 1]
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.0000005
+                start_lr: 0.0001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
@@ -643,11 +642,11 @@ MAE:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.00001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 0.00001
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -658,8 +657,8 @@ MAE:
                 decay_rate: 0.2
         # Augmenters
         random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
-                freq_augmenters: ["phase_shift"]
+                time_augmenters: ["no"]
+                freq_augmenters: ["no"]
 
 # ------------------------------------------- Data Augmenter Configs ------------------------------------------
 # Mixup config

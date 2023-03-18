@@ -184,64 +184,6 @@ class MoCoLoss(nn.Module):
         return loss
 
 
-class MAELoss(nn.Module):
-    """MAE Loss function
-    https://github.com/facebookresearch/mae/blob/main/models_mae.py
-    """
-
-    def __init__(self, args):
-        super(MAELoss, self).__init__()
-        self.args = args
-        self.modalities = args.dataset_config["modality_names"]
-        self.backbone_config = args.dataset_config[args.model]
-        self.locations = args.dataset_config["location_names"]
-        self.norm_pix_loss = True
-
-    def patchify(self, imgs, patch_size, in_channel):
-        """
-        imgs: (N, 3, H, W)
-        x: (N, L, patch_size**2 *3)
-        """
-
-        ph, pw = patch_size
-
-        h = imgs.shape[2] // ph
-        w = imgs.shape[3] // pw
-
-        x = imgs.reshape(shape=(imgs.shape[0], in_channel, h, ph, w, pw))
-        x = torch.einsum("nchpwq->nhwpqc", x)
-        x = x.reshape(imgs.shape[0], h * w, ph * pw * in_channel)
-        return x
-
-    def forward(self, padded_x, decoded_x, masks):
-        total_loss = 0
-        for loc in self.locations:
-            for mod in self.modalities:
-                mask = masks[loc][mod]
-                pred = decoded_x[loc][mod]
-                if self.args.model == "TransformerV4":
-                    in_channel = self.args.dataset_config["loc_mod_in_freq_channels"]["shake"][mod]
-                    target = self.patchify(
-                        padded_x[loc][mod], self.backbone_config["patch_size"]["freq"][mod], in_channel
-                    )
-                else:
-                    target = padded_x[loc][mod]
-                    # b, c, i, s -> b, i, s, c to match TransformerV4
-                    pred = torch.permute(pred, (0, 2, 3, 1))
-                    target = torch.permute(target, (0, 2, 3, 1))
-
-                if self.norm_pix_loss:
-                    mean = target.mean(dim=-1, keepdim=True)
-                    var = target.var(dim=-1, keepdim=True)
-                    target = (target - mean) / (var + 1.0e-6) ** 0.5
-
-                loss = (pred - target) ** 2
-                loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
-                loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
-                total_loss += loss
-        return total_loss
-
-
 class CMCLoss(nn.Module):
     def __init__(self, args):
         super(CMCLoss, self).__init__()
@@ -293,6 +235,7 @@ class CMCLoss(nn.Module):
         loss = self.forward_similiarity(seismic_features, audio_features)
 
         return loss
+
 
 class CosmoLoss(nn.Module):
     def __init__(self, args):
@@ -358,6 +301,7 @@ class CosmoLoss(nn.Module):
 
         return loss
 
+
 class CocoaLoss(nn.Module):
     def __init__(self, args, idx=None):
         """Cocoa loss similar to CMC
@@ -385,7 +329,7 @@ class CocoaLoss(nn.Module):
             sim = torch.subtract(torch.ones((dim_size, dim_size), dtype=torch.float32).to(self.args.device), sim)
             # (1 - s) / t
             # e ^ ((1 - s) / tau)
-            sim = torch.exp(sim/self.temperature)
+            sim = torch.exp(sim / self.temperature)
             pos_error.append(torch.mean(sim))
 
         pos_error = torch.stack(pos_error)
@@ -395,13 +339,13 @@ class CocoaLoss(nn.Module):
         for i in range(dim_size):
             # dot product
             sim = torch.matmul(features[i], features[i].T)
-            sim = torch.exp(sim/self.temperature)
-            tri_mask = np.ones(batch_size ** 2, dtype=np.bool).reshape(batch_size, batch_size)
+            sim = torch.exp(sim / self.temperature)
+            tri_mask = np.ones(batch_size**2, dtype=np.bool).reshape(batch_size, batch_size)
             tri_mask[np.diag_indices(batch_size)] = False
-            
+
             off_diag_sim = torch.masked_select(sim, torch.from_numpy(tri_mask).to(sim.device))
             off_diag_sim = torch.reshape(off_diag_sim, (batch_size, batch_size - 1))
-            neg_error += (torch.mean(off_diag_sim, dim=-1))
+            neg_error += torch.mean(off_diag_sim, dim=-1)
 
         cross_mod_loss = torch.multiply(torch.sum(pos_error), self.scale_loss)
         discriminator_loss = self.lambd * torch.sum(neg_error)
@@ -412,11 +356,71 @@ class CocoaLoss(nn.Module):
         features = []
         for mod in self.modalities:
             features.append(mod_features[mod])
-        
+
         features = torch.stack(features)
-        
+
         # normalize each features
         features_norm = F.normalize(features, dim=-1)
-        
+
         loss = self.calc_loss(features_norm)
         return loss
+
+
+class MAELoss(nn.Module):
+    """MAE Loss function
+    https://github.com/facebookresearch/mae/blob/main/models_mae.py
+    """
+
+    def __init__(self, args):
+        super(MAELoss, self).__init__()
+        self.args = args
+        self.modalities = args.dataset_config["modality_names"]
+        self.backbone_config = args.dataset_config[args.model]
+        self.locations = args.dataset_config["location_names"]
+        self.norm_pix_loss = True
+
+    def patchify(self, imgs, patch_size, in_channel):
+        """
+        imgs: (N, 3, H, W)
+        x: (N, L, patch_size**2 *3)
+        """
+        ph, pw = patch_size
+
+        h = imgs.shape[2] // ph
+        w = imgs.shape[3] // pw
+
+        x = imgs.reshape(shape=(imgs.shape[0], in_channel, h, ph, w, pw))
+        x = torch.einsum("nchpwq->nhwpqc", x)
+        x = x.reshape(imgs.shape[0], h * w, ph * pw * in_channel)
+        return x
+
+    def forward(self, padded_x, decoded_x, masks):
+        total_loss = 0
+        for loc in self.locations:
+            for mod in self.modalities:
+                mask = masks[loc][mod]
+                pred = decoded_x[loc][mod]
+                if self.args.model == "TransformerV4":
+                    in_channel = self.args.dataset_config["loc_mod_in_freq_channels"]["shake"][mod]
+                    target = self.patchify(
+                        padded_x[loc][mod],
+                        self.backbone_config["patch_size"]["freq"][mod],
+                        in_channel,
+                    )
+                else:
+                    target = padded_x[loc][mod]
+                    # b, c, i, s -> b, i, s, c to match TransformerV4
+                    pred = torch.permute(pred, (0, 2, 3, 1))
+                    target = torch.permute(target, (0, 2, 3, 1))
+
+                if self.norm_pix_loss:
+                    mean = target.mean(dim=-1, keepdim=True)
+                    var = target.var(dim=-1, keepdim=True)
+                    target = (target - mean) / (var + 1.0e-6) ** 0.5
+
+                loss = (pred - target) ** 2
+                loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+                loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
+                total_loss += loss
+
+        return total_loss

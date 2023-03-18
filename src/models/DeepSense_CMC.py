@@ -365,8 +365,8 @@ class DeepSense_CMC(nn.Module):
             """Pretraining the framework"""
             if self.args.train_mode != "generative":
                 """CMC, Cosmo, Cocoa"""
-                mod_features = self.forward_encoder(processed_freq_x, class_head)
-                return mod_features
+                enc_mod_features = self.forward_encoder(processed_freq_x, class_head)
+                return enc_mod_features
             else:
                 # Encoding
                 enc_sample_features, hidden_features = self.forward_encoder(processed_freq_x, class_head)
@@ -376,6 +376,6 @@ class DeepSense_CMC(nn.Module):
                     return enc_sample_features
                 else:
                     # Decoding
-                    decoded_output = self.forward_decoder(enc_sample_features, hidden_features)
+                    dec_output = self.forward_decoder(enc_sample_features, hidden_features)
 
-                    return decoded_output, freq_x, masks, enc_sample_features
+                    return dec_output, freq_x, masks, enc_sample_features

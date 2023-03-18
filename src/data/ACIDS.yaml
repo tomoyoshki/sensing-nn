@@ -651,7 +651,7 @@ MAE:
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
-                weight_decay: 0.0005
+                weight_decay: 0.005
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -662,8 +662,8 @@ MAE:
                 decay_rate: 0.2
         # Augmenters
         random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
-                freq_augmenters: ["phase_shift"]
+                time_augmenters: ["no"]
+                freq_augmenters: ["no"]
 
 # ------------------------------------------- Data Augmenter Configs ------------------------------------------
 # Mixup config

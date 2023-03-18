@@ -64,6 +64,9 @@ class TransformerV4_CMC(nn.Module):
             self.init_decoder()
 
     def init_encoder(self) -> None:
+        """
+        Single (mod, loc) feature extraction --> loc fusion --> mod fusion
+        """
         # Single sensor
         self.freq_interval_layers = nn.ModuleDict()  # Frequency & Interval layers
         self.patch_embed = nn.ModuleDict()
@@ -416,7 +419,7 @@ class TransformerV4_CMC(nn.Module):
             return logits
         
     def forward_mae_fusion(self, mod_features):
-        """MAE fusion layer"""
+        """MAE linear fusion layer"""
         concat_mod_features = torch.cat(mod_features, dim=1)
         sample_features = self.mae_mod_fusion_layer(concat_mod_features)
         return sample_features
@@ -438,14 +441,14 @@ class TransformerV4_CMC(nn.Module):
             decoded_out[loc] = {}
             for i, mod in enumerate(self.modalities):
                 decoded_out[loc][mod] = []
-                mod_encoded_layer = self.mod_out_layers[loc][mod](sep_mod_features[i])
-                mod_encoded_layer = mod_encoded_layer.reshape(mod_encoded_layer.shape[0], -1, self.layer_dims[loc][mod])
-                mod_encoded_layer = self.patch_expand[loc][mod](mod_encoded_layer)
+                decoded_mod_feature = self.mod_out_layers[loc][mod](sep_mod_features[i])
+                decoded_mod_feature = decoded_mod_feature.reshape(decoded_mod_feature.shape[0], -1, self.layer_dims[loc][mod])
+                decoded_mod_feature = self.patch_expand[loc][mod](decoded_mod_feature)
                 
                 # SwinTransformer Layer block
                 for layer in self.decoder_blocks[loc][mod]:
-                    decoded_tokens = layer(mod_encoded_layer)
-                    mod_encoded_layer = decoded_tokens
+                    decoded_tokens = layer(decoded_mod_feature)
+                    decoded_mod_feature = decoded_tokens
                     
                 # predictor projection
                 decoded_tokens = self.decoder_pred[loc][mod](decoded_tokens)
@@ -506,8 +509,8 @@ class TransformerV4_CMC(nn.Module):
             """Pretraining the framework"""
             if self.args.train_mode != "generative":
                 """CMC, Cosmo, Cocoa"""
-                mod_features = self.forward_encoder(patched_inputs, class_head)
-                return mod_features
+                enc_mod_features = self.forward_encoder(patched_inputs, class_head)
+                return enc_mod_features
             else:
                 enc_sample_features = self.forward_encoder(patched_inputs, class_head)
                 
@@ -516,7 +519,7 @@ class TransformerV4_CMC(nn.Module):
                     return enc_sample_features
                 else:
                     # Decoding
-                    decoded_output = self.forward_decoder(enc_sample_features)
+                    dec_output = self.forward_decoder(enc_sample_features)
 
-                    return decoded_output, padded_inputs, masks, enc_sample_features
+                    return dec_output, padded_inputs, masks, enc_sample_features
         
