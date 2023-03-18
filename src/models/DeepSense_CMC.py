@@ -206,7 +206,11 @@ class DeepSense_CMC(nn.Module):
                 input_dim = self.args.dataset_config["loc_mod_spectrum_len"][loc][mod]
 
                 # Add another linear layer
-                self.decoder_pred[loc][mod] = nn.Linear(input_dim, input_dim)
+                self.decoder_pred[loc][mod] = nn.Sequential(
+                    nn.Linear(input_dim, input_dim),
+                    nn.GELU(),
+                    nn.Linear(input_dim, input_dim),
+                )
 
     @torch.no_grad()
     def process_input(self, freq_x, class_head):
@@ -233,17 +237,23 @@ class DeepSense_CMC(nn.Module):
                     )
                     patch_resolution_h, patch_resolution_w = i // patch_h, s // patch_w
 
-                    # generate random mask
+                    # generate random mask for each "patch"
                     bit_mask = torch.cuda.FloatTensor(b, patch_resolution_h, patch_resolution_w).uniform_() > mask_ratio
+                    
+                    # expand the mask to entire area
                     patch_mask = bit_mask.repeat_interleave(patch_h, dim=1)
                     patch_mask = patch_mask.repeat_interleave(patch_w, dim=2)
                     patch_mask = patch_mask.int().float()
+                    
+                    # channel wise 
                     patch_mask_channel = torch.stack([patch_mask] * c, dim=1)
 
                     # mask the input
                     masked_input = freq_x[loc][mod].clone() * patch_mask_channel
                     masked_x[loc][mod] = masked_input
-                    masks[loc][mod] = patch_mask
+                    
+                    # store the pixel wise mask
+                    masks[loc][mod] = bit_mask
 
             return (masked_x, masks)
 
@@ -368,6 +378,7 @@ class DeepSense_CMC(nn.Module):
                 enc_mod_features = self.forward_encoder(processed_freq_x, class_head)
                 return enc_mod_features
             else:
+                """MAE"""
                 # Encoding
                 enc_sample_features, hidden_features = self.forward_encoder(processed_freq_x, class_head)
 
