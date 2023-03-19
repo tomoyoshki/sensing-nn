@@ -21,7 +21,7 @@ from models.SwinModules import (
     PatchMerging,
 )
 
-from models.MAEModule import window_masking
+from models.MAEModule import window_masking, window_masking_2
 
 def printTime(bp, ap, be, ae, bd=None, ad=None):
     patch = ap - bp
@@ -286,9 +286,7 @@ class TransformerV4_CMC(nn.Module):
                     )
                 ]  # stochastic depth decay rule
 
-                for i_layer, block_num in enumerate(
-                    self.config["time_freq_block_num"][mod][:-1]
-                ):  # different downsample ratios
+                for i_layer, block_num in enumerate(self.config["time_freq_block_num"][mod][:-1]):
                     inverse_i_layer = len(self.config["time_freq_block_num"][mod]) - i_layer - 2
                     down_ratio = 2**inverse_i_layer
                     layer_dim = int(self.config["time_freq_out_channels"] * down_ratio)
@@ -380,8 +378,8 @@ class TransformerV4_CMC(nn.Module):
 
                 # Unify the input channels for each modality
                 freq_interval_output = self.mod_in_layers[loc][mod](freq_interval_output.reshape([b, -1]))
-
                 freq_interval_output = freq_interval_output.reshape(b, 1, -1)
+                
                 # Append the modality feature to the list
                 mod_loc_features[mod].append(freq_interval_output)
 
@@ -493,16 +491,15 @@ class TransformerV4_CMC(nn.Module):
 
                 # Patch Partition and Linear Embedding
                 embeded_input = self.patch_embed[loc][mod](freq_input)
-                # we only mask images for pretraining
+                
+                # we only mask images for pretraining MAE
                 if self.args.train_mode == "generative" and class_head == False:
-                    embeded_input, mod_loc_mask = window_masking(
+                    embeded_input, mod_loc_mask = window_masking_2(
                         embeded_input,
                         padded_img_size,
                         self.patch_embed[loc][mod].patches_resolution,
                         self.config["window_size"][mod],
                         self.mask_token[loc][mod],
-                        remove=False,
-                        mask_len_sparse=False,
                         mask_ratio=self.masked_ratio[mod]
                     )
                     mod_loc_masks[loc][mod] = mod_loc_mask

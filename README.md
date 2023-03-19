@@ -60,7 +60,7 @@ python3 test.py -gpu=0 -dataset=Parkland -learn_framework=SimCLR -stage=finetune
 | 20230220    | DeepSense | CMC | 94.58%   |  tkimura4 | Parkland_DeepSense/exp4_contrastive_CMC | use large datasets, batch size 128, infoNCE loss|
 | 20230226    | DeepSense | MTSS | 46.95% | sl29 | | 
 | 20230228    | DeepSense | ModPred | 42.86% | sl29 | | ||
-| 20230317    | DeepSense | MAE | 53.45% | sl29 | | ||
+| 20230317    | DeepSense | MAE | 52.38% | sl29 | | ||
 | 20230130    | TransformerV4 | Supervised | 91.90%   |  sl29 | Parkland_TransformerV4/exp5_supervised_vehicle_classification_1.0 | mixup + phase_shift. |
 | 20230130    | TransformerV4 | SimCLR | 93.03%   |  sl29 | Parkland_TransformerV4/exp22_contrastive_SimCLR | use large dataset, batch size 256|
 | 20230212    | TransformerV4 | MoCo | 94.31%   |  tkimura4 | Parkland_TransformerV4/exp0_contrastive_MoCo | use large dataset, batch size 256|
@@ -68,7 +68,7 @@ python3 test.py -gpu=0 -dataset=Parkland -learn_framework=SimCLR -stage=finetune
 | 20230220    | TransformerV4 | CMC | 91.96%   |  tkimura4 | Parkland_TransformerV4/exp28_contrastive_CMC | use large dataset, batch size 128, infoNCE loss|
 | 20230226    | TransformerV4 | MTSS | 42.19% | sl29 | | |
 | 20230228    | TransformerV4 | ModPred | 43.47% | sl29 | | |
-| 20230317    | TransformerV4 | MAE | 64.23% | sl29 | | ||
+| 20230317    | TransformerV4 | MAE | 75.28% | sl29 | | ||
 
 #### 3. Speed classification 
 
