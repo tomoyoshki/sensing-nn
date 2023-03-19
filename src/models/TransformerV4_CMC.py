@@ -277,7 +277,6 @@ class TransformerV4_CMC(nn.Module):
                     inverse_i_layer = len(self.config["time_freq_block_num"][mod]) - i_layer - 2
                     down_ratio = 2**inverse_i_layer
                     layer_dim = int(self.config["time_freq_out_channels"] * down_ratio)
-                    print(i_layer, inverse_i_layer, block_num, layer_dim)
                     layer = BasicLayer(
                         dim=layer_dim,  # C in SWIN
                         input_resolution=(
@@ -295,8 +294,7 @@ class TransformerV4_CMC(nn.Module):
                             )
                         ],
                         norm_layer=self.norm_layer,
-                        patch_expanding=PatchExpanding
-                        if (i_layer < len(self.config["time_freq_block_num"][mod]) - 2)
+                        patch_expanding=PatchExpanding if (i_layer < len(self.config["time_freq_block_num"][mod]) - 2)
                         else None,
                     )
                     self.decoder_blocks[loc][mod].append(layer)
@@ -314,6 +312,7 @@ class TransformerV4_CMC(nn.Module):
                 
                 self.decoder_pred[loc][mod] = nn.Sequential(
                     nn.Linear(self.config["time_freq_out_channels"], self.config["time_freq_out_channels"]),
+                    nn.GELU(),
                     nn.Linear(self.config["time_freq_out_channels"], patch_area * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]),
                 )
 
@@ -427,7 +426,7 @@ class TransformerV4_CMC(nn.Module):
         """
         Decode the latent features
         """
-        # Setep 0: Mod feature fusion (concat + fc --> [b, c])--> Mod feature separation
+        # Setep 0: Mod feature separation
         sep_mod_features = []
         for loc in self.locations:
             for mod in self.modalities:
@@ -439,17 +438,18 @@ class TransformerV4_CMC(nn.Module):
         for loc in self.locations:
             decoded_out[loc] = {}
             for i, mod in enumerate(self.modalities):
+                # Expand channels --> Rebuild spatial dimensions
                 decoded_out[loc][mod] = []
                 decoded_mod_feature = self.mod_out_layers[loc][mod](sep_mod_features[i])
                 decoded_mod_feature = decoded_mod_feature.reshape(decoded_mod_feature.shape[0], -1, self.layer_dims[loc][mod])
                 decoded_mod_feature = self.patch_expand[loc][mod](decoded_mod_feature)
                 
-                # SwinTransformer Layer block
+                # Decoder blocks
                 for layer in self.decoder_blocks[loc][mod]:
                     decoded_tokens = layer(decoded_mod_feature)
                     decoded_mod_feature = decoded_tokens
                     
-                # predictor projection
+                # Prediction layer with FCs 
                 decoded_tokens = self.decoder_pred[loc][mod](decoded_tokens)
                 decoded_out[loc][mod] = decoded_tokens
 
