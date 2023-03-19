@@ -321,50 +321,32 @@ class CocoaLoss(nn.Module):
         """
         mod_features: [mod, batch, channel]
         """
-        mod_size, batch_size, dim_size = mod_features.shape
+        mods, batch, channel = mod_features.shape
 
         # Positive Pairs
-        pos_error = []
-        for i in range(batch_size):
-            sim = torch.matmul(mod_features[:, i, :], mod_features[:, i, :].T)
-            sim = torch.subtract(torch.ones((mod_size, mod_size), dtype=torch.float32).to(self.args.device), sim)
-            sim = torch.exp(sim / self.temperature)
-            pos_error.append(torch.mean(sim))
-
-        pos_error = torch.stack(pos_error)
+        sample_features = mod_features.permute(1, 0, 2)
+        sim = torch.matmul(sample_features, sample_features.permute(0, 2, 1))
+        sim = torch.ones((batch, mods, mods)).to(self.args.device).float() - sim
+        sim = torch.exp(sim / self.temperature)
+        pos_error = torch.mean(sim)
 
         # Negative Pairs
-        neg_error = 0
-        for i in range(mod_size):
-            # calc sample similarity within each modality
-            sim = torch.matmul(mod_features[i], mod_features[i].T)
-            sim = torch.exp(sim / self.temperature)
+        sim = torch.matmul(mod_features, mod_features.permute(0, 2, 1))
+        sim = torch.exp(sim / self.temperature)
+        tri_mask = torch.ones([batch, batch]).to(self.args.device).bool()
+        tri_mask.fill_diagonal_(False).unsqueeze(0).repeat(mods, 1, 1)
+        off_diag_sim = torch.masked_select(sim, tri_mask).reshape([mods, batch, batch - 1])
+        neg_error = torch.sum(torch.mean(off_diag_sim, dim=[1, 2]), dim=0)
 
-            # set diagonal to 0
-            tri_mask = torch.ones([batch_size, batch_size], dtype=torch.bool).to(self.args.device)
-            tri_mask.fill_diagonal_(False)
+        loss = self.scale_loss * torch.mean(pos_error) + self.lambd * torch.mean(neg_error)
 
-            # select and average negative errors
-            off_diag_sim = torch.masked_select(sim, tri_mask)
-            off_diag_sim = torch.reshape(off_diag_sim, (batch_size, batch_size - 1))
-            neg_error += torch.mean(off_diag_sim, dim=-1)
-
-        cross_mod_loss = torch.multiply(torch.sum(pos_error), self.scale_loss)
-        discriminator_loss = self.lambd * torch.sum(neg_error)
-
-        return cross_mod_loss + discriminator_loss
+        return loss
 
     def forward(self, mod_features):
-        features = []
-        for mod in self.modalities:
-            features.append(mod_features[mod])
-
-        features = torch.stack(features)
-
-        # normalize each features, [mod, batch, channel]
+        features = torch.stack([mod_features[mod] for mod in self.modalities], dim=0)
         features_norm = F.normalize(features, dim=-1)
-
         loss = self.calc_loss(features_norm)
+
         return loss
 
 
