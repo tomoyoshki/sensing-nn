@@ -315,6 +315,7 @@ class TransformerV4_CMC(nn.Module):
                 
                 self.decoder_pred[loc][mod] = nn.Sequential(
                     nn.Linear(self.config["time_freq_out_channels"], self.config["time_freq_out_channels"]),
+                    nn.GELU(),
                     nn.Linear(self.config["time_freq_out_channels"], patch_area * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]),
                 )
 
