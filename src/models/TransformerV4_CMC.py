@@ -6,6 +6,7 @@ import numpy as np
 
 from torch.nn import TransformerEncoderLayer
 from input_utils.padding_utils import get_padded_size
+from input_utils.mask_utils import mask_input
 from models.FusionModules import TransformerFusionBlock
 
 from timm.models.layers import trunc_normal_
@@ -252,7 +253,7 @@ class TransformerV4_CMC(nn.Module):
             self.mod_out_layers[loc] = nn.ModuleDict()
 
             for mod in self.modalities:
-                self.mask_token[loc][mod] = nn.Parameter(torch.zeros(1, 1, self.config["time_freq_out_channels"]))
+                self.mask_token[loc][mod] = nn.Parameter(torch.zeros(self.config["time_freq_out_channels"]))
 
                 self.patch_expand[loc][mod] = PatchExpanding(
                     self.img_sizes[loc][mod],
@@ -481,12 +482,13 @@ class TransformerV4_CMC(nn.Module):
                 
                 # we only mask images for pretraining MAE
                 if self.args.train_mode == "generative" and class_head == False:
-                    embeded_input, mod_loc_mask = window_masking_2(
-                        embeded_input,
-                        padded_img_size,
-                        self.patch_embed[loc][mod].patches_resolution,
-                        self.config["window_size"][mod],
-                        self.mask_token[loc][mod],
+                    embeded_input, mod_loc_mask = mask_input(
+                        freq_x=embeded_input,
+                        input_resolution=padded_img_size,
+                        patch_resolution=self.patch_embed[loc][mod].patches_resolution,
+                        channel_dimension=-1,
+                        window_size=self.config["window_size"][mod],
+                        mask_token=self.mask_token[loc][mod],
                         mask_ratio=self.masked_ratio[mod]
                     )
                     mod_loc_masks[loc][mod] = mod_loc_mask
