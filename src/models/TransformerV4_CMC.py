@@ -273,12 +273,11 @@ class TransformerV4_CMC(nn.Module):
                     )
                 ]  # stochastic depth decay rule
 
-                for i_layer, block_num in enumerate(
-                    self.config["time_freq_block_num"][mod][:-1]
-                ):  # different downsample ratios
+                for i_layer, block_num in enumerate(self.config["time_freq_block_num"][mod][:-1]):
                     inverse_i_layer = len(self.config["time_freq_block_num"][mod]) - i_layer - 2
                     down_ratio = 2**inverse_i_layer
                     layer_dim = int(self.config["time_freq_out_channels"] * down_ratio)
+                    print(i_layer, inverse_i_layer, block_num, layer_dim)
                     layer = BasicLayer(
                         dim=layer_dim,  # C in SWIN
                         input_resolution=(
@@ -367,8 +366,8 @@ class TransformerV4_CMC(nn.Module):
 
                 # Unify the input channels for each modality
                 freq_interval_output = self.mod_in_layers[loc][mod](freq_interval_output.reshape([b, -1]))
-
                 freq_interval_output = freq_interval_output.reshape(b, 1, -1)
+                
                 # Append the modality feature to the list
                 mod_loc_features[mod].append(freq_interval_output)
 
@@ -480,7 +479,8 @@ class TransformerV4_CMC(nn.Module):
 
                 # Patch Partition and Linear Embedding
                 embeded_input = self.patch_embed[loc][mod](freq_input)
-                # we only mask images for pretraining
+                
+                # we only mask images for pretraining MAE
                 if self.args.train_mode == "generative" and class_head == False:
                     embeded_input, mod_loc_mask = window_masking(
                         embeded_input,

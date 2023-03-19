@@ -28,31 +28,19 @@ from models.ModPredModules import ModPred
 from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss, MAELoss, CocoaLoss
 
 
-def init_model(args):
+def init_backbone_model(args):
     """Automatically select the model according to args."""
     if args.model == "DeepSense":
-        if (
-            args.train_mode == "contrastive"
-            and args.stage == "pretrain"
-            and args.learn_framework in {"MoCo", "MoCoFusion"}
-        ):
+        if args.learn_framework in {"MoCo", "MoCoFusion"} and args.stage == "pretrain":
             return DeepSense
-        elif args.train_mode == "contrastive" and args.learn_framework in {"CMC", "Cosmo", "Cocoa"}:
-            classifier = DeepSense_CMC(args)
-        elif args.train_mode == "generative":
+        elif args.learn_framework in {"CMC", "Cosmo", "Cocoa", "MAE"}:
             classifier = DeepSense_CMC(args)
         else:
             classifier = DeepSense(args, self_attention=False)
     elif args.model == "TransformerV4":
-        if (
-            args.train_mode == "contrastive"
-            and args.stage == "pretrain"
-            and args.learn_framework in {"MoCo", "MoCoFusion"}
-        ):
+        if args.learn_framework in {"MoCo", "MoCoFusion"} and args.stage == "pretrain":
             return TransformerV4
-        elif args.train_mode == "contrastive" and args.learn_framework in {"CMC", "Cosmo", "Cocoa"}:
-            classifier = TransformerV4_CMC(args)
-        elif args.train_mode in {"generative"}:
+        elif args.learn_framework in {"CMC", "Cosmo", "Cocoa", "MAE"}:
             classifier = TransformerV4_CMC(args)
         else:
             classifier = TransformerV4(args)
@@ -82,8 +70,10 @@ def init_contrastive_framework(args, backbone_model):
     elif args.learn_framework == "Cocoa":
         default_model = Cocoa(args, backbone_model)
     else:
-        raise NotImplementedError
+        raise NotImplementedError(f"Invalid {args.train_mode} framework {args.learn_framework} provided")
+
     default_model = default_model.to(args.device)
+
     return default_model
 
 
@@ -96,9 +86,10 @@ def init_predictive_framework(args, backbone_model):
     elif args.learn_framework in {"ModPred", "ModPredFusion"}:
         default_model = ModPred(args, backbone_model)
     else:
-        raise NotImplementedError(f"Invalid learninig framework {args.learn_framework} provided")
+        raise NotImplementedError(f"Invalid {args.train_mode} framework {args.learn_framework} provided")
 
     default_model = default_model.to(args.device)
+
     return default_model
 
 
@@ -106,9 +97,10 @@ def init_generative_framework(args, backbone_model):
     if args.learn_framework == "MAE":
         default_model = MAE(args, backbone_model)
     else:
-        raise NotImplementedError(f"Invalid learninig framework {args.learn_framework} provided")
+        raise NotImplementedError(f"Invalid {args.train_mode} framework {args.learn_framework} provided")
 
     default_model = default_model.to(args.device)
+
     return default_model
 
 
@@ -116,11 +108,11 @@ def init_pretrain_framework(args, backbone_model):
     """
     Initialize the pretraining framework according to args.
     """
-    if args.train_mode in {"predictive"}:
+    if args.train_mode == "predictive":
         default_model = init_predictive_framework(args, backbone_model)
-    elif args.train_mode in {"contrastive"}:
+    elif args.train_mode == "contrastive":
         default_model = init_contrastive_framework(args, backbone_model)
-    elif args.train_mode in {"generative"}:
+    elif args.train_mode == "generative":
         default_model = init_generative_framework(args, backbone_model)
     else:
         raise Exception("Invalid train mode")
@@ -128,7 +120,7 @@ def init_pretrain_framework(args, backbone_model):
     return default_model
 
 
-def init_loss_func(args, train_dataloader):
+def init_loss_func(args):
     """Initialize the loss function according to the config."""
     if args.train_mode == "supervised" or args.stage == "finetune":
         if args.multi_class:

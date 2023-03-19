@@ -24,7 +24,7 @@ from torch.utils.tensorboard import SummaryWriter
 from params.train_params import parse_train_params
 from input_utils.multi_modal_dataloader import create_dataloader, preprocess_triplet_batch
 from input_utils.time_input_utils import count_range
-from train_utils.model_selection import init_model, init_loss_func
+from train_utils.model_selection import init_backbone_model, init_loss_func
 
 
 def train(args):
@@ -50,7 +50,7 @@ def train(args):
     args.augmenter = augmenter
 
     # Init the classifier model
-    classifier = init_model(args)
+    classifier = init_backbone_model(args)
     args.classifier = classifier
     logging.info(f"=\tClassifier model loaded")
 
@@ -64,7 +64,7 @@ def train(args):
         count_range(args, train_dataloader)
 
     # define the loss function
-    loss_func = init_loss_func(args, train_dataloader)
+    loss_func = init_loss_func(args)
     logging.info("=\tLoss function defined")
 
     if args.train_mode == "supervised":

@@ -620,7 +620,7 @@ MAE:
         decoder_channels: 256
         masked_ratio:
                 audio: 0.75
-                seismic: 0.5
+                seismic: 0.75
         patch_size:
                 audio: [1, 40]
                 seismic: [1, 1]
