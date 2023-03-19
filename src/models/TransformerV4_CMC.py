@@ -10,6 +10,8 @@ from models.FusionModules import TransformerFusionBlock
 
 from timm.models.layers import trunc_normal_
 
+import datetime
+
 import logging
 
 from models.SwinModules import (
@@ -21,6 +23,17 @@ from models.SwinModules import (
 
 from models.MAEModule import window_masking
 
+def printTime(bp, ap, be, ae, bd=None, ad=None):
+    patch = ap - bp
+    encoder = ae - be
+    decoder = ad - bd
+    overall = ae - bp
+    
+    print(f"Overall time: {overall.microseconds} microseconds")
+    print(f"Patch time: {patch.microseconds} microseconds")
+    print(f"Encoder time: {encoder.microseconds} microseconds")
+    print(f"Decoder time: {decoder.microseconds} microseconds")
+    print("\n\n")
 
 class TransformerV4_CMC(nn.Module):
     """
@@ -498,8 +511,11 @@ class TransformerV4_CMC(nn.Module):
         return embeded_inputs, padded_inputs, mod_loc_masks
 
     def forward(self, freq_x, class_head=True, decoding=True):
+        before_patch = datetime.datetime.now()
         # PatchEmbed the input, window mask if MAE
         patched_inputs, padded_inputs, masks = self.patch_forward(freq_x, class_head)
+        
+        after_patch = datetime.datetime.now()
         
         if class_head:
             """Finetuning the classifier"""
@@ -509,17 +525,24 @@ class TransformerV4_CMC(nn.Module):
             """Pretraining the framework"""
             if self.args.train_mode != "generative":
                 """CMC, Cosmo, Cocoa"""
+                before_encoder = datetime.datetime.now()
                 enc_mod_features = self.forward_encoder(patched_inputs, class_head)
+                after_encoder = datetime.datetime.now()
+                printTime(before_patch, after_patch, before_encoder, after_encoder)
                 return enc_mod_features
             else:
+                before_encoder = datetime.datetime.now()
                 enc_sample_features = self.forward_encoder(patched_inputs, class_head)
-                
+                after_encoder = datetime.datetime.now()
                 if not decoding:
                     """Used in KNN eval"""
                     return enc_sample_features
                 else:
                     # Decoding
+                    before_decoder = datetime.datetime.now()
                     dec_output = self.forward_decoder(enc_sample_features)
-
+                    after_decoder = datetime.datetime.now()
+                    
+                    printTime(before_patch, after_patch, before_encoder, after_encoder, before_decoder, after_decoder)
                     return dec_output, padded_inputs, masks, enc_sample_features
         
