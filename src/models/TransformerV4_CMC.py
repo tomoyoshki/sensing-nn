@@ -19,7 +19,7 @@ from models.SwinModules import (
     PatchMerging,
 )
 
-from models.MAEModule import window_masking
+from models.MAEModule import window_masking, window_masking_2
 
 
 class TransformerV4_CMC(nn.Module):
@@ -482,14 +482,12 @@ class TransformerV4_CMC(nn.Module):
                 
                 # we only mask images for pretraining MAE
                 if self.args.train_mode == "generative" and class_head == False:
-                    embeded_input, mod_loc_mask = window_masking(
+                    embeded_input, mod_loc_mask = window_masking_2(
                         embeded_input,
                         padded_img_size,
                         self.patch_embed[loc][mod].patches_resolution,
                         self.config["window_size"][mod],
                         self.mask_token[loc][mod],
-                        remove=False,
-                        mask_len_sparse=False,
                         mask_ratio=self.masked_ratio[mod]
                     )
                     mod_loc_masks[loc][mod] = mod_loc_mask

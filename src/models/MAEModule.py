@@ -95,6 +95,41 @@ def window_masking(
         return (x_masked, mask)
 
 
+def window_masking_2(
+    x,
+    input_resolution,
+    patch_resolution,
+    window_size,
+    mask_token,
+    mask_ratio=0.75,
+):
+    B, L, D = x.shape
+    h, w = input_resolution[0], input_resolution[1]  # padded image h and w
+    # assert L == h * w
+    ph, pw = patch_resolution[0], patch_resolution[1]  # num patches h and w
+    dh, dw = int(ph // window_size[0]), int(pw // window_size[1])  # window_resolution h and w
+
+    rh, rw = window_size[0], window_size[1]
+    
+    
+    # random mask [b, window_resolution height, window_resolution_width]
+    bit_mask = torch.cuda.FloatTensor(B, dh, dw).uniform_() > mask_ratio
+    
+    # [b, patch_resolution_height, window_resolution_width]
+    patch_mask = bit_mask.repeat_interleave(rh, dim=1)
+    
+    # [b, patch_resolution_height, patch_resolution_width]
+    patch_mask = patch_mask.repeat_interleave(rw, dim=2)
+    
+    # [b, patch_resolutions]
+    patch_mask = patch_mask.reshape(B, -1).bool()
+    
+    # patch_mask_channel = torch.stack([patch_mask] * D, dim=-1)
+    masked_x = x.clone()
+    masked_x[patch_mask] = mask_token
+    
+    return masked_x, patch_mask.int()
+
 def find_patch_size(dim):
     for i in range(2, dim):
         if dim % i == 0:
