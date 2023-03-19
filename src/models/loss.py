@@ -401,6 +401,7 @@ class MAELoss(nn.Module):
             for mod in self.modalities:
                 mask = masks[loc][mod]
                 pred = decoded_x[loc][mod]
+                
                 if self.args.model == "TransformerV4":
                     in_channel = self.args.dataset_config["loc_mod_in_freq_channels"]["shake"][mod]
                     target = self.patchify(
@@ -408,9 +409,6 @@ class MAELoss(nn.Module):
                         self.backbone_config["patch_size"]["freq"][mod],
                         in_channel,
                     )
-                    # print(f"Pred shape: ", pred.shape)
-                    # print(f"Target shape: ", target.shape)
-                    # print(f"Mask shape: ", mask.shape)
                 else:
                     patch_size = self.generative_config["patch_size"][mod]
                     patch_area = patch_size[0] * patch_size[1]
@@ -421,16 +419,13 @@ class MAELoss(nn.Module):
                         in_channel,
                     )
                     
-                    # # b, c, i, s -> b, i, s, c to match TransformerV4
-                    pred = torch.permute(pred, (0, 2, 3, 1))
-                    b, i, s, c = pred.shape
-                    pred = pred.reshape((b, i * s // patch_area, c * patch_area))
-                    # print(f"Pred shape: ", pred.shape)
-                    # print(f"Target shape: ", target.shape)
-                    mask = mask.reshape((b, -1))
-                    # print(f"Mask shape: ", mask.shape)
-                    # target = padded_x[loc][mod]
-                    # target = torch.permute(target, (0, 2, 3, 1))
+                    pred = self.patchify(
+                        pred,
+                        patch_size,
+                        in_channel,
+                    )
+                    mask = mask.reshape((pred.shape[0], -1))
+                
 
                 if self.norm_pix_loss:
                     mean = target.mean(dim=-1, keepdim=True)
@@ -439,6 +434,8 @@ class MAELoss(nn.Module):
 
                 loss = (pred - target) ** 2
                 loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+                
+                # print("Loss shape: ", loss.shape)
                 loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
                 total_loss += loss
 

@@ -56,7 +56,7 @@ class DecRecurrentBlock(nn.Module):
         self.dec_rnn_layer = nn.Linear(out_channel, in_channel)
         self.softmax = nn.LogSoftmax(dim=1)
 
-    def forward(self, x, hidden_state):
+    def forward(self, x, hidden_state=None):
         """The forward function of the recurrent block.
         https://discuss.pytorch.org/t/about-bidirectional-gru-with-seq2seq-example-and-some-modifications/15588/4
         TODO: Add mask such that only valid intervals are considered in taking the mean.
@@ -65,7 +65,7 @@ class DecRecurrentBlock(nn.Module):
         Output:
             [b, c_out]
         """
-        # [b, bidirectional 2 * c] -> [n, added c]
+        # [b, bidirectional 2 * c] -> [b, c]
         mean_encoded_feature = x[:, : self.out_channel] + x[:, self.out_channel :]
         # [b, c] -> [b, i, c]
         # corresponds to the torch.mean decoder
@@ -74,10 +74,9 @@ class DecRecurrentBlock(nn.Module):
 
         # since encoder has 2 * bidirectional = 4 layers of encoding, we only need last 2
         hidden_state = hidden_state[-self.num_layers :]
-        # GRU decode
         dec_rnn_features, state = self.gru(encoded_feature, hidden_state)
+        # GRU decode
         # soft max + linear dim
-        print("Decoder rnn features shape: ", dec_rnn_features.shape)
         dec_features = self.dec_rnn_layer(dec_rnn_features)
         dec_features = dec_features.permute(0, 2, 1)
 

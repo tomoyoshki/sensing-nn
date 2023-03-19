@@ -11,9 +11,6 @@ from input_utils.padding_utils import get_padded_size
 from models.FusionModules import TransformerFusionBlock
 
 
-from models.SwinModules import PatchEmbed
-
-
 class DeepSense_CMC(nn.Module):
     def __init__(self, args, self_attention=False) -> None:
         """The initialization for the DeepSense class.
@@ -227,7 +224,7 @@ class DeepSense_CMC(nn.Module):
                 masked_x[loc] = {}
                 masks[loc] = {}
                 for mod in self.modalities:
-                    # get mask ratio for each modality
+                    # mask ratio for each modality
                     mask_ratio = self.generative_config["masked_ratio"][mod]
                     b, c, i, s = freq_x[loc][mod].shape
 
@@ -252,7 +249,6 @@ class DeepSense_CMC(nn.Module):
                     masked_input = freq_x[loc][mod].clone() * patch_mask_channel
                     masked_x[loc][mod] = masked_input
                     
-                    # store the pixel wise mask
                     masks[loc][mod] = bit_mask
 
             return (masked_x, masks)
@@ -349,16 +345,16 @@ class DeepSense_CMC(nn.Module):
                 extracted_mod_features = self.dec_mod_extractors[mod](fused_mod_feature)
                 dec_mod_interval_features[mod] = extracted_mod_features
 
-        for mod in self.modalities:
+        # for mod in self.modalities:
             # TODO: Stack -> UnStack
-            dec_mod_interval_features[mod] = dec_mod_interval_features[mod].squeeze(3)
+            # dec_mod_interval_features[mod] = dec_mod_interval_features[mod].squeeze(3)
 
         # Step 3: Single (loc, mod) feature extraction, (b, c, i)
         dec_loc_mod_input = {}
-        for loc in self.locations:
+        for i, loc in enumerate(self.locations):
             dec_loc_mod_input[loc] = {}
             for mod in self.modalities:
-                decoded_input = self.dec_loc_mod_extractors[loc][mod](dec_mod_interval_features[mod])
+                decoded_input = self.dec_loc_mod_extractors[loc][mod](dec_mod_interval_features[mod][:, :, :, i])
                 decoded_input = self.decoder_pred[loc][mod](decoded_input)
                 dec_loc_mod_input[loc][mod] = decoded_input
 
