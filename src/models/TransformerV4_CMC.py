@@ -19,7 +19,7 @@ from models.SwinModules import (
     PatchMerging,
 )
 
-from models.MAEModule import window_masking
+from models.MAEModule import window_masking, window_masking_2
 
 
 class TransformerV4_CMC(nn.Module):
@@ -277,7 +277,6 @@ class TransformerV4_CMC(nn.Module):
                     inverse_i_layer = len(self.config["time_freq_block_num"][mod]) - i_layer - 2
                     down_ratio = 2**inverse_i_layer
                     layer_dim = int(self.config["time_freq_out_channels"] * down_ratio)
-                    print(i_layer, inverse_i_layer, block_num, layer_dim)
                     layer = BasicLayer(
                         dim=layer_dim,  # C in SWIN
                         input_resolution=(
@@ -482,14 +481,12 @@ class TransformerV4_CMC(nn.Module):
                 
                 # we only mask images for pretraining MAE
                 if self.args.train_mode == "generative" and class_head == False:
-                    embeded_input, mod_loc_mask = window_masking(
+                    embeded_input, mod_loc_mask = window_masking_2(
                         embeded_input,
                         padded_img_size,
                         self.patch_embed[loc][mod].patches_resolution,
                         self.config["window_size"][mod],
                         self.mask_token[loc][mod],
-                        remove=False,
-                        mask_len_sparse=False,
                         mask_ratio=self.masked_ratio[mod]
                     )
                     mod_loc_masks[loc][mod] = mod_loc_mask
