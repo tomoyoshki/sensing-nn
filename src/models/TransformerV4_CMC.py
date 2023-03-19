@@ -20,8 +20,7 @@ from models.SwinModules import (
     PatchMerging,
 )
 
-from models.MAEModule import window_masking, window_masking_2
-
+import time 
 
 class TransformerV4_CMC(nn.Module):
     """
@@ -254,16 +253,13 @@ class TransformerV4_CMC(nn.Module):
 
             for mod in self.modalities:
                 self.mask_token[loc][mod] = nn.Parameter(torch.zeros(self.config["time_freq_out_channels"]))
-
                 self.patch_expand[loc][mod] = PatchExpanding(
                     self.img_sizes[loc][mod],
                     embed_dim=self.config["time_freq_out_channels"]
                     * 2 ** (len(self.config["time_freq_block_num"][mod]) - 1),
                     norm_layer=self.norm_layer,
                 )
-
                 self.decoder_blocks[loc][mod] = nn.ModuleList()
-
                 patches_resolution = self.patch_embed[loc][mod].patches_resolution
 
                 # Drop path rate
@@ -520,6 +516,6 @@ class TransformerV4_CMC(nn.Module):
                 else:
                     # Decoding
                     dec_output = self.forward_decoder(enc_sample_features)
-
-                    return dec_output, padded_inputs, masks, enc_sample_features
+                    
+                return dec_output, padded_inputs, masks, enc_sample_features
         

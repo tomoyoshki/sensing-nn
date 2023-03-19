@@ -17,7 +17,6 @@ def generate_mask_input(
 
     rh, rw = window_size[0], window_size[1]
     
-    
     # random mask [b, window_resolution height, window_resolution_width]
     bit_mask = torch.cuda.FloatTensor(B, dh, dw).uniform_() > mask_ratio
     
@@ -46,7 +45,7 @@ def mask_input(
     """
     if len(freq_x.shape) > 3:
         """DeepSense [B, c, i, s] -> [B, i * s, c]"""
-        b, c, i, s = freq_x.shape
+        b, c = freq_x.shape[0:2]
         x = freq_x.reshape(b, c, -1).permute(0, 2, 1)
     else:
         x = freq_x
@@ -55,27 +54,20 @@ def mask_input(
     
     # generate masks
     patch_mask = generate_mask_input(freq_x, patch_resolution, window_size, mask_ratio)
-
-    channel_repeat = [1, 1, 1]
-    channel_repeat[channel_dimension] = D # (1, 1, D) or (1, D, 1)
     
     # [b, patch_resolution, D] or [b, D, patch_resolution]
-    patch_mask_channel = patch_mask.unsqueeze(channel_dimension).repeat(channel_repeat)
+    channel_repeat = [1, 1, 1]
+    channel_repeat[channel_dimension] = D # (1, 1, D) or (1, D, 1)
+    patch_mask_channel = patch_mask.unsqueeze(channel_dimension).tile(channel_repeat)
     
-    # mask_token -> [b, D] -> [b, 1, D]
-    mask_token = mask_token.unsqueeze(0).repeat(B, 1)
-    mask_token = mask_token.unsqueeze(1)
+    # mask_token： [D] -> [1, 1, D]
+    mask_token = mask_token.reshape([1, 1, D]).tile([B, 1, 1])
 
     # masked [b, patch_resolution, 1]
     token_mask = (1 - patch_mask).unsqueeze(-1)
     
-    # [b, patch_resolution, 1] @ [b, 1, D] -> [b, patch_resolution, D]
-    # token * (1 - mask)
-    tokens = torch.bmm(token_mask, mask_token)
-    # x * mask
-    masked_input = x * patch_mask_channel
-    # x * mask + token * (1 - mask)
-    masked_x = masked_input + tokens
+    # mask_token: [b, patch_resolution, 1] @ [b, 1, D] -> [1, patch_resolution, D]
+    masked_x = x * patch_mask_channel +  token_mask @ mask_token
     
     return masked_x, patch_mask.int()
     

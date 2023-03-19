@@ -138,7 +138,10 @@ class DeepSense_CMC(nn.Module):
         for loc in self.locations:
             self.mask_token[loc] = nn.ParameterDict()
             for mod in self.modalities:
-                self.mask_token[loc][mod] = nn.Parameter(torch.zeros(self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]))
+                self.mask_token[loc][mod] = nn.Parameter(
+                    torch.zeros(self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod])
+                )
+
         # Step 0: Separate sample features into mod features
         self.mod_feature_sep_layer = nn.ModuleDict()
         for loc in self.locations:
@@ -238,7 +241,6 @@ class DeepSense_CMC(nn.Module):
                         self.generative_config["patch_size"][mod][1],
                     )
 
-
                     masked_input, patch_mask = mask_input(
                         freq_x=freq_x[loc][mod],
                         input_resolution=(i, s),
@@ -246,12 +248,12 @@ class DeepSense_CMC(nn.Module):
                         channel_dimension=-1,
                         window_size=(patch_h, patch_w),
                         mask_token=self.mask_token[loc][mod],
-                        mask_ratio=mask_ratio
+                        mask_ratio=mask_ratio,
                     )
-                    
+
                     masked_input = masked_input.reshape(b, c, i, s)
                     patch_mask = patch_mask.reshape(b, i, s)
-                    
+
                     # print("Original: ", masked_input.shape, patch_mask.shape)
                     masked_x[loc][mod] = masked_input
                     masks[loc][mod] = patch_mask

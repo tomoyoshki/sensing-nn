@@ -621,8 +621,6 @@ MoCoFusion:
                 freq_augmenters: ["phase_shift"]
 
 MAE:
-        fusion: "concat"
-        decoder_channels: 256
         masked_ratio:
                 audio: 0.75
                 seismic: 0.75
