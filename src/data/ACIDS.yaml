@@ -408,7 +408,7 @@ Cocoa:
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.005
+                weight_decay: 0.0005
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
