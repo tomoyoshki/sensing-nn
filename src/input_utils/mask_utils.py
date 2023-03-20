@@ -19,7 +19,8 @@ def generate_mask_input(
     rh, rw = window_size[0], window_size[1]
 
     # random mask [b, window_resolution height, window_resolution_width]
-    bit_mask = torch.cuda.FloatTensor(B, dh, dw).uniform_() > mask_ratio
+    bit_mask = torch.rand([B, dh * dw], device=freq_x.device).argsort(1) >= int(dh * dw * mask_ratio)
+    bit_mask = bit_mask.reshape([B, dh, dw])
 
     # [b, patch_resolution_height, window_resolution_width]
     patch_mask = bit_mask.repeat_interleave(rh, dim=1)
