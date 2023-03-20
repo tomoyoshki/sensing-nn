@@ -317,52 +317,36 @@ class CocoaLoss(nn.Module):
         self.scale_loss = self.config["scale_loss"]
         self.lambd = self.config["lambd"]
 
-    def calc_loss(self, features):
-        dim_size, batch_size, mod_size = features.shape
+    def calc_loss(self, mod_features):
+        """
+        mod_features: [mod, batch, channel]
+        """
+        mods, batch, channel = mod_features.shape
 
         # Positive Pairs
-        pos_error = []
-        for i in range(batch_size):
-            # similarity of each modality S_vw of
-            sim = torch.matmul(features[:, i, :], features[:, i, :].T)
-            # 1 - S
-            sim = torch.subtract(torch.ones((dim_size, dim_size), dtype=torch.float32).to(self.args.device), sim)
-            # (1 - s) / t
-            # e ^ ((1 - s) / tau)
-            sim = torch.exp(sim / self.temperature)
-            pos_error.append(torch.mean(sim))
-
-        pos_error = torch.stack(pos_error)
+        sample_features = mod_features.permute(1, 0, 2)
+        sim = torch.matmul(sample_features, sample_features.permute(0, 2, 1))
+        sim = torch.ones((batch, mods, mods)).to(self.args.device).float() - sim
+        sim = torch.exp(sim / self.temperature)
+        pos_error = torch.mean(sim)
 
         # Negative Pairs
-        neg_error = 0
-        for i in range(dim_size):
-            # dot product
-            sim = torch.matmul(features[i], features[i].T)
-            sim = torch.exp(sim / self.temperature)
-            tri_mask = np.ones(batch_size**2, dtype=np.bool).reshape(batch_size, batch_size)
-            tri_mask[np.diag_indices(batch_size)] = False
+        sim = torch.matmul(mod_features, mod_features.permute(0, 2, 1))
+        sim = torch.exp(sim / self.temperature)
+        tri_mask = torch.ones([batch, batch]).to(self.args.device).bool()
+        tri_mask.fill_diagonal_(False).unsqueeze(0).repeat(mods, 1, 1)
+        off_diag_sim = torch.masked_select(sim, tri_mask).reshape([mods, batch, batch - 1])
+        neg_error = torch.sum(torch.mean(off_diag_sim, dim=[1, 2]), dim=0)
 
-            off_diag_sim = torch.masked_select(sim, torch.from_numpy(tri_mask).to(sim.device))
-            off_diag_sim = torch.reshape(off_diag_sim, (batch_size, batch_size - 1))
-            neg_error += torch.mean(off_diag_sim, dim=-1)
+        loss = self.scale_loss * torch.mean(pos_error) + self.lambd * torch.mean(neg_error)
 
-        cross_mod_loss = torch.multiply(torch.sum(pos_error), self.scale_loss)
-        discriminator_loss = self.lambd * torch.sum(neg_error)
-
-        return cross_mod_loss + discriminator_loss
+        return loss
 
     def forward(self, mod_features):
-        features = []
-        for mod in self.modalities:
-            features.append(mod_features[mod])
-
-        features = torch.stack(features)
-
-        # normalize each features
+        features = torch.stack([mod_features[mod] for mod in self.modalities], dim=0)
         features_norm = F.normalize(features, dim=-1)
-
         loss = self.calc_loss(features_norm)
+
         return loss
 
 
@@ -435,7 +419,6 @@ class MAELoss(nn.Module):
                 loss = (pred - target) ** 2
                 loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
                 
-                # print("Loss shape: ", loss.shape)
                 loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
                 total_loss += loss
 

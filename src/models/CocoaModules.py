@@ -4,8 +4,7 @@ import torch.nn.functional as F
 
 
 class Cocoa(nn.Module):
-    """
-    """
+    """ """
 
     def __init__(self, args, backbone):
         """
@@ -27,8 +26,9 @@ class Cocoa(nn.Module):
             x1: first views of images
             x2: second views of images
         Output:
-            features
+            {mod: mod_features}
         """
         # compute features
         mod_features = self.backbone(freq_input, class_head=False)
+
         return mod_features

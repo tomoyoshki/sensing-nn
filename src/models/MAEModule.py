@@ -103,6 +103,9 @@ def window_masking_2(
     mask_token,
     mask_ratio=0.75,
 ):
+    """
+    Optimized window masking
+    """
     B, L, D = x.shape
     h, w = input_resolution[0], input_resolution[1]  # padded image h and w
     # assert L == h * w
@@ -122,11 +125,24 @@ def window_masking_2(
     patch_mask = patch_mask.repeat_interleave(rw, dim=2)
     
     # [b, patch_resolutions]
-    patch_mask = patch_mask.reshape(B, -1).bool()
+    patch_mask = patch_mask.reshape(B, -1).int().float()
     
-    # patch_mask_channel = torch.stack([patch_mask] * D, dim=-1)
-    masked_x = x.clone()
-    masked_x[patch_mask] = mask_token
+    # [b, patch_resolution, D]
+    patch_mask_channel = patch_mask.unsqueeze(-1).repeat(1, 1, D)
+    
+    # mask_token -> [b, D] -> [b, 1, D]
+    mask_token = mask_token.unsqueeze(0).repeat(B, 1)
+    mask_token = mask_token.unsqueeze(1)
+
+    # masked [b, patch_resolution, 1]
+    token_mask = (1 - patch_mask).unsqueeze(-1)
+    
+    # [b, patch_resolution, 1] @ [b, 1, D] -> [b, patch_resolution, D]
+    # token * (1 - mask)
+    masked = torch.bmm(token_mask, mask_token)
+
+    # x * mask + token * (1 - mask)
+    masked_x = x * patch_mask_channel + masked
     
     return masked_x, patch_mask.int()
 

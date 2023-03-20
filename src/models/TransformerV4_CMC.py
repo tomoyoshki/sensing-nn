@@ -6,11 +6,11 @@ import numpy as np
 
 from torch.nn import TransformerEncoderLayer
 from input_utils.padding_utils import get_padded_size
+from input_utils.mask_utils import mask_input
 from models.FusionModules import TransformerFusionBlock
 
 from timm.models.layers import trunc_normal_
 
-import datetime
 
 import logging
 
@@ -20,20 +20,6 @@ from models.SwinModules import (
     PatchExpanding,
     PatchMerging,
 )
-
-from models.MAEModule import window_masking, window_masking_2
-
-def printTime(bp, ap, be, ae, bd=None, ad=None):
-    patch = ap - bp
-    encoder = ae - be
-    decoder = ad - bd
-    overall = ae - bp
-    
-    print(f"Overall time: {overall.microseconds} microseconds")
-    print(f"Patch time: {patch.microseconds} microseconds")
-    print(f"Encoder time: {encoder.microseconds} microseconds")
-    print(f"Decoder time: {decoder.microseconds} microseconds")
-    print("\n\n")
 
 class TransformerV4_CMC(nn.Module):
     """
@@ -265,17 +251,14 @@ class TransformerV4_CMC(nn.Module):
             self.mod_out_layers[loc] = nn.ModuleDict()
 
             for mod in self.modalities:
-                self.mask_token[loc][mod] = nn.Parameter(torch.zeros(1, 1, self.config["time_freq_out_channels"]))
-
+                self.mask_token[loc][mod] = nn.Parameter(torch.zeros(self.config["time_freq_out_channels"]))
                 self.patch_expand[loc][mod] = PatchExpanding(
                     self.img_sizes[loc][mod],
                     embed_dim=self.config["time_freq_out_channels"]
                     * 2 ** (len(self.config["time_freq_block_num"][mod]) - 1),
                     norm_layer=self.norm_layer,
                 )
-
                 self.decoder_blocks[loc][mod] = nn.ModuleList()
-
                 patches_resolution = self.patch_embed[loc][mod].patches_resolution
 
                 # Drop path rate
@@ -307,8 +290,7 @@ class TransformerV4_CMC(nn.Module):
                             )
                         ],
                         norm_layer=self.norm_layer,
-                        patch_expanding=PatchExpanding
-                        if (i_layer < len(self.config["time_freq_block_num"][mod]) - 2)
+                        patch_expanding=PatchExpanding if (i_layer < len(self.config["time_freq_block_num"][mod]) - 2)
                         else None,
                     )
                     self.decoder_blocks[loc][mod].append(layer)
@@ -326,6 +308,7 @@ class TransformerV4_CMC(nn.Module):
                 
                 self.decoder_pred[loc][mod] = nn.Sequential(
                     nn.Linear(self.config["time_freq_out_channels"], self.config["time_freq_out_channels"]),
+                    nn.GELU(),
                     nn.Linear(self.config["time_freq_out_channels"], patch_area * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]),
                 )
 
@@ -439,7 +422,7 @@ class TransformerV4_CMC(nn.Module):
         """
         Decode the latent features
         """
-        # Setep 0: Mod feature fusion (concat + fc --> [b, c])--> Mod feature separation
+        # Setep 0: Mod feature separation
         sep_mod_features = []
         for loc in self.locations:
             for mod in self.modalities:
@@ -451,17 +434,18 @@ class TransformerV4_CMC(nn.Module):
         for loc in self.locations:
             decoded_out[loc] = {}
             for i, mod in enumerate(self.modalities):
+                # Expand channels --> Rebuild spatial dimensions
                 decoded_out[loc][mod] = []
                 decoded_mod_feature = self.mod_out_layers[loc][mod](sep_mod_features[i])
                 decoded_mod_feature = decoded_mod_feature.reshape(decoded_mod_feature.shape[0], -1, self.layer_dims[loc][mod])
                 decoded_mod_feature = self.patch_expand[loc][mod](decoded_mod_feature)
                 
-                # SwinTransformer Layer block
+                # Decoder blocks
                 for layer in self.decoder_blocks[loc][mod]:
                     decoded_tokens = layer(decoded_mod_feature)
                     decoded_mod_feature = decoded_tokens
                     
-                # predictor projection
+                # Prediction layer with FCs 
                 decoded_tokens = self.decoder_pred[loc][mod](decoded_tokens)
                 decoded_out[loc][mod] = decoded_tokens
 
@@ -494,12 +478,13 @@ class TransformerV4_CMC(nn.Module):
                 
                 # we only mask images for pretraining MAE
                 if self.args.train_mode == "generative" and class_head == False:
-                    embeded_input, mod_loc_mask = window_masking_2(
-                        embeded_input,
-                        padded_img_size,
-                        self.patch_embed[loc][mod].patches_resolution,
-                        self.config["window_size"][mod],
-                        self.mask_token[loc][mod],
+                    embeded_input, mod_loc_mask, mod_loc_bit_mask = mask_input(
+                        freq_x=embeded_input,
+                        input_resolution=padded_img_size,
+                        patch_resolution=self.patch_embed[loc][mod].patches_resolution,
+                        channel_dimension=-1,
+                        window_size=self.config["window_size"][mod],
+                        mask_token=self.mask_token[loc][mod],
                         mask_ratio=self.masked_ratio[mod]
                     )
                     mod_loc_masks[loc][mod] = mod_loc_mask
@@ -508,11 +493,9 @@ class TransformerV4_CMC(nn.Module):
         return embeded_inputs, padded_inputs, mod_loc_masks
 
     def forward(self, freq_x, class_head=True, decoding=True):
-        before_patch = datetime.datetime.now()
         # PatchEmbed the input, window mask if MAE
         patched_inputs, padded_inputs, masks = self.patch_forward(freq_x, class_head)
         
-        after_patch = datetime.datetime.now()
         
         if class_head:
             """Finetuning the classifier"""
@@ -522,24 +505,16 @@ class TransformerV4_CMC(nn.Module):
             """Pretraining the framework"""
             if self.args.train_mode != "generative":
                 """CMC, Cosmo, Cocoa"""
-                before_encoder = datetime.datetime.now()
                 enc_mod_features = self.forward_encoder(patched_inputs, class_head)
-                after_encoder = datetime.datetime.now()
-                printTime(before_patch, after_patch, before_encoder, after_encoder)
                 return enc_mod_features
             else:
-                before_encoder = datetime.datetime.now()
                 enc_sample_features = self.forward_encoder(patched_inputs, class_head)
-                after_encoder = datetime.datetime.now()
                 if not decoding:
                     """Used in KNN eval"""
                     return enc_sample_features
                 else:
                     # Decoding
-                    before_decoder = datetime.datetime.now()
                     dec_output = self.forward_decoder(enc_sample_features)
-                    after_decoder = datetime.datetime.now()
                     
-                    printTime(before_patch, after_patch, before_encoder, after_encoder, before_decoder, after_decoder)
-                    return dec_output, padded_inputs, masks, enc_sample_features
+                return dec_output, padded_inputs, masks, enc_sample_features
         

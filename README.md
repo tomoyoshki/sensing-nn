@@ -68,7 +68,7 @@ python3 test.py -gpu=0 -dataset=Parkland -learn_framework=SimCLR -stage=finetune
 | 20230220    | TransformerV4 | CMC | 91.96%   |  tkimura4 | Parkland_TransformerV4/exp28_contrastive_CMC | use large dataset, batch size 128, infoNCE loss|
 | 20230226    | TransformerV4 | MTSS | 42.19% | sl29 | | |
 | 20230228    | TransformerV4 | ModPred | 43.47% | sl29 | | |
-| 20230317    | TransformerV4 | MAE | 75.28% | sl29 | | ||
+| 20230317    | TransformerV4 | MAE | 78.46% | sl29 | | ||
 
 #### 3. Speed classification 
 

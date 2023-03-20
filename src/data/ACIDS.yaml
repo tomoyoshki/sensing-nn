@@ -388,7 +388,7 @@ Cocoa:
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.00001
+                start_lr: 0.0001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
@@ -404,11 +404,11 @@ Cocoa:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.0001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.005
+                weight_decay: 0.0005
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -621,8 +621,6 @@ MoCoFusion:
                 freq_augmenters: ["phase_shift"]
 
 MAE:
-        fusion: "concat"
-        decoder_channels: 256
         masked_ratio:
                 audio: 0.75
                 seismic: 0.75

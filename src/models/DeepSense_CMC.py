@@ -8,6 +8,7 @@ from models.FusionModules import MeanFusionBlock, SelfAttentionFusionBlock
 from models.RecurrentModule import RecurrentBlock, DecRecurrentBlock
 from input_utils.normalize import normalize_input
 from input_utils.padding_utils import get_padded_size
+from input_utils.mask_utils import mask_input
 from models.FusionModules import TransformerFusionBlock
 
 
@@ -129,6 +130,15 @@ class DeepSense_CMC(nn.Module):
         """
         Sample feature --> modality feature --> location feature --> input signal
         """
+        # Masking token
+        self.mask_token = nn.ModuleDict()
+        for loc in self.locations:
+            self.mask_token[loc] = nn.ParameterDict()
+            for mod in self.modalities:
+                self.mask_token[loc][mod] = nn.Parameter(
+                    torch.zeros(self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod])
+                )
+
         # Step 0: Separate sample features into mod features
         self.mod_feature_sep_layer = nn.ModuleDict()
         for loc in self.locations:
@@ -209,7 +219,6 @@ class DeepSense_CMC(nn.Module):
                     nn.Linear(input_dim, input_dim),
                 )
 
-    @torch.no_grad()
     def process_input(self, freq_x, class_head):
         """
         Masking input for MAE
@@ -234,21 +243,20 @@ class DeepSense_CMC(nn.Module):
                     )
                     patch_resolution_h, patch_resolution_w = i // patch_h, s // patch_w
 
-                    # generate random mask for each "patch"
-                    bit_mask = torch.cuda.FloatTensor(b, patch_resolution_h, patch_resolution_w).uniform_() > mask_ratio
-                    
-                    # expand the mask to entire area
-                    patch_mask = bit_mask.repeat_interleave(patch_h, dim=1)
-                    patch_mask = patch_mask.repeat_interleave(patch_w, dim=2)
-                    patch_mask = patch_mask.int().float()
-                    
-                    # channel wise 
-                    patch_mask_channel = torch.stack([patch_mask] * c, dim=1)
+                    masked_input, patch_mask, bit_mask = mask_input(
+                        freq_x=freq_x[loc][mod],
+                        input_resolution=(i, s),
+                        patch_resolution=(i, s),
+                        channel_dimension=-1,
+                        window_size=(patch_h, patch_w),
+                        mask_token=self.mask_token[loc][mod],
+                        mask_ratio=mask_ratio,
+                    )
 
-                    # mask the input
-                    masked_input = freq_x[loc][mod].clone() * patch_mask_channel
+                    masked_input = masked_input.reshape(b, c, i, s)
+                    bit_mask = bit_mask.reshape(b, -1)
+
                     masked_x[loc][mod] = masked_input
-                    
                     masks[loc][mod] = bit_mask
 
             return (masked_x, masks)
