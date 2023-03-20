@@ -11,6 +11,7 @@ from models.FusionModules import TransformerFusionBlock
 
 from timm.models.layers import trunc_normal_
 
+
 import logging
 
 from models.SwinModules import (
@@ -19,8 +20,6 @@ from models.SwinModules import (
     PatchExpanding,
     PatchMerging,
 )
-
-import time 
 
 class TransformerV4_CMC(nn.Module):
     """
@@ -479,7 +478,7 @@ class TransformerV4_CMC(nn.Module):
                 
                 # we only mask images for pretraining MAE
                 if self.args.train_mode == "generative" and class_head == False:
-                    embeded_input, mod_loc_mask = mask_input(
+                    embeded_input, mod_loc_mask, mod_loc_bit_mask = mask_input(
                         freq_x=embeded_input,
                         input_resolution=padded_img_size,
                         patch_resolution=self.patch_embed[loc][mod].patches_resolution,
@@ -497,6 +496,7 @@ class TransformerV4_CMC(nn.Module):
         # PatchEmbed the input, window mask if MAE
         patched_inputs, padded_inputs, masks = self.patch_forward(freq_x, class_head)
         
+        
         if class_head:
             """Finetuning the classifier"""
             logits = self.forward_encoder(patched_inputs, class_head)
@@ -509,7 +509,6 @@ class TransformerV4_CMC(nn.Module):
                 return enc_mod_features
             else:
                 enc_sample_features = self.forward_encoder(patched_inputs, class_head)
-                
                 if not decoding:
                     """Used in KNN eval"""
                     return enc_sample_features

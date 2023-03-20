@@ -12,9 +12,6 @@ from input_utils.mask_utils import mask_input
 from models.FusionModules import TransformerFusionBlock
 
 
-from models.SwinModules import PatchEmbed
-
-
 class DeepSense_CMC(nn.Module):
     def __init__(self, args, self_attention=False) -> None:
         """The initialization for the DeepSense class.
@@ -216,7 +213,11 @@ class DeepSense_CMC(nn.Module):
                 input_dim = self.args.dataset_config["loc_mod_spectrum_len"][loc][mod]
 
                 # Add another linear layer
-                self.decoder_pred[loc][mod] = nn.Linear(input_dim, input_dim)
+                self.decoder_pred[loc][mod] = nn.Sequential(
+                    nn.Linear(input_dim, input_dim),
+                    nn.GELU(),
+                    nn.Linear(input_dim, input_dim),
+                )
 
     def process_input(self, freq_x, class_head):
         """
@@ -232,7 +233,7 @@ class DeepSense_CMC(nn.Module):
                 masked_x[loc] = {}
                 masks[loc] = {}
                 for mod in self.modalities:
-                    # get mask ratio for each modality
+                    # mask ratio for each modality
                     mask_ratio = self.generative_config["masked_ratio"][mod]
                     b, c, i, s = freq_x[loc][mod].shape
 
@@ -240,8 +241,9 @@ class DeepSense_CMC(nn.Module):
                         self.generative_config["patch_size"][mod][0],
                         self.generative_config["patch_size"][mod][1],
                     )
+                    patch_resolution_h, patch_resolution_w = i // patch_h, s // patch_w
 
-                    masked_input, patch_mask = mask_input(
+                    masked_input, patch_mask, bit_mask = mask_input(
                         freq_x=freq_x[loc][mod],
                         input_resolution=(i, s),
                         patch_resolution=(i, s),
@@ -252,11 +254,10 @@ class DeepSense_CMC(nn.Module):
                     )
 
                     masked_input = masked_input.reshape(b, c, i, s)
-                    patch_mask = patch_mask.reshape(b, i, s)
+                    bit_mask = bit_mask.reshape(b, -1)
 
-                    # print("Original: ", masked_input.shape, patch_mask.shape)
                     masked_x[loc][mod] = masked_input
-                    masks[loc][mod] = patch_mask
+                    masks[loc][mod] = bit_mask
 
             return (masked_x, masks)
 
@@ -352,16 +353,16 @@ class DeepSense_CMC(nn.Module):
                 extracted_mod_features = self.dec_mod_extractors[mod](fused_mod_feature)
                 dec_mod_interval_features[mod] = extracted_mod_features
 
-        for mod in self.modalities:
+        # for mod in self.modalities:
             # TODO: Stack -> UnStack
-            dec_mod_interval_features[mod] = dec_mod_interval_features[mod].squeeze(3)
+            # dec_mod_interval_features[mod] = dec_mod_interval_features[mod].squeeze(3)
 
         # Step 3: Single (loc, mod) feature extraction, (b, c, i)
         dec_loc_mod_input = {}
-        for loc in self.locations:
+        for i, loc in enumerate(self.locations):
             dec_loc_mod_input[loc] = {}
             for mod in self.modalities:
-                decoded_input = self.dec_loc_mod_extractors[loc][mod](dec_mod_interval_features[mod])
+                decoded_input = self.dec_loc_mod_extractors[loc][mod](dec_mod_interval_features[mod][:, :, :, i])
                 decoded_input = self.decoder_pred[loc][mod](decoded_input)
                 dec_loc_mod_input[loc][mod] = decoded_input
 
@@ -381,6 +382,7 @@ class DeepSense_CMC(nn.Module):
                 enc_mod_features = self.forward_encoder(processed_freq_x, class_head)
                 return enc_mod_features
             else:
+                """MAE"""
                 # Encoding
                 enc_sample_features, hidden_features = self.forward_encoder(processed_freq_x, class_head)
 

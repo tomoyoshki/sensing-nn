@@ -360,6 +360,7 @@ class MAELoss(nn.Module):
         self.args = args
         self.modalities = args.dataset_config["modality_names"]
         self.backbone_config = args.dataset_config[args.model]
+        self.generative_config = args.dataset_config["MAE"]
         self.locations = args.dataset_config["location_names"]
         self.norm_pix_loss = True
 
@@ -384,6 +385,7 @@ class MAELoss(nn.Module):
             for mod in self.modalities:
                 mask = masks[loc][mod]
                 pred = decoded_x[loc][mod]
+                
                 if self.args.model == "TransformerV4":
                     in_channel = self.args.dataset_config["loc_mod_in_freq_channels"]["shake"][mod]
                     target = self.patchify(
@@ -392,11 +394,22 @@ class MAELoss(nn.Module):
                         in_channel,
                     )
                 else:
-                    """DeepSense Backbone"""
-                    target = padded_x[loc][mod]
-                    # b, c, i, s -> b, i, s, c to match TransformerV4
-                    pred = torch.permute(pred, (0, 2, 3, 1))
-                    target = torch.permute(target, (0, 2, 3, 1))
+                    patch_size = self.generative_config["patch_size"][mod]
+                    patch_area = patch_size[0] * patch_size[1]
+                    in_channel = self.args.dataset_config["loc_mod_in_freq_channels"]["shake"][mod]
+                    target = self.patchify(
+                        padded_x[loc][mod],
+                        patch_size,
+                        in_channel,
+                    )
+                    
+                    pred = self.patchify(
+                        pred,
+                        patch_size,
+                        in_channel,
+                    )
+                    mask = mask.reshape((pred.shape[0], -1))
+                
 
                 if self.norm_pix_loss:
                     mean = target.mean(dim=-1, keepdim=True)
@@ -405,6 +418,7 @@ class MAELoss(nn.Module):
 
                 loss = (pred - target) ** 2
                 loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+                
                 loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
                 total_loss += loss
 

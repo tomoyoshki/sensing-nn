@@ -78,7 +78,7 @@ DeepSense:
         # Optimizer config
         optimizer:
                 name: "AdamW"
-                start_lr: 0.00001
+                start_lr: 0.0001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
@@ -94,7 +94,7 @@ DeepSense:
                 decay_rate: 0.2
         # Augmenters
         random_augmenters:
-                time_augmenters: ["permutation"]
+                time_augmenters: ["no"]
                 freq_augmenters: ["phase_shift"]
         fixed_augmenters:
                 time_augmenters: ["mixup"]
@@ -205,7 +205,7 @@ TransformerV4:
                 freq_augmenters: ["no"]
         fixed_augmenters:
                 time_augmenters: ["mixup"]
-                freq_augmenters: ["no"]
+                freq_augmenters: ["phase_shift"]
 
 SimCLR:
         emb_dim: 512

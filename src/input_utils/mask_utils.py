@@ -28,8 +28,8 @@ def generate_mask_input(
     
     # [b, patch_resolutions]
     patch_mask = patch_mask.reshape(B, -1).int().float()
-    
-    return patch_mask
+
+    return patch_mask, bit_mask
 
 def mask_input(
     freq_x,
@@ -53,7 +53,7 @@ def mask_input(
     B, L, D = x.shape
     
     # generate masks
-    patch_mask = generate_mask_input(freq_x, patch_resolution, window_size, mask_ratio)
+    patch_mask, bit_mask = generate_mask_input(freq_x, patch_resolution, window_size, mask_ratio)
     
     # [b, patch_resolution, D] or [b, D, patch_resolution]
     channel_repeat = [1, 1, 1]
@@ -69,5 +69,6 @@ def mask_input(
     # mask_token: [b, patch_resolution, 1] @ [b, 1, D] -> [1, patch_resolution, D]
     masked_x = x * patch_mask_channel +  token_mask @ mask_token
     
-    return masked_x, patch_mask.int()
+    return masked_x, patch_mask.int(), bit_mask.int()
+    
     
