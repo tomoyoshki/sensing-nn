@@ -136,7 +136,7 @@ class DeepSense_CMC(nn.Module):
             self.mask_token[loc] = nn.ParameterDict()
             for mod in self.modalities:
                 self.mask_token[loc][mod] = nn.Parameter(
-                    torch.zeros(self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod])
+                    torch.zeros([1, 1, self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]])
                 )
 
         # Step 0: Separate sample features into mod features
@@ -354,8 +354,8 @@ class DeepSense_CMC(nn.Module):
                 dec_mod_interval_features[mod] = extracted_mod_features
 
         # for mod in self.modalities:
-            # TODO: Stack -> UnStack
-            # dec_mod_interval_features[mod] = dec_mod_interval_features[mod].squeeze(3)
+        # TODO: Stack -> UnStack
+        # dec_mod_interval_features[mod] = dec_mod_interval_features[mod].squeeze(3)
 
         # Step 3: Single (loc, mod) feature extraction, (b, c, i)
         dec_loc_mod_input = {}

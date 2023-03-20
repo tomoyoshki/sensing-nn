@@ -21,6 +21,7 @@ from models.SwinModules import (
     PatchMerging,
 )
 
+
 class TransformerV4_CMC(nn.Module):
     """
     SWIN Transformer model
@@ -55,9 +56,9 @@ class TransformerV4_CMC(nn.Module):
         self.drop_rate = self.config["dropout_ratio"]
         self.norm_layer = nn.LayerNorm
         self.avgpool = nn.AdaptiveAvgPool1d(1)
-        
+
         self.init_encoder()
-        
+
         if args.train_mode == "generative":
             self.generative_config = args.dataset_config[args.learn_framework]
             self.init_decoder()
@@ -232,10 +233,10 @@ class TransformerV4_CMC(nn.Module):
             for mod in self.modalities:
                 self.mod_feature_sep_layer[loc][mod] = nn.Sequential(
                     nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
-                    nn.GELU(),  
+                    nn.GELU(),
                     nn.Linear(self.config["fc_dim"], self.config["loc_out_channels"]),
                 )
-                
+
         self.patch_expand = nn.ModuleDict()
         self.mask_token = nn.ModuleDict()
         self.decoder_blocks = nn.ModuleDict()
@@ -251,7 +252,7 @@ class TransformerV4_CMC(nn.Module):
             self.mod_out_layers[loc] = nn.ModuleDict()
 
             for mod in self.modalities:
-                self.mask_token[loc][mod] = nn.Parameter(torch.zeros(self.config["time_freq_out_channels"]))
+                self.mask_token[loc][mod] = nn.Parameter(torch.zeros([1, 1, self.config["time_freq_out_channels"]]))
                 self.patch_expand[loc][mod] = PatchExpanding(
                     self.img_sizes[loc][mod],
                     embed_dim=self.config["time_freq_out_channels"]
@@ -290,7 +291,8 @@ class TransformerV4_CMC(nn.Module):
                             )
                         ],
                         norm_layer=self.norm_layer,
-                        patch_expanding=PatchExpanding if (i_layer < len(self.config["time_freq_block_num"][mod]) - 2)
+                        patch_expanding=PatchExpanding
+                        if (i_layer < len(self.config["time_freq_block_num"][mod]) - 2)
                         else None,
                     )
                     self.decoder_blocks[loc][mod].append(layer)
@@ -305,11 +307,14 @@ class TransformerV4_CMC(nn.Module):
                 )
 
                 patch_area = self.config["patch_size"]["freq"][mod][0] * self.config["patch_size"]["freq"][mod][1]
-                
+
                 self.decoder_pred[loc][mod] = nn.Sequential(
                     nn.Linear(self.config["time_freq_out_channels"], self.config["time_freq_out_channels"]),
                     nn.GELU(),
-                    nn.Linear(self.config["time_freq_out_channels"], patch_area * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]),
+                    nn.Linear(
+                        self.config["time_freq_out_channels"],
+                        patch_area * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod],
+                    ),
                 )
 
     def pad_input(self, freq_x, loc, mod):
@@ -362,7 +367,7 @@ class TransformerV4_CMC(nn.Module):
                 # Unify the input channels for each modality
                 freq_interval_output = self.mod_in_layers[loc][mod](freq_interval_output.reshape([b, -1]))
                 freq_interval_output = freq_interval_output.reshape(b, 1, -1)
-                
+
                 # Append the modality feature to the list
                 mod_loc_features[mod].append(freq_interval_output)
 
@@ -411,7 +416,7 @@ class TransformerV4_CMC(nn.Module):
 
             logits = self.class_layer(sample_features)
             return logits
-        
+
     def forward_mae_fusion(self, mod_features):
         """MAE linear fusion layer"""
         concat_mod_features = torch.cat(mod_features, dim=1)
@@ -428,7 +433,7 @@ class TransformerV4_CMC(nn.Module):
             for mod in self.modalities:
                 sep_mod_feature = self.mod_feature_sep_layer[loc][mod](sample_features)
                 sep_mod_features.append(sep_mod_feature)
-                
+
         # encoded_features = {mod: mod_features[mod] for mod in self.modalities}
         decoded_out = {}
         for loc in self.locations:
@@ -437,15 +442,17 @@ class TransformerV4_CMC(nn.Module):
                 # Expand channels --> Rebuild spatial dimensions
                 decoded_out[loc][mod] = []
                 decoded_mod_feature = self.mod_out_layers[loc][mod](sep_mod_features[i])
-                decoded_mod_feature = decoded_mod_feature.reshape(decoded_mod_feature.shape[0], -1, self.layer_dims[loc][mod])
+                decoded_mod_feature = decoded_mod_feature.reshape(
+                    decoded_mod_feature.shape[0], -1, self.layer_dims[loc][mod]
+                )
                 decoded_mod_feature = self.patch_expand[loc][mod](decoded_mod_feature)
-                
+
                 # Decoder blocks
                 for layer in self.decoder_blocks[loc][mod]:
                     decoded_tokens = layer(decoded_mod_feature)
                     decoded_mod_feature = decoded_tokens
-                    
-                # Prediction layer with FCs 
+
+                # Prediction layer with FCs
                 decoded_tokens = self.decoder_pred[loc][mod](decoded_tokens)
                 decoded_out[loc][mod] = decoded_tokens
 
@@ -475,7 +482,7 @@ class TransformerV4_CMC(nn.Module):
 
                 # Patch Partition and Linear Embedding
                 embeded_input = self.patch_embed[loc][mod](freq_input)
-                
+
                 # we only mask images for pretraining MAE
                 if self.args.train_mode == "generative" and class_head == False:
                     embeded_input, mod_loc_mask, mod_loc_bit_mask = mask_input(
@@ -485,7 +492,7 @@ class TransformerV4_CMC(nn.Module):
                         channel_dimension=-1,
                         window_size=self.config["window_size"][mod],
                         mask_token=self.mask_token[loc][mod],
-                        mask_ratio=self.masked_ratio[mod]
+                        mask_ratio=self.masked_ratio[mod],
                     )
                     mod_loc_masks[loc][mod] = mod_loc_mask
 
@@ -495,8 +502,7 @@ class TransformerV4_CMC(nn.Module):
     def forward(self, freq_x, class_head=True, decoding=True):
         # PatchEmbed the input, window mask if MAE
         patched_inputs, padded_inputs, masks = self.patch_forward(freq_x, class_head)
-        
-        
+
         if class_head:
             """Finetuning the classifier"""
             logits = self.forward_encoder(patched_inputs, class_head)
@@ -515,6 +521,5 @@ class TransformerV4_CMC(nn.Module):
                 else:
                     # Decoding
                     dec_output = self.forward_decoder(enc_sample_features)
-                    
+
                 return dec_output, padded_inputs, masks, enc_sample_features
-        
