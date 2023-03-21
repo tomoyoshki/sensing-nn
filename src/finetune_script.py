@@ -155,6 +155,7 @@ if __name__ == "__main__":
         "MoCoFusion",
         "SimCLRFusion",
         "ModPredFusion",
+        "Cocoa",
     ]
     tasks = ["vehicle_classification", "terrain_classification", "speed_classification", "distance_classification"]
     label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]

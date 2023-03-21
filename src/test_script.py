@@ -25,6 +25,7 @@ def test_loop(result_file, status_log_file):
         "MoCoFusion",
         "SimCLRFusion",
         "ModPredFusion",
+        "Cocoa",
     ]
     tasks = ["vehicle_classification", "terrain_classification", "speed_classification", "distance_classification"]
     label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
@@ -53,25 +54,29 @@ def test_loop(result_file, status_log_file):
                             print(f"Testing {dataset}-{model}-{learn_framework}-{task}-{label_ratio}.")
                             # get result
                             try:
-                                # set args
-                                args = parse_base_args("test")
-                                args.dataset = dataset
-                                args.model = model
-                                args.learn_framework = learn_framework
-                                args.task = task
-                                args.label_ratio = label_ratio
-                                args.stage = "finetune"
-                                args = set_auto_params(args)
+                                try:
+                                    # set args
+                                    args = parse_base_args("test")
+                                    args.dataset = dataset
+                                    args.model = model
+                                    args.learn_framework = learn_framework
+                                    args.task = task
+                                    args.label_ratio = label_ratio
+                                    args.stage = "finetune"
+                                    args = set_auto_params(args)
 
-                                # eval the model
-                                classifier_loss, acc, f1 = test(args)
-                                result = {
-                                    f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
-                                        "loss": classifier_loss,
-                                        "acc": acc,
-                                        "f1": f1,
-                                    },
-                                }
+                                    # eval the model
+                                    classifier_loss, acc, f1 = test(args)
+                                    result = {
+                                        f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
+                                            "loss": classifier_loss,
+                                            "acc": acc,
+                                            "f1": f1,
+                                        },
+                                    }
+                                except KeyboardInterrupt:
+                                    print("Excution interrupted by user, terminating ...")
+                                    return
                             except:
                                 """No model available, reset the execution flag"""
                                 print(f"Resetting {dataset}-{model}-{learn_framework}-{task}-{label_ratio}.")
