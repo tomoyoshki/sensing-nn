@@ -45,6 +45,7 @@ def mask_input(
 ):
     """
     Optimized window masking: get masks and apply to inputs
+    In returned values, 1 means masked, 0 means preserved.
     """
     if len(freq_x.shape) > 3:
         """DeepSense [B, c, i, s] -> [B, i * s, c]"""
@@ -72,4 +73,4 @@ def mask_input(
     # mask_token: [b, patch_resolution, 1] @ [b, 1, D] -> [1, patch_resolution, D]
     masked_x = x * patch_mask_channel + token_mask @ mask_token
 
-    return masked_x, patch_mask.int(), bit_mask.int()
+    return masked_x, 1 - patch_mask.int(), 1 - bit_mask.int()

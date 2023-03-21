@@ -8,9 +8,8 @@ from torch.nn import TransformerEncoderLayer
 from input_utils.padding_utils import get_padded_size
 from input_utils.mask_utils import mask_input
 from models.FusionModules import TransformerFusionBlock
-
 from timm.models.layers import trunc_normal_
-
+from models.MAEModule import window_masking
 
 import logging
 
@@ -130,7 +129,7 @@ class TransformerV4_CMC(nn.Module):
                 for i_layer, block_num in enumerate(
                     self.config["time_freq_block_num"][mod]
                 ):  # different downsample ratios
-                    down_ratio = 2**i_layer
+                    down_ratio = 2 ** i_layer
                     layer_dim = int(self.config["time_freq_out_channels"] * down_ratio)
                     layer = BasicLayer(
                         dim=layer_dim,  # C in SWIN
@@ -272,7 +271,7 @@ class TransformerV4_CMC(nn.Module):
 
                 for i_layer, block_num in enumerate(self.config["time_freq_block_num"][mod][:-1]):
                     inverse_i_layer = len(self.config["time_freq_block_num"][mod]) - i_layer - 2
-                    down_ratio = 2**inverse_i_layer
+                    down_ratio = 2 ** inverse_i_layer
                     layer_dim = int(self.config["time_freq_out_channels"] * down_ratio)
                     layer = BasicLayer(
                         dim=layer_dim,  # C in SWIN
@@ -494,6 +493,14 @@ class TransformerV4_CMC(nn.Module):
                         mask_token=self.mask_token[loc][mod],
                         mask_ratio=self.masked_ratio[mod],
                     )
+                    # embeded_input, mod_loc_mask = window_masking(
+                    #     embeded_input,
+                    #     input_resolution=padded_img_size,
+                    #     patch_resolution=self.patch_embed[loc][mod].patches_resolution,
+                    #     window_size=self.config["window_size"][mod],
+                    #     mask_token=self.mask_token[loc][mod],
+                    #     mask_ratio=self.masked_ratio[mod],
+                    # )
                     mod_loc_masks[loc][mod] = mod_loc_mask
 
                 embeded_inputs[loc][mod] = embeded_input

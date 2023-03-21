@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class MAE(nn.Module):
     """
     Masked Auto Encoder
@@ -19,6 +20,7 @@ class MAE(nn.Module):
     def forward(self, freq_input):
         # compute features
         return self.backbone(freq_input, class_head=False)
+
 
 def window_masking(
     x: torch.Tensor,
@@ -47,15 +49,12 @@ def window_masking(
     # assert L == h * w
     ph, pw = patch_resolution[0], patch_resolution[1]  # num patches h and w
     dh, dw = int(ph // window_size[0]), int(pw // window_size[1])  # window_resolution h and w
-
     rh, rw = window_size[0], window_size[1]
-
-    # assert dh == h / rh and dw == w / rw
 
     noise = torch.rand(B, dw * dh, device=x.device)
     sparse_shuffle = torch.argsort(noise, dim=1)
     sparse_restore = torch.argsort(sparse_shuffle, dim=1)
-    sparse_keep = sparse_shuffle[:, : int(dw * dh * (1 - mask_ratio))]
+    sparse_keep = sparse_shuffle[:, : int(dw * dh * (1 - mask_ratio))]  # list of preserved patches
 
     index_keep_part = torch.div(sparse_keep, dw, rounding_mode="floor") * dw * (rw * rh) + (sparse_keep % dw) * rw
     index_keep = index_keep_part
@@ -83,6 +82,8 @@ def window_masking(
         mask[:, : index_keep.shape[-1]] = 0
         mask = torch.gather(mask, dim=1, index=index_restore)
 
+    print(L, mask.sum() / B)
+
     if remove:
         x_masked = torch.gather(x, dim=1, index=index_keep.unsqueeze(-1).repeat(1, 1, D))
         # x_masked = rearrange(x_masked, "B (H W) C -> B H W C", H=int(x_masked.shape[1] ** 0.5))
@@ -94,57 +95,6 @@ def window_masking(
         # x_masked = rearrange(x_masked, "B (H W) C -> B H W C", H=int(x_masked.shape[1] ** 0.5))
         return (x_masked, mask)
 
-
-def window_masking_2(
-    x,
-    input_resolution,
-    patch_resolution,
-    window_size,
-    mask_token,
-    mask_ratio=0.75,
-):
-    """
-    Optimized window masking
-    """
-    B, L, D = x.shape
-    h, w = input_resolution[0], input_resolution[1]  # padded image h and w
-    # assert L == h * w
-    ph, pw = patch_resolution[0], patch_resolution[1]  # num patches h and w
-    dh, dw = int(ph // window_size[0]), int(pw // window_size[1])  # window_resolution h and w
-
-    rh, rw = window_size[0], window_size[1]
-    
-    
-    # random mask [b, window_resolution height, window_resolution_width]
-    bit_mask = torch.cuda.FloatTensor(B, dh, dw).uniform_() > mask_ratio
-    
-    # [b, patch_resolution_height, window_resolution_width]
-    patch_mask = bit_mask.repeat_interleave(rh, dim=1)
-    
-    # [b, patch_resolution_height, patch_resolution_width]
-    patch_mask = patch_mask.repeat_interleave(rw, dim=2)
-    
-    # [b, patch_resolutions]
-    patch_mask = patch_mask.reshape(B, -1).int().float()
-    
-    # [b, patch_resolution, D]
-    patch_mask_channel = patch_mask.unsqueeze(-1).repeat(1, 1, D)
-    
-    # mask_token -> [b, D] -> [b, 1, D]
-    mask_token = mask_token.unsqueeze(0).repeat(B, 1)
-    mask_token = mask_token.unsqueeze(1)
-
-    # masked [b, patch_resolution, 1]
-    token_mask = (1 - patch_mask).unsqueeze(-1)
-    
-    # [b, patch_resolution, 1] @ [b, 1, D] -> [b, patch_resolution, D]
-    # token * (1 - mask)
-    masked = torch.bmm(token_mask, mask_token)
-
-    # x * mask + token * (1 - mask)
-    masked_x = x * patch_mask_channel + masked
-    
-    return masked_x, patch_mask.int()
 
 def find_patch_size(dim):
     for i in range(2, dim):
@@ -192,7 +142,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     assert embed_dim % 2 == 0
     omega = np.arange(embed_dim // 2, dtype=np.float)
     omega /= embed_dim / 2.0
-    omega = 1.0 / 10000**omega  # (D/2,)
+    omega = 1.0 / 10000 ** omega  # (D/2,)
 
     pos = pos.reshape(-1)  # (M,)
     out = np.einsum("m,d->md", pos, omega)  # (M, D/2), outer product
