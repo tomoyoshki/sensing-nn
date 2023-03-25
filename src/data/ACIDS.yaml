@@ -341,11 +341,6 @@ CMC:
 
 CMCV2:
         emb_dim: 256
-        nce_k: 4096
-        nce_t: 0.07
-        nce_momentum: 0.9
-        softmax: True
-        input_size: 256
         temperature: 0.2
         # Pre training  
         pretrain_optimizer:
@@ -370,7 +365,7 @@ CMCV2:
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.0001
+                weight_decay: 0.01
                 decay_rate: 0.2
         finetune_lr_scheduler:
                 name: "step"
