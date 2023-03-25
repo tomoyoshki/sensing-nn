@@ -129,7 +129,7 @@ class TransformerV4_CMC(nn.Module):
                 for i_layer, block_num in enumerate(
                     self.config["time_freq_block_num"][mod]
                 ):  # different downsample ratios
-                    down_ratio = 2 ** i_layer
+                    down_ratio = 2**i_layer
                     layer_dim = int(self.config["time_freq_out_channels"] * down_ratio)
                     layer = BasicLayer(
                         dim=layer_dim,  # C in SWIN
@@ -189,7 +189,7 @@ class TransformerV4_CMC(nn.Module):
         # mod fusion layer
         if self.args.learn_framework == "Cosmo":
             "Attention fusion for Cosmo"
-            self.mod_fusion_layer = TransformerFusionBlock(
+            self.cosmo_mod_fusion_layer = TransformerFusionBlock(
                 self.config["loc_out_channels"],
                 self.config["loc_head_num"],
                 self.config["dropout_ratio"],
@@ -271,7 +271,7 @@ class TransformerV4_CMC(nn.Module):
 
                 for i_layer, block_num in enumerate(self.config["time_freq_block_num"][mod][:-1]):
                     inverse_i_layer = len(self.config["time_freq_block_num"][mod]) - i_layer - 2
-                    down_ratio = 2 ** inverse_i_layer
+                    down_ratio = 2**inverse_i_layer
                     layer_dim = int(self.config["time_freq_out_channels"] * down_ratio)
                     layer = BasicLayer(
                         dim=layer_dim,  # C in SWIN
@@ -405,7 +405,7 @@ class TransformerV4_CMC(nn.Module):
                 """Attention-based fusion."""
                 mod_features = torch.stack(mod_features, dim=1)
                 mod_features = mod_features.unsqueeze(dim=1)
-                sample_features = self.mod_fusion_layer(mod_features).flatten(start_dim=1)
+                sample_features = self.cosmo_mod_fusion_layer(mod_features).flatten(start_dim=1)
             elif self.args.learn_framework == "MAE":
                 """FC fusion for MAE"""
                 sample_features = self.forward_mae_fusion(mod_features)

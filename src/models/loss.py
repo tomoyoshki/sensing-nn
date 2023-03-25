@@ -9,16 +9,6 @@ import math
 from general_utils.alias_multimodal import AliasMethod
 
 
-def cross_entropy_loss(logits, labels):
-    """Compute the cross entropy loss between the logits and the labels.
-
-    Args:
-        logits (_type_): _description_
-        labels (_type_): _description_
-    """
-    pass
-
-
 class DINOLoss(nn.Module):
     """The loss function.
     We subclass the `nn.Module` becuase we want to create a buffer for the
@@ -112,10 +102,7 @@ class DINOLoss(nn.Module):
 class SimCLRLoss(nn.Module):
     def __init__(self, args):
         super(SimCLRLoss, self).__init__()
-        self.batch_size = args.batch_size
         self.temperature = args.dataset_config[args.learn_framework]["temperature"]
-
-        self.mask = self.mask_correlated_samples(self.batch_size)
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
         self.similarity_f = nn.CosineSimilarity(dim=2)
 
@@ -137,10 +124,9 @@ class SimCLRLoss(nn.Module):
         batch_size = z_i.shape[0]
         N = 2 * batch_size
 
+        # Calculate similarity
         z = torch.cat((z_i, z_j), dim=0)
-
         sim = self.similarity_f(z.unsqueeze(1), z.unsqueeze(0)) / self.temperature
-
         sim_i_j = torch.diag(sim, batch_size)
         sim_j_i = torch.diag(sim, -batch_size)
 
@@ -150,8 +136,8 @@ class SimCLRLoss(nn.Module):
 
         labels = torch.zeros(N).to(positive_samples.device).long()
         logits = torch.cat((positive_samples, negative_samples), dim=1)
-        loss = self.criterion(logits, labels)
-        loss /= N
+        loss = self.criterion(logits, labels) / N
+
         return loss
 
 
@@ -213,10 +199,9 @@ class CMCLoss(nn.Module):
         batch_size = z_i.shape[0]
         N = 2 * batch_size
 
+        # Calculate similarity
         z = torch.cat((z_i, z_j), dim=0)
-
         sim = self.similarity_f(z.unsqueeze(1), z.unsqueeze(0)) / self.temperature
-
         sim = sim.reshape(sim.shape[0], sim.shape[1])
         sim_i_j = torch.diag(sim, batch_size)
         sim_j_i = torch.diag(sim, -batch_size)
@@ -227,12 +212,129 @@ class CMCLoss(nn.Module):
 
         labels = torch.zeros(N).to(positive_samples.device).long()
         logits = torch.cat((positive_samples, negative_samples), dim=1)
-        loss = self.criterion(logits, labels)
-        loss /= N
+        loss = self.criterion(logits, labels) / N
+
         return loss
 
     def forward(self, seismic_features, audio_features, index):
         loss = self.forward_similiarity(seismic_features, audio_features)
+
+        return loss
+
+
+class CMCV2Loss(nn.Module):
+    def __init__(self, args):
+        super(CMCV2Loss, self).__init__()
+        self.args = args
+        self.config = args.dataset_config["CMCV2"]
+        self.modalities = args.dataset_config["modality_names"]
+        self.temperature = args.dataset_config[args.learn_framework]["temperature"]
+        self.criterion = nn.CrossEntropyLoss(reduction="sum")
+        self.similarity_f = nn.CosineSimilarity(dim=2)
+        self.orthonal_loss_f = nn.CosineEmbeddingLoss(reduction="mean")
+
+    def mask_correlated_samples(self, batch_size):
+        N = 2 * batch_size
+        mask = torch.ones((N, N), dtype=bool)
+        mask = mask.fill_diagonal_(0)
+        for i in range(batch_size):
+            mask[i, batch_size + i] = 0
+            mask[batch_size + i, i] = 0
+        return mask
+
+    def forward_contrastive_loss(self, mod1_feature, mod2_feature):
+        """
+        We do not sample negative examples explicitly.
+        Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1)
+        augmented examples within a minibatch as negative examples.
+        """
+        batch_size = mod1_feature.shape[0]
+        N = 2 * batch_size
+
+        # Calculate similarity
+        z = torch.cat((mod1_feature, mod2_feature), dim=0)
+        sim = self.similarity_f(z.unsqueeze(1), z.unsqueeze(0)) / self.temperature
+        sim = sim.reshape(sim.shape[0], sim.shape[1])
+        sim_i_j = torch.diag(sim, batch_size)
+        sim_j_i = torch.diag(sim, -batch_size)
+
+        # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
+        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)
+        negative_samples = sim[self.mask_correlated_samples(batch_size)].reshape(N, -1)
+
+        # Compute loss
+        labels = torch.zeros(N).to(positive_samples.device).long()
+        logits = torch.cat((positive_samples, negative_samples), dim=1)
+        loss = self.criterion(logits, labels) / N
+
+        return loss
+
+    def forward_orthogonality_loss(self, embeddings1, embeddings2):
+        """
+        Compute the orthogonality loss for the modality features. No cross-sample operation is involved.
+        input shape: [b. dim]
+        """
+        batch = embeddings1.shape[0]
+        orthogonal_loss = self.orthonal_loss_f(
+            embeddings1,
+            embeddings2,
+            target=torch.ones(batch).to(embeddings1.device),
+        )
+
+        return orthogonal_loss
+
+    def forward(self, mod_features1, mod_features2, index=None):
+        """
+        loss = shared contrastive loss + mod contrastive loss + orthogonality loss
+        """
+        loss = 0
+
+        # split features into "shared" space and "private" space
+        split_mod_features1, split_mod_features2 = {}, {}
+        for mod in self.modalities:
+            dim = mod_features1[mod].shape[1]
+            split_mod_features1[mod] = {
+                "shared": mod_features1[mod][:, 0 : (dim // 2)],
+                "private": mod_features1[mod][:, (dim // 2) :],
+            }
+
+            dim = mod_features2[mod].shape[1]
+            split_mod_features2[mod] = {
+                "shared": mod_features2[mod][:, 0 : (dim // 2)],
+                "private": mod_features2[mod][:, (dim // 2) :],
+            }
+
+        # shared space contrastive loss
+        for split_mod_features in [split_mod_features1, split_mod_features2]:
+            for i, mod1 in enumerate(self.modalities):
+                for mod2 in self.modalities[i:]:
+                    loss += self.forward_contrastive_loss(
+                        split_mod_features[mod1]["shared"],
+                        split_mod_features[mod2]["shared"],
+                    )
+
+        # private space contrastive loss
+        for mod in self.modalities:
+            loss += self.forward_contrastive_loss(
+                split_mod_features1[mod]["private"],
+                split_mod_features2[mod]["private"],
+            )
+
+        # orthogonality loss
+        for split_mod_features in [split_mod_features1, split_mod_features2]:
+            for i, mod in enumerate(self.modalities):
+                # orthognoality between shared and private space
+                loss += self.forward_orthogonality_loss(
+                    split_mod_features[mod]["shared"],
+                    split_mod_features[mod]["private"],
+                )
+
+                # orthogonality between modalities
+                for mod2 in self.modalities[i:]:
+                    loss += self.forward_orthogonality_loss(
+                        split_mod_features[mod]["private"],
+                        split_mod_features[mod2]["private"],
+                    )
 
         return loss
 
@@ -385,7 +487,7 @@ class MAELoss(nn.Module):
             for mod in self.modalities:
                 mask = masks[loc][mod]
                 pred = decoded_x[loc][mod]
-                
+
                 if self.args.model == "TransformerV4":
                     in_channel = self.args.dataset_config["loc_mod_in_freq_channels"]["shake"][mod]
                     target = self.patchify(
@@ -402,14 +504,13 @@ class MAELoss(nn.Module):
                         patch_size,
                         in_channel,
                     )
-                    
+
                     pred = self.patchify(
                         pred,
                         patch_size,
                         in_channel,
                     )
                     mask = mask.reshape((pred.shape[0], -1))
-                
 
                 if self.norm_pix_loss:
                     mean = target.mean(dim=-1, keepdim=True)
@@ -418,7 +519,7 @@ class MAELoss(nn.Module):
 
                 loss = (pred - target) ** 2
                 loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
-                
+
                 loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
                 total_loss += loss
 

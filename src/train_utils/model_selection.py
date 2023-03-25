@@ -14,6 +14,7 @@ from models.DINOModules import DINO
 from models.SimCLRModules import SimCLR
 from models.MoCoModule import MoCoWrapper
 from models.CMCModules import CMC
+from models.CMCV2Modules import CMCV2
 from models.CosmoModules import Cosmo
 from models.CocoaModules import Cocoa
 
@@ -25,7 +26,7 @@ from models.MTSSModules import MTSS
 from models.ModPredModules import ModPred
 
 # loss functions
-from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss, MAELoss, CocoaLoss
+from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss, MAELoss, CocoaLoss, CMCV2Loss
 
 
 def init_backbone_model(args):
@@ -33,14 +34,14 @@ def init_backbone_model(args):
     if args.model == "DeepSense":
         if args.learn_framework in {"MoCo", "MoCoFusion"} and args.stage == "pretrain":
             return DeepSense
-        elif args.learn_framework in {"CMC", "Cosmo", "Cocoa", "MAE"}:
+        elif args.learn_framework in {"CMC", "CMCV2", "Cosmo", "Cocoa", "MAE"}:
             classifier = DeepSense_CMC(args)
         else:
             classifier = DeepSense(args, self_attention=False)
     elif args.model == "TransformerV4":
         if args.learn_framework in {"MoCo", "MoCoFusion"} and args.stage == "pretrain":
             return TransformerV4
-        elif args.learn_framework in {"CMC", "Cosmo", "Cocoa", "MAE"}:
+        elif args.learn_framework in {"CMC", "CMCV2", "Cosmo", "Cocoa", "MAE"}:
             classifier = TransformerV4_CMC(args)
         else:
             classifier = TransformerV4(args)
@@ -65,6 +66,8 @@ def init_contrastive_framework(args, backbone_model):
         default_model = MoCoWrapper(args, backbone_model)
     elif args.learn_framework == "CMC":
         default_model = CMC(args, backbone_model)
+    elif args.learn_framework == "CMCV2":
+        default_model = CMCV2(args, backbone_model)
     elif args.learn_framework == "Cosmo":
         default_model = Cosmo(args, backbone_model)
     elif args.learn_framework == "Cocoa":
@@ -143,6 +146,8 @@ def init_loss_func(args):
             loss_func = MoCoLoss(args).to(args.device)
         elif args.learn_framework in {"CMC"}:
             loss_func = CMCLoss(args).to(args.device)
+        elif args.learn_framework in {"CMCV2"}:
+            loss_func = CMCV2Loss(args).to(args.device)
         elif args.learn_framework in {"SimCLR", "SimCLRFusion"}:
             loss_func = SimCLRLoss(args).to(args.device)
         elif args.learn_framework in {"Cosmo"}:
