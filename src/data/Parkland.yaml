@@ -362,7 +362,7 @@ CMCV2:
                 min_lr: 0.0000001
                 clip_grad: 5.0
                 weight_decay: 0.05
-                decay_rate: 0.00001
+                decay_rate: 0.2
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True

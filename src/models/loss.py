@@ -287,8 +287,6 @@ class CMCV2Loss(nn.Module):
         """
         loss = shared contrastive loss + mod contrastive loss + orthogonality loss
         """
-        loss = 0
-
         # split features into "shared" space and "private" space
         split_mod_features1, split_mod_features2 = {}, {}
         for mod in self.modalities:
@@ -305,36 +303,41 @@ class CMCV2Loss(nn.Module):
             }
 
         # shared space contrastive loss
+        shared_contrastive_loss = 0
         for split_mod_features in [split_mod_features1, split_mod_features2]:
             for i, mod1 in enumerate(self.modalities):
-                for mod2 in self.modalities[i:]:
-                    loss += self.forward_contrastive_loss(
+                for mod2 in self.modalities[i + 1 :]:
+                    shared_contrastive_loss += self.forward_contrastive_loss(
                         split_mod_features[mod1]["shared"],
                         split_mod_features[mod2]["shared"],
                     )
 
         # private space contrastive loss
+        private_contrastive_loss = 0
         for mod in self.modalities:
-            loss += self.forward_contrastive_loss(
+            private_contrastive_loss += self.forward_contrastive_loss(
                 split_mod_features1[mod]["private"],
                 split_mod_features2[mod]["private"],
             )
 
         # orthogonality loss
+        orthogonality_loss = 0
         for split_mod_features in [split_mod_features1, split_mod_features2]:
             for i, mod in enumerate(self.modalities):
                 # orthognoality between shared and private space
-                loss += self.forward_orthogonality_loss(
+                orthogonality_loss += self.forward_orthogonality_loss(
                     split_mod_features[mod]["shared"],
                     split_mod_features[mod]["private"],
                 )
 
                 # orthogonality between modalities
-                for mod2 in self.modalities[i:]:
-                    loss += self.forward_orthogonality_loss(
+                for mod2 in self.modalities[i + 1 :]:
+                    orthogonality_loss += self.forward_orthogonality_loss(
                         split_mod_features[mod]["private"],
                         split_mod_features[mod2]["private"],
                     )
+
+        loss = shared_contrastive_loss + private_contrastive_loss + orthogonality_loss
 
         return loss
 
