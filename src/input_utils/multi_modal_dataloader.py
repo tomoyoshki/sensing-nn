@@ -88,7 +88,7 @@ class BatchSeqSampler(Sampler):
             yield batch_sample_indices
 
     def __len__(self):
-        return self.subseq_count // self.subseq_batch_size
+        return np.ceil(self.subseq_count / self.subseq_batch_size).astype(int)
 
 
 def preprocess_triplet_batch(data, labels):
