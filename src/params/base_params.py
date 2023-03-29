@@ -13,6 +13,13 @@ def parse_base_args(option="train"):
     """
     parser = argparse.ArgumentParser()
 
+    parser.add_argument(
+        "-debug",
+        type=str,
+        default="true",
+        help="Whether tbe current execution is for debugging.",
+    )
+
     # dataset config
     parser.add_argument(
         "-dataset",
@@ -109,6 +116,12 @@ def parse_base_args(option="train"):
         type=str,
         default="true",
         help="Whether to perform balanced sampling on classes.",
+    )
+    parser.add_argument(
+        "-sequence_sampler",
+        type=str,
+        default="false",
+        help="Whether to use sequence sampler in pretraining.",
     )
 
     args = parser.parse_args()

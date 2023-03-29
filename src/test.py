@@ -17,7 +17,7 @@ from train_utils.model_selection import init_backbone_model
 def test(args):
     """The main function for test."""
     # Init data loaders
-    test_dataloader, _ = create_dataloader("test", args, batch_size=args.batch_size, workers=args.workers)
+    test_dataloader = create_dataloader("test", args, batch_size=args.batch_size, workers=args.workers)
 
     # Only import augmenter after parse arguments so the device is correct
     from data_augmenter.Augmenter import Augmenter
@@ -29,7 +29,7 @@ def test(args):
 
     # Init the classifier model
     classifier = init_backbone_model(args)
-    classifier = load_model_weight(classifier, args.classifier_weight)
+    classifier = load_model_weight(classifier, args.classifier_weight, load_class_layer=True)
     args.classifier = classifier
 
     # define the loss function

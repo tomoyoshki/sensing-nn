@@ -88,7 +88,10 @@ def set_model_weight_folder(args):
         args (_type_): _description_
     """
     base_path = f"{os.path.abspath(os.path.join(os.getcwd(), os.pardir))}/weights"
-    dataset_model_path = os.path.join(base_path, f"{args.dataset}_{args.model}")
+    if args.debug:
+        dataset_model_path = os.path.join(base_path, f"{args.dataset}_{args.model}_debug")
+    else:
+        dataset_model_path = os.path.join(base_path, f"{args.dataset}_{args.model}")
     check_paths([base_path, dataset_model_path])
 
     # get the newest id matching the current config

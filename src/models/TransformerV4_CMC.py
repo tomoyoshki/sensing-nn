@@ -187,7 +187,7 @@ class TransformerV4_CMC(nn.Module):
                 )
 
         # mod fusion layer
-        if self.args.learn_framework == "Cosmo":
+        if self.args.learn_framework in {"Cosmo", "CMCV2"}:
             "Attention fusion for Cosmo"
             self.cosmo_mod_fusion_layer = TransformerFusionBlock(
                 self.config["loc_out_channels"],
@@ -401,7 +401,7 @@ class TransformerV4_CMC(nn.Module):
                 """CMC, Cosmo, and Cocoa, return the dict of mod features"""
                 return dict(zip(self.modalities, mod_features))
         else:
-            if self.args.train_mode == "contrastive" and self.args.learn_framework == "Cosmo":
+            if self.args.learn_framework in {"Cosmo", "CMCV2"}:
                 """Attention-based fusion."""
                 mod_features = torch.stack(mod_features, dim=1)
                 mod_features = mod_features.unsqueeze(dim=1)

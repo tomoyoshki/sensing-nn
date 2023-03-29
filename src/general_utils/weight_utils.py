@@ -71,7 +71,7 @@ def set_learnable_params_finetune(args, classifier):
     """
     learnable_parameters = []
     for name, param in classifier.named_parameters():
-        if args.learn_framework == "Cosmo":
+        if args.learn_framework in {"Cosmo", "CMCV2"}:
             if "class_layer" in name or "mod_fusion_layer" in name:
                 param.requires_grad = True
                 learnable_parameters.append(param)

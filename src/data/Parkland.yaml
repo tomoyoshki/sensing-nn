@@ -52,6 +52,9 @@ loc_mod_spectrum_len:
                 seismic: 20
                 acc: 20
 
+# For sequence-based contrastive learning 
+seq_len: 4
+
 
 # DeepSense config
 DeepSense:
@@ -359,12 +362,12 @@ CMCV2:
                 name: "Adam"
                 start_lr: 0.001
                 warmup_lr: 0.000001
-                min_lr: 0.0000001
+                min_lr: 0.000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 0.0005
                 decay_rate: 0.2
         finetune_lr_scheduler:
-                name: "step"
+                name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
                 train_epochs: 200

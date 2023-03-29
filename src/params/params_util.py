@@ -111,6 +111,8 @@ def set_auto_params(args):
     args.verbose = str_to_bool(args.verbose)
     args.count_range = str_to_bool(args.count_range)
     args.balanced_sample = str_to_bool(args.balanced_sample) and args.dataset in {"ACIDS", "Parkland_Miata"}
+    args.sequence_sampler = str_to_bool(args.sequence_sampler)
+    args.debug = str_to_bool(args.debug)
 
     # threshold
     args.threshold = 0.5
