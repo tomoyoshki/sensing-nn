@@ -37,7 +37,7 @@ def create_dataloader(option, args, batch_size=64, workers=5):
     balanced_sample_flag = (
         args.balanced_sample and option == "train" and (args.train_mode == "supervised" or args.stage == "finetune")
     )
-    sequence_sampler_flag = args.sequence_sampler and option == "train" and args.stage == "pretrain"
+    sequence_sampler_flag = args.sequence_sampler and args.train_mode == "contrastive" and args.stage == "pretrain"
 
     # init the dataset
     if sequence_sampler_flag:
@@ -78,8 +78,11 @@ class BatchSeqSampler(Sampler):
         # trunk data and concat samples of subsequences
         for batch_id in range(0, self.subseq_count, self.subseq_batch_size):
             batch_sample_indices = []
-            for subseq_id in self.subseq_indices[batch_id : batch_id + self.subseq_batch_size]:
-                subseq = self.dataset.subseqs[subseq_id]
+            batch_subseqs = [
+                self.dataset.subseqs[subseq_id]
+                for subseq_id in self.subseq_indices[batch_id : batch_id + self.subseq_batch_size]
+            ]
+            for subseq in batch_subseqs:
                 batch_sample_indices.extend(self.dataset.subseq_to_sample_idx[subseq])
 
             yield batch_sample_indices

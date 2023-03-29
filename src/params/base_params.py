@@ -16,7 +16,7 @@ def parse_base_args(option="train"):
     parser.add_argument(
         "-debug",
         type=str,
-        default="true",
+        default="false",
         help="Whether tbe current execution is for debugging.",
     )
 

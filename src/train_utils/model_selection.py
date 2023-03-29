@@ -26,7 +26,7 @@ from models.MTSSModules import MTSS
 from models.ModPredModules import ModPred
 
 # loss functions
-from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss, MAELoss, CocoaLoss, CMCV2Loss
+from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss, MAELoss, CocoaLoss, CMCV2Loss, CMCV3Loss
 
 
 def init_backbone_model(args):
@@ -147,7 +147,7 @@ def init_loss_func(args):
         elif args.learn_framework in {"CMC"}:
             loss_func = CMCLoss(args).to(args.device)
         elif args.learn_framework in {"CMCV2"}:
-            loss_func = CMCV2Loss(args).to(args.device)
+            loss_func = CMCV3Loss(args).to(args.device)
         elif args.learn_framework in {"SimCLR", "SimCLRFusion"}:
             loss_func = SimCLRLoss(args).to(args.device)
         elif args.learn_framework in {"Cosmo"}:

@@ -342,6 +342,201 @@ class CMCV2Loss(nn.Module):
         return loss
 
 
+class CMCV3Loss(nn.Module):
+    def __init__(self, args):
+        super(CMCV3Loss, self).__init__()
+        self.args = args
+        self.config = args.dataset_config["CMCV2"]
+        self.modalities = args.dataset_config["modality_names"]
+        self.temperature = args.dataset_config[args.learn_framework]["temperature"]
+        self.criterion = nn.CrossEntropyLoss(reduction="mean")
+        self.similarity_f = nn.CosineSimilarity(dim=3)
+        self.orthonal_loss_f = nn.CosineEmbeddingLoss(reduction="mean")
+        self.ranking_loss = nn.MarginRankingLoss(margin=0.0, reduction="mean")
+
+    def mask_correlated_samples(self, seq_len, batch_size):
+        """
+        Return a mask where the correlated sample locations are 0.
+        Output: [seq, 2b, 2b]
+        """
+        N = 2 * batch_size
+        mask = torch.ones((N, N), dtype=bool)
+        mask = mask.fill_diagonal_(0)
+        for i in range(batch_size):
+            mask[i, batch_size + i] = 0
+            mask[batch_size + i, i] = 0
+
+        mask = mask.unsqueeze(0).repeat(seq_len, 1, 1)
+
+        return mask
+
+    def forward_contrastive_loss(self, mod1_feature, mod2_feature):
+        """
+        We do not sample negative examples explicitly.
+        Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1)
+        augmented examples within a minibatch as negative examples.
+        mod_seq_feature shape: [b, seq, dim]
+        """
+        # [b, seq, dim] -- > [seq, b, dim]
+        mod1_seq_features = mod1_feature.transpose(0, 1)
+        mod2_seq_features = mod2_feature.transpose(0, 1)
+        seq_len, batch_size, dim = mod1_seq_features.shape
+        N = 2 * batch_size
+
+        # Calculate similarity
+        z = torch.cat((mod1_seq_features, mod2_seq_features), dim=1)
+        sim = self.similarity_f(z.unsqueeze(2), z.unsqueeze(1)) / self.temperature
+        sim_i_j = torch.diagonal(sim, batch_size, dim1=-2, dim2=-1)
+        sim_j_i = torch.diagonal(sim, -batch_size, dim1=-2, dim2=-1)
+
+        # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
+        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=1).reshape(seq_len, N, 1)
+        negative_samples = sim[self.mask_correlated_samples(seq_len, batch_size)].reshape(seq_len, N, -1)
+
+        # Compute loss
+        labels = torch.zeros(seq_len * N).to(positive_samples.device).long()
+        logits = torch.cat((positive_samples, negative_samples), dim=2).reshape(seq_len * N, -1)
+        contrastive_loss = self.criterion(logits, labels)
+
+        return contrastive_loss
+
+    def forward_orthogonality_loss(self, embeddings1, embeddings2):
+        """
+        Compute the orthogonality loss for the modality features. No cross-sample operation is involved.
+        input shape: [b, seq_len, dim]
+        """
+        # convert [batch, seq, dim] to [batch * seq, dim]
+        flat_embeddings1 = embeddings1.reshape(-1, embeddings1.shape[-1])
+        flat_embeddings2 = embeddings2.reshape(-1, embeddings2.shape[-1])
+
+        batch = flat_embeddings1.shape[0]
+        orthogonal_loss = self.orthonal_loss_f(
+            flat_embeddings1,
+            flat_embeddings2,
+            target=torch.ones(batch).to(embeddings1.device),
+        )
+
+        return orthogonal_loss
+
+    def forward_temporal_correlation_loss(self, embeddings):
+        """
+        Enforce the temporal correlations within each subsequence, for both shared space and private space.
+        sim(anchor, sample1) >= sim(anchor, sample2) ... >= sim(anchor, sampleN)
+        Input: the sample embeddings, [b, seq, dim], where the sequence samples are temporally correlated.
+        """
+        # [batch, seq, seq]
+        sim = self.similarity_f(embeddings.unsqueeze(2), embeddings.unsqueeze(1))
+        B, N = sim.shape[:2]
+
+        # Step 1: Subtract similarities of different columns -> [batch, seq, seq - 1], moved to MarginRankingLoss step 4
+        # sim_diff = sim[:, :, -1] - sim[:, :, 1:]
+
+        # Step 2: Create diagonal masks [b, seq, seq - 1]
+        base_mask = torch.zeros(N, N - 1)
+        # upper right are ones
+        upper_right = torch.triu(torch.ones(N, N - 1), diagonal=1)
+        # bottom left are negative ones
+        bottom_left = torch.rot90(upper_right, k=2)
+        # sum together
+        mask = base_mask + upper_right + -1 * bottom_left
+
+        # Step 3: Flatten the inputs and targets
+        # We want left_half - right_half >= 0
+        sim_left_half = sim[:, :, :-1].reshape(B, -1)
+        sim_right_half = sim[:, :, 1:].reshape(B, -1)
+
+        # mask [seq, seq - 1] -> [B, seq, seq - 1] -> [B, seq ^ 2]
+        y = mask.unsqueeze(0).repeat(B, 1, 1).reshape(B, -1).to(self.args.device)
+        # Since left - right >= 0, right has higher rank than left, therefore negating y
+        y = -1.0 * y
+
+        # print(f"Sim left half: ", sim_left_half.shape)
+        # print("Sim right half: ", sim_right_half.shape)
+        # print("Y: ", y.shape)
+        # Step 4: Loss, (Step 1 is moved to Step 4 (sim[:, :, -1] - sim[:, :, 1:] == x1 - x2 in MarginRankingLoss))
+        # target requires same number of dimension as the inputs
+
+        loss_fn = nn.MarginRankingLoss()
+        # Masked portions are zero values and do not contribute to the loss calculation
+        correlation_loss = loss_fn(sim_left_half, sim_right_half, y)
+
+        return correlation_loss
+
+    def forward(self, mod_features1, mod_features2, index=None):
+        """
+        loss = shared contrastive loss + private contrastive loss + orthogonality loss + temporal correlation loss
+        Procedure:
+            (1) Split the features into (batch, subsequence, shared/private).
+            (2) For each batch, compute the shared contrastive loss between modalities.
+            (3) For each batch and modality, compute the private contrastive loss between samples.
+            (4) Compute orthogonality loss beween shared-private and private-private representations.
+            (5) For each subsequence, compute the temporal correlation loss.
+        """
+        seq_len = self.args.dataset_config["seq_len"]
+
+        # Step 1: split features into "shared" space and "private" space of each (mod, subsequence), [b, seq, dim]
+        split_mod_features1, split_mod_features2 = {}, {}
+        for mod in self.modalities:
+            b, dim = mod_features1[mod].shape
+            split_mod_features1[mod] = {
+                "shared": mod_features1[mod][:, 0 : (dim // 2)].reshape(b // seq_len, seq_len, -1),
+                "private": mod_features1[mod][:, (dim // 2) :].reshape(b // seq_len, seq_len, -1),
+            }
+
+            split_mod_features2[mod] = {
+                "shared": mod_features2[mod][:, 0 : (dim // 2)].reshape(b // seq_len, seq_len, -1),
+                "private": mod_features2[mod][:, (dim // 2) :].reshape(b // seq_len, seq_len, -1),
+            }
+
+        # Step 2: shared space contrastive loss
+        shared_contrastive_loss = 0
+        for split_mod_features in [split_mod_features1, split_mod_features2]:
+            for i, mod1 in enumerate(self.modalities):
+                for mod2 in self.modalities[i + 1 :]:
+                    shared_contrastive_loss += self.forward_contrastive_loss(
+                        split_mod_features[mod1]["shared"],
+                        split_mod_features[mod2]["shared"],
+                    )
+
+        # Step 3: private space contrastive loss
+        private_contrastive_loss = 0
+        for mod in self.modalities:
+            private_contrastive_loss += self.forward_contrastive_loss(
+                split_mod_features1[mod]["private"],
+                split_mod_features2[mod]["private"],
+            )
+
+        # Step 4: orthogonality loss
+        orthogonality_loss = 0
+        for split_mod_features in [split_mod_features1, split_mod_features2]:
+            for i, mod in enumerate(self.modalities):
+                # orthognoality between shared and private space
+                orthogonality_loss += self.forward_orthogonality_loss(
+                    split_mod_features[mod]["shared"],
+                    split_mod_features[mod]["private"],
+                )
+
+                # orthogonality between modalities
+                for mod2 in self.modalities[i + 1 :]:
+                    orthogonality_loss += self.forward_orthogonality_loss(
+                        split_mod_features[mod]["private"],
+                        split_mod_features[mod2]["private"],
+                    )
+
+        # Step 5: temporal correlation loss
+        temporal_correlation_loss = 0
+        for split_mod_features in [split_mod_features1, split_mod_features2]:
+            for mod in self.modalities:
+                for feature_type in ["shared", "private"]:
+                    temporal_correlation_loss += self.forward_temporal_correlation_loss(
+                        split_mod_features[mod][feature_type]
+                    )
+
+        loss = shared_contrastive_loss + private_contrastive_loss + orthogonality_loss + temporal_correlation_loss
+
+        return loss
+
+
 class CosmoLoss(nn.Module):
     def __init__(self, args):
         """Based on SupConLoss from "Supervised Contrastive Loss" paper."""

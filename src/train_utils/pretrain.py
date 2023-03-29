@@ -74,7 +74,7 @@ def pretrain(
         train_loss_list = []
 
         # regularization configuration
-        for i, (time_loc_inputs, _, idx) in tqdm(enumerate(train_dataloader), total=num_batches):
+        for i, (time_loc_inputs, _, idx) in tqdm(enumerate(train_dataloader), total=len(train_dataloader)):
             # clear the gradients
             optimizer.zero_grad()
             idx = idx.to(args.device)
