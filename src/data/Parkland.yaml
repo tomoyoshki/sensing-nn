@@ -341,6 +341,7 @@ CMCV2:
         emb_dim: 256
         temperature: 0.07
         input_size: 256
+        ranking_margin: 0.05
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"

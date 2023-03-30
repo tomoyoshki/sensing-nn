@@ -352,7 +352,7 @@ class CMCV3Loss(nn.Module):
         self.criterion = nn.CrossEntropyLoss(reduction="mean")
         self.similarity_f = nn.CosineSimilarity(dim=3)
         self.orthonal_loss_f = nn.CosineEmbeddingLoss(reduction="mean")
-        self.ranking_loss_f = nn.MarginRankingLoss(margin=0.0, reduction="mean")
+        self.ranking_loss_f = nn.MarginRankingLoss(margin=self.config["ranking_margin"], reduction="mean")
 
     def mask_correlated_samples(self, seq_len, batch_size):
         """
