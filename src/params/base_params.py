@@ -117,12 +117,6 @@ def parse_base_args(option="train"):
         default="true",
         help="Whether to perform balanced sampling on classes.",
     )
-    parser.add_argument(
-        "-sequence_sampler",
-        type=str,
-        default="false",
-        help="Whether to use sequence sampler in pretraining.",
-    )
 
     args = parser.parse_args()
 
