@@ -449,13 +449,8 @@ class CMCV3Loss(nn.Module):
         y = mask.unsqueeze(0).repeat(B, 1, 1).reshape(B, -1).to(self.args.device)
         # Since left - right >= 0, right has higher rank than left, therefore negating y
         y = -1.0 * y
-
-        # print(f"Sim left half: ", sim_left_half.shape)
-        # print("Sim right half: ", sim_right_half.shape)
-        # print("Y: ", y.shape)
         # Step 4: Loss, (Step 1 is moved to Step 4 (sim[:, :, -1] - sim[:, :, 1:] == x1 - x2 in MarginRankingLoss))
         # target requires same number of dimension as the inputs
-
         # Masked portions are zero values and do not contribute to the loss calculation
         correlation_loss = self.ranking_loss_f(sim_left_half, sim_right_half, y)
 
