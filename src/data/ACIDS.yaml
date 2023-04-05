@@ -343,7 +343,7 @@ CMC:
                 freq_augmenters: ["phase_shift"]
 
 CMCV2:
-        emb_dim: 256
+        emb_dim: 1024
         temperature: 0.07
         ranking_margin: 0.05
         # Pre training  

@@ -385,8 +385,6 @@ class CMCV3Loss(nn.Module):
 
         # Calculate similarity
         z = torch.cat((mod1_seq_features, mod2_seq_features), dim=1)
-
-        # [b, 2 * seq, dim]
         sim = self.similarity_f(z.unsqueeze(2), z.unsqueeze(1)) / self.temperature
         sim_i_j = torch.diagonal(sim, batch_size, dim1=-2, dim2=-1)
         sim_j_i = torch.diagonal(sim, -batch_size, dim1=-2, dim2=-1)
@@ -491,6 +489,35 @@ class CMCV3Loss(nn.Module):
 
         return contrastive_loss
 
+    def forward_temporal_loss(self, mod1_feature, mod2_feature):
+        # we want to compare each sequence
+        # [b, seq, dim]
+        mod1_seq_features = mod1_feature
+        mod2_seq_features = mod2_feature
+        batch_size, seq_len, dim = mod1_seq_features.shape
+
+        N = seq_len
+
+        sample = 1
+
+        # Calculate similarity
+        # z = torch.cat((mod1_seq_features, mod2_seq_features), dim=1)
+        z = mod1_feature
+        sim = self.similarity_f(z.unsqueeze(2), z.unsqueeze(1)) / self.temperature
+        sim_i_j = torch.diagonal(sim, sample, dim1=-2, dim2=-1)
+        sim_j_i = torch.diagonal(sim, -sample, dim1=-2, dim2=-1)
+
+        # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
+        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=1).reshape(batch_size, N, 1)
+        negative_samples = sim[self.mask_correlated_samples(batch_size, sample)].reshape(batch_size, N, -1)
+
+        # Compute loss
+        labels = torch.zeros(batch_size * N).to(positive_samples.device).long()
+        logits = torch.cat((positive_samples, negative_samples), dim=2).reshape(batch_size * N, -1)
+        contrastive_loss = self.criterion(logits, labels)
+
+        return contrastive_loss
+
     def forward(self, mod_features1, mod_features2, index=None):
         """
         loss = shared contrastive loss + private contrastive loss + orthogonality loss + temporal correlation loss
@@ -507,14 +534,35 @@ class CMCV3Loss(nn.Module):
         split_mod_features1, split_mod_features2 = {}, {}
         for mod in self.modalities:
             b, dim = mod_features1[mod].shape
+
+            # shared: 0 -> 50%
+            #       fine (fine grained): 0 -> 25
+            #       coarse (coarse grained): 25 -> 50
+
+            # private: 50 -> 100%
+            #       fine (fine grained): 50 -> 75
+            #       coarse (coarse grained: 75 -> 100
+
             split_mod_features1[mod] = {
-                "shared": mod_features1[mod][:, 0 : (dim // 2)].reshape(b // seq_len, seq_len, -1),
-                "private": mod_features1[mod][:, (dim // 2) :].reshape(b // seq_len, seq_len, -1),
+                "shared": {
+                    "fine": mod_features1[mod][:, 0 : (dim // 4)].reshape(b // seq_len, seq_len, -1),
+                    "coarse": mod_features1[mod][:, (dim // 4) : (dim // 2)].reshape(b // seq_len, seq_len, -1),
+                },
+                "private": {
+                    "fine": mod_features1[mod][:, (dim // 2) : 3 * (dim // 4)].reshape(b // seq_len, seq_len, -1),
+                    "coarse": mod_features1[mod][:, 3 * (dim // 4) :].reshape(b // seq_len, seq_len, -1),
+                },
             }
 
             split_mod_features2[mod] = {
-                "shared": mod_features2[mod][:, 0 : (dim // 2)].reshape(b // seq_len, seq_len, -1),
-                "private": mod_features2[mod][:, (dim // 2) :].reshape(b // seq_len, seq_len, -1),
+                "shared": {
+                    "fine": mod_features2[mod][:, 0 : (dim // 4)].reshape(b // seq_len, seq_len, -1),
+                    "coarse": mod_features2[mod][:, (dim // 4) : (dim // 2)].reshape(b // seq_len, seq_len, -1),
+                },
+                "private": {
+                    "fine": mod_features2[mod][:, (dim // 2) : 3 * (dim // 4)].reshape(b // seq_len, seq_len, -1),
+                    "coarse": mod_features2[mod][:, 3 * (dim // 4) :].reshape(b // seq_len, seq_len, -1),
+                },
             }
 
         # Step 2: shared space contrastive loss
@@ -523,16 +571,16 @@ class CMCV3Loss(nn.Module):
             for i, mod1 in enumerate(self.modalities):
                 for mod2 in self.modalities[i + 1 :]:
                     shared_contrastive_loss += self.forward_contrastive_loss(
-                        split_mod_features[mod1]["shared"],
-                        split_mod_features[mod2]["shared"],
+                        split_mod_features[mod1]["shared"]["coarse"],
+                        split_mod_features[mod2]["shared"]["coarse"],
                     )
 
         # Step 3: private space contrastive loss
         private_contrastive_loss = 0
         for mod in self.modalities:
             private_contrastive_loss += self.forward_contrastive_loss(
-                split_mod_features1[mod]["private"],
-                split_mod_features2[mod]["private"],
+                split_mod_features1[mod]["private"]["coarse"],
+                split_mod_features2[mod]["private"]["coarse"],
             )
 
         # Step 4: orthogonality loss
@@ -541,25 +589,25 @@ class CMCV3Loss(nn.Module):
             for i, mod in enumerate(self.modalities):
                 # orthognoality between shared and private space
                 orthogonality_loss += self.forward_orthogonality_loss(
-                    split_mod_features[mod]["shared"],
-                    split_mod_features[mod]["private"],
+                    split_mod_features[mod]["shared"]["coarse"],
+                    split_mod_features[mod]["private"]["coarse"],
                 )
 
                 # orthogonality between modalities
                 for mod2 in self.modalities[i + 1 :]:
                     orthogonality_loss += self.forward_orthogonality_loss(
-                        split_mod_features[mod]["private"],
-                        split_mod_features[mod2]["private"],
+                        split_mod_features[mod]["private"]["coarse"],
+                        split_mod_features[mod2]["private"]["coarse"],
                     )
 
-        # # Step 5: temporal correlation loss
-        # temporal_correlation_loss = 0
-        # for split_mod_features in [split_mod_features1, split_mod_features2]:
-        #     for mod in self.modalities:
-        #         for feature_type in ["shared", "private"]:
-        #             temporal_correlation_loss += self.forward_temporal_correlation_loss(
-        #                 split_mod_features[mod][feature_type]
-        #             )
+        # Step 5: temporal correlation loss
+        temporal_correlation_loss = 0
+        for split_mod_features in [split_mod_features1, split_mod_features2]:
+            for mod in self.modalities:
+                for feature_type in ["shared", "private"]:
+                    temporal_correlation_loss += self.forward_temporal_correlation_loss(
+                        split_mod_features[mod][feature_type]["fine"]
+                    )
 
         # Step 6: shared space fine grained contrastive loss
         shared_fine_grained_contrastive_loss = 0
@@ -567,25 +615,51 @@ class CMCV3Loss(nn.Module):
             for i, mod1 in enumerate(self.modalities):
                 for mod2 in self.modalities[i + 1 :]:
                     shared_fine_grained_contrastive_loss += self.forward_fine_grained_contrastive_loss(
-                        split_mod_features[mod1]["shared"],
-                        split_mod_features[mod2]["shared"],
+                        split_mod_features[mod1]["shared"]["fine"],
+                        split_mod_features[mod2]["shared"]["fine"],
                     )
 
         # Step 7: private space fine grained contrastive loss
         private_fine_grained_contrastive_loss = 0
         for mod in self.modalities:
             private_fine_grained_contrastive_loss += self.forward_fine_grained_contrastive_loss(
-                split_mod_features1[mod]["private"],
-                split_mod_features2[mod]["private"],
+                split_mod_features1[mod]["private"]["fine"],
+                split_mod_features2[mod]["private"]["fine"],
             )
+
+        # # Step 8: orthogonality loss
+        # fine_grained_orthogonality_loss = 0
+        # for split_mod_features in [split_mod_features1, split_mod_features2]:
+        #     for i, mod in enumerate(self.modalities):
+        #         # orthognoality between shared and private space
+        #         orthogonality_loss += self.forward_orthogonality_loss(
+        #             split_mod_features[mod]["shared"]["fine"],
+        #             split_mod_features[mod]["private"]["fine"],
+        #         )
+
+        #         # orthogonality between modalities
+        #         for mod2 in self.modalities[i + 1 :]:
+        #             orthogonality_loss += self.forward_orthogonality_loss(
+        #                 split_mod_features[mod]["private"]["fine"],
+        #                 split_mod_features[mod2]["private"]["fine"],
+        #             )
+
+        # Step 9: Temporal consistency
+        # temporal_consistency_loss = 0
+        # for mod in self.modalities:
+        #     private_fine_grained_contrastive_loss += self.forward_fine_grained_contrastive_loss(
+        #         split_mod_features1[mod]["private"]["fine"],
+        #         split_mod_features2[mod]["private"]["fine"],
+        #     )
 
         loss = (
             shared_contrastive_loss
             + private_contrastive_loss
             + orthogonality_loss
-            # + temporal_correlation_loss
+            + temporal_correlation_loss
             + shared_fine_grained_contrastive_loss
             + private_fine_grained_contrastive_loss
+            # + fine_grained_orthogonality_loss
         )
 
         return loss
@@ -726,7 +800,7 @@ class MAELoss(nn.Module):
         ph, pw = patch_size
 
         h = imgs.shape[2] // ph
-        w = imgs.shape[3] // pw
+        w = imgs.shape[3] // pw2222
 
         x = imgs.reshape(shape=(imgs.shape[0], in_channel, h, ph, w, pw))
         x = torch.einsum("nchpwq->nhwpqc", x)
