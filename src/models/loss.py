@@ -778,6 +778,97 @@ class CocoaLoss(nn.Module):
         return loss
 
 
+class TS2Vec(nn.Module):
+    def __init__(self, args):
+        super(TS2Vec, self).__init__()
+        self.args = args
+        self.config = args.dataset_config["TS2Vec"]
+        self.modalities = args.dataset_config["modality_names"]
+        self.temperature = args.dataset_config[args.learn_framework]["temperature"]
+        self.criterion = nn.CrossEntropyLoss(reduction="mean")
+        self.similarity_f = nn.CosineSimilarity(dim=3)
+
+    def mask_correlated_samples(self, seq_len, batch_size):
+        """
+        Return a mask where the correlated sample locations are 0.
+        Output: [seq, 2b, 2b]
+        """
+        N = 2 * batch_size
+        mask = torch.ones((N, N), dtype=bool)
+        mask = mask.fill_diagonal_(0)
+        for i in range(batch_size):
+            mask[i, batch_size + i] = 0
+            mask[batch_size + i, i] = 0
+
+        mask = mask.unsqueeze(0).repeat(seq_len, 1, 1)
+        return mask
+
+    def instance_contrastive_loss(self, z_i, z_j, idx=None):
+        """
+        We do not sample negative examples explicitly.
+        Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1)
+        augmented examples within a minibatch as negative examples.
+        """
+        batch_size = z_i.shape[0]
+        N = 2 * batch_size
+
+        # Calculate similarity
+        z = torch.cat((z_i, z_j), dim=0)
+        sim = self.similarity_f(z.unsqueeze(1), z.unsqueeze(0)) / self.temperature
+        sim_i_j = torch.diag(sim, batch_size)
+        sim_j_i = torch.diag(sim, -batch_size)
+
+        # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
+        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)
+        negative_samples = sim[self.mask_correlated_samples(batch_size)].reshape(N, -1)
+
+        labels = torch.zeros(N).to(positive_samples.device).long()
+        logits = torch.cat((positive_samples, negative_samples), dim=1)
+        loss = self.criterion(logits, labels) / N
+
+        return loss
+
+    def temporal_contrastive_loss(self, mod1_feature, mod2_feature):
+        pass
+
+    def forward(self, mod_features1, mod_features2):
+        """
+        loss = instance contrastive loss + temporal contrastive loss
+        Procedure:
+            (1) Split the features into (batch, subsequence, shared/private).
+            (2) For each batch, compute the shared contrastive loss between modalities.
+            (3) For each batch and modality, compute the private contrastive loss between samples.
+            (4) Compute orthogonality loss beween shared-private and private-private representations.
+            (5) For each subsequence, compute the temporal correlation loss.
+        """
+        seq_len = self.args.dataset_config["seq_len"]
+
+        # step 1: Instance wise contrastive loss
+        instance_contrastive_loss = 0
+        for i, mod1 in enumerate(self.modalities):
+            for mod2 in self.modalities[i + 1 :]:
+                instance_contrastive_loss += self.forward_contrastive_loss(mod_features1[mod1], mod_features2[mod2])
+
+        # step 2: Temporal Contrastive Loss
+
+        # step 2.1: split features into subsequence
+        split_mod_features1, split_mod_features2 = {}, {}
+        for mod in self.modalities:
+            b, dim = mod_features1[mod].shape
+            split_mod_features1[mod] = mod_features1[mod].reshape(b // seq_len, seq_len, -1)
+            split_mod_features2[mod] = mod_features2[mod].reshape(b // seq_len, seq_len, -1)
+
+        # step 2.2 calculate temporal contrastive loss
+        temporal_contrastive_loss = 0
+        for i, mod1 in enumerate(self.modalities):
+            for mod2 in self.modalities[i + 1 :]:
+                temporal_contrastive_loss += self.temporal_contrastive_loss(
+                    split_mod_features1[mod1], split_mod_features2[mod2]
+                )
+
+        loss = instance_contrastive_loss + temporal_contrastive_loss
+
+
 class MAELoss(nn.Module):
     """MAE Loss function
     https://github.com/facebookresearch/mae/blob/main/models_mae.py
