@@ -657,13 +657,12 @@ class CMCV3Loss(nn.Module):
             shared_contrastive_loss
             + private_contrastive_loss
             + orthogonality_loss
-            # + temporal_correlation_loss
+            # + self.config["ranking_loss_weight"] * temporal_correlation_loss
             # + shared_fine_grained_contrastive_loss
             # + private_fine_grained_contrastive_loss
             # + fine_grained_orthogonality_loss
             + temporal_consistency_loss
         )
-
         return loss
 
 
