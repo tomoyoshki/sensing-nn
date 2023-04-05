@@ -343,9 +343,10 @@ CMC:
                 freq_augmenters: ["phase_shift"]
 
 CMCV2:
-        emb_dim: 1024
+        emb_dim: 384
         temperature: 0.07
         ranking_margin: 0.05
+        ranking_losS_weight: 1
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
@@ -358,7 +359,7 @@ CMCV2:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 3000
                 start_epoch: 0
                 decay_epochs: 500
                 decay_rate: 0.2
@@ -369,7 +370,7 @@ CMCV2:
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
-                weight_decay: 0.005
+                weight_decay: 0.0015
                 decay_rate: 0.2
         finetune_lr_scheduler:
                 name: "cosine"
@@ -381,7 +382,7 @@ CMCV2:
                 decay_rate: 0.2
         # data augmenters
         random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "scaling", "jitter", "channel_shuffle"]
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "jitter", "channel_shuffle"]
                 freq_augmenters: ["phase_shift"]
 
 Cosmo:
