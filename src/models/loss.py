@@ -418,7 +418,7 @@ class CMCV3Loss(nn.Module):
 
         return orthogonal_loss
 
-    def forward_temporal_correlation_loss(self, embeddings):
+    def forward_temporal_ranking_loss(self, embeddings):
         """
         Enforce the temporal correlations within each subsequence, for both shared space and private space.
         sim(anchor, sample1) >= sim(anchor, sample2) ... >= sim(anchor, sampleN)
@@ -456,7 +456,7 @@ class CMCV3Loss(nn.Module):
 
         return correlation_loss
 
-    def forward_fine_grained_contrastive_loss(self, mod1_feature, mod2_feature):
+    def forward_temporal_contrastive_loss(self, mod1_feature, mod2_feature):
         """
         We do not sample negative examples explicitly.
         Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1)
@@ -490,33 +490,7 @@ class CMCV3Loss(nn.Module):
         return contrastive_loss
 
     def forward_temporal_loss(self, mod1_feature, mod2_feature):
-        # we want to compare each sequence
-        # [b, seq, dim]
-        mod1_seq_features = mod1_feature
-        mod2_seq_features = mod2_feature
-        batch_size, seq_len, dim = mod1_seq_features.shape
-
-        N = seq_len
-
-        sample = 1
-
-        # Calculate similarity
-        # z = torch.cat((mod1_seq_features, mod2_seq_features), dim=1)
-        z = mod1_feature
-        sim = self.similarity_f(z.unsqueeze(2), z.unsqueeze(1)) / self.temperature
-        sim_i_j = torch.diagonal(sim, sample, dim1=-2, dim2=-1)
-        sim_j_i = torch.diagonal(sim, -sample, dim1=-2, dim2=-1)
-
-        # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
-        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=1).reshape(batch_size, N, 1)
-        negative_samples = sim[self.mask_correlated_samples(batch_size, sample)].reshape(batch_size, N, -1)
-
-        # Compute loss
-        labels = torch.zeros(batch_size * N).to(positive_samples.device).long()
-        logits = torch.cat((positive_samples, negative_samples), dim=2).reshape(batch_size * N, -1)
-        contrastive_loss = self.criterion(logits, labels)
-
-        return contrastive_loss
+        pass
 
     def forward(self, mod_features1, mod_features2, index=None):
         """
@@ -605,7 +579,7 @@ class CMCV3Loss(nn.Module):
         for split_mod_features in [split_mod_features1, split_mod_features2]:
             for mod in self.modalities:
                 for feature_type in ["shared", "private"]:
-                    temporal_correlation_loss += self.forward_temporal_correlation_loss(
+                    temporal_correlation_loss += self.forward_temporal_ranking_loss(
                         split_mod_features[mod][feature_type]["fine"]
                     )
 
@@ -614,7 +588,7 @@ class CMCV3Loss(nn.Module):
         for split_mod_features in [split_mod_features1, split_mod_features2]:
             for i, mod1 in enumerate(self.modalities):
                 for mod2 in self.modalities[i + 1 :]:
-                    shared_fine_grained_contrastive_loss += self.forward_fine_grained_contrastive_loss(
+                    shared_fine_grained_contrastive_loss += self.forward_temporal_contrastive_loss(
                         split_mod_features[mod1]["shared"]["fine"],
                         split_mod_features[mod2]["shared"]["fine"],
                     )
@@ -622,7 +596,7 @@ class CMCV3Loss(nn.Module):
         # Step 7: private space fine grained contrastive loss
         private_fine_grained_contrastive_loss = 0
         for mod in self.modalities:
-            private_fine_grained_contrastive_loss += self.forward_fine_grained_contrastive_loss(
+            private_fine_grained_contrastive_loss += self.forward_temporal_contrastive_loss(
                 split_mod_features1[mod]["private"]["fine"],
                 split_mod_features2[mod]["private"]["fine"],
             )
@@ -647,7 +621,7 @@ class CMCV3Loss(nn.Module):
         # Step 9: Temporal consistency
         # temporal_consistency_loss = 0
         # for mod in self.modalities:
-        #     private_fine_grained_contrastive_loss += self.forward_fine_grained_contrastive_loss(
+        #     private_fine_grained_contrastive_loss += self.forward_temporal_contrastive_loss(
         #         split_mod_features1[mod]["private"]["fine"],
         #         split_mod_features2[mod]["private"]["fine"],
         #     )
@@ -830,7 +804,37 @@ class Ts2VecLoss(nn.Module):
         return loss
 
     def temporal_contrastive_loss(self, mod1_feature, mod2_feature):
-        return 0
+        """
+        We do not sample negative examples explicitly.
+        Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1)
+        augmented examples within a minibatch as negative examples.
+        mod_seq_feature shape: [b, seq, dim]
+        """
+
+        # we want to compare each sequence
+        # [b, seq, dim]
+        mod1_seq_features = mod1_feature
+        mod2_seq_features = mod2_feature
+        batch_size, seq_len, dim = mod1_seq_features.shape
+
+        N = 2 * seq_len
+
+        # Calculate similarity
+        z = torch.cat((mod1_seq_features, mod2_seq_features), dim=1)
+        sim = self.similarity_f(z.unsqueeze(2), z.unsqueeze(1)) / self.temperature
+        sim_i_j = torch.diagonal(sim, seq_len, dim1=-2, dim2=-1)
+        sim_j_i = torch.diagonal(sim, -seq_len, dim1=-2, dim2=-1)
+
+        # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
+        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=1).reshape(batch_size, N, 1)
+        negative_samples = sim[self.mask_correlated_samples(batch_size, seq_len)].reshape(batch_size, N, -1)
+
+        # Compute loss
+        labels = torch.zeros(batch_size * N).to(positive_samples.device).long()
+        logits = torch.cat((positive_samples, negative_samples), dim=2).reshape(batch_size * N, -1)
+        contrastive_loss = self.criterion(logits, labels)
+
+        return contrastive_loss
 
     def forward(self, mod_features1, mod_features2, idx=None):
         """
