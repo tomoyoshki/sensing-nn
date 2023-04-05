@@ -1,6 +1,3 @@
-"""
-referebce: @https://github.com/facebookresearch/dino
-"""
 import numpy as np
 import torch
 import torch.nn as nn
@@ -805,7 +802,7 @@ class MAELoss(nn.Module):
         ph, pw = patch_size
 
         h = imgs.shape[2] // ph
-        w = imgs.shape[3] // pw2222
+        w = imgs.shape[3] // pw
 
         x = imgs.reshape(shape=(imgs.shape[0], in_channel, h, ph, w, pw))
         x = torch.einsum("nchpwq->nhwpqc", x)
