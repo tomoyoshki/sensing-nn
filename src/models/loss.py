@@ -778,17 +778,17 @@ class CocoaLoss(nn.Module):
         return loss
 
 
-class TS2Vec(nn.Module):
+class Ts2VecLoss(nn.Module):
     def __init__(self, args):
-        super(TS2Vec, self).__init__()
+        super(Ts2VecLoss, self).__init__()
         self.args = args
-        self.config = args.dataset_config["TS2Vec"]
+        self.config = args.dataset_config["Ts2Vec"]
         self.modalities = args.dataset_config["modality_names"]
         self.temperature = args.dataset_config[args.learn_framework]["temperature"]
         self.criterion = nn.CrossEntropyLoss(reduction="mean")
-        self.similarity_f = nn.CosineSimilarity(dim=3)
+        self.similarity_f = nn.CosineSimilarity(dim=-1)
 
-    def mask_correlated_samples(self, seq_len, batch_size):
+    def mask_correlated_samples(self, seq_len=None, batch_size=0):
         """
         Return a mask where the correlated sample locations are 0.
         Output: [seq, 2b, 2b]
@@ -800,7 +800,8 @@ class TS2Vec(nn.Module):
             mask[i, batch_size + i] = 0
             mask[batch_size + i, i] = 0
 
-        mask = mask.unsqueeze(0).repeat(seq_len, 1, 1)
+        if seq_len is not None:
+            mask = mask.unsqueeze(0).repeat(seq_len, 1, 1)
         return mask
 
     def instance_contrastive_loss(self, z_i, z_j, idx=None):
@@ -820,7 +821,7 @@ class TS2Vec(nn.Module):
 
         # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
         positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)
-        negative_samples = sim[self.mask_correlated_samples(batch_size)].reshape(N, -1)
+        negative_samples = sim[self.mask_correlated_samples(None, batch_size)].reshape(N, -1)
 
         labels = torch.zeros(N).to(positive_samples.device).long()
         logits = torch.cat((positive_samples, negative_samples), dim=1)
@@ -829,9 +830,9 @@ class TS2Vec(nn.Module):
         return loss
 
     def temporal_contrastive_loss(self, mod1_feature, mod2_feature):
-        pass
+        return 0
 
-    def forward(self, mod_features1, mod_features2):
+    def forward(self, mod_features1, mod_features2, idx=None):
         """
         loss = instance contrastive loss + temporal contrastive loss
         Procedure:
@@ -841,32 +842,21 @@ class TS2Vec(nn.Module):
             (4) Compute orthogonality loss beween shared-private and private-private representations.
             (5) For each subsequence, compute the temporal correlation loss.
         """
+        batch_size = mod_features1.shape[0]
         seq_len = self.args.dataset_config["seq_len"]
 
         # step 1: Instance wise contrastive loss
-        instance_contrastive_loss = 0
-        for i, mod1 in enumerate(self.modalities):
-            for mod2 in self.modalities[i + 1 :]:
-                instance_contrastive_loss += self.forward_contrastive_loss(mod_features1[mod1], mod_features2[mod2])
-
-        # step 2: Temporal Contrastive Loss
+        instance_contrastive_loss = self.instance_contrastive_loss(mod_features1, mod_features2)
 
         # step 2.1: split features into subsequence
-        split_mod_features1, split_mod_features2 = {}, {}
-        for mod in self.modalities:
-            b, dim = mod_features1[mod].shape
-            split_mod_features1[mod] = mod_features1[mod].reshape(b // seq_len, seq_len, -1)
-            split_mod_features2[mod] = mod_features2[mod].reshape(b // seq_len, seq_len, -1)
+        split_mod_features1 = mod_features1.reshape(batch_size // seq_len, seq_len, -1)
+        split_mod_features2 = mod_features2.reshape(batch_size // seq_len, seq_len, -1)
 
         # step 2.2 calculate temporal contrastive loss
-        temporal_contrastive_loss = 0
-        for i, mod1 in enumerate(self.modalities):
-            for mod2 in self.modalities[i + 1 :]:
-                temporal_contrastive_loss += self.temporal_contrastive_loss(
-                    split_mod_features1[mod1], split_mod_features2[mod2]
-                )
+        temporal_contrastive_loss = self.temporal_contrastive_loss(split_mod_features1, split_mod_features2)
 
         loss = instance_contrastive_loss + temporal_contrastive_loss
+        return loss
 
 
 class MAELoss(nn.Module):
@@ -891,7 +881,7 @@ class MAELoss(nn.Module):
         ph, pw = patch_size
 
         h = imgs.shape[2] // ph
-        w = imgs.shape[3] // pw2222
+        w = imgs.shape[3] // pw
 
         x = imgs.reshape(shape=(imgs.shape[0], in_channel, h, ph, w, pw))
         x = torch.einsum("nchpwq->nhwpqc", x)
