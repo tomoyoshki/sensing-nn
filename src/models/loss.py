@@ -526,7 +526,12 @@ class CMCV3Loss(nn.Module):
                         split_mod_features[mod][feature_type]
                     )
 
-        loss = shared_contrastive_loss + private_contrastive_loss + orthogonality_loss + temporal_correlation_loss
+        loss = (
+            shared_contrastive_loss
+            + private_contrastive_loss
+            + orthogonality_loss
+            + self.config["ranking_loss_weight"] * temporal_correlation_loss
+        )
 
         return loss
 
