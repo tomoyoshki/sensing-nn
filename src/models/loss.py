@@ -779,11 +779,11 @@ class CocoaLoss(nn.Module):
         return loss
 
 
-class Ts2VecLoss(nn.Module):
+class TS2VecLoss(nn.Module):
     def __init__(self, args):
-        super(Ts2VecLoss, self).__init__()
+        super(TS2VecLoss, self).__init__()
         self.args = args
-        self.config = args.dataset_config["Ts2Vec"]
+        self.config = args.dataset_config["TS2Vec"]
         self.modalities = args.dataset_config["modality_names"]
         self.temperature = args.dataset_config[args.learn_framework]["temperature"]
         self.criterion = nn.CrossEntropyLoss(reduction="mean")

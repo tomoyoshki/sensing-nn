@@ -468,7 +468,7 @@ Cocoa:
                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
                 freq_augmenters: ["phase_shift"]
 
-Ts2Vec:
+TS2Vec:
         emb_dim: 512
         temperature: 0.07
         ranking_margin: 0.05
