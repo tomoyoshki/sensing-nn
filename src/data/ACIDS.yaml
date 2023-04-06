@@ -470,7 +470,7 @@ Cocoa:
 
 TS2Vec:
         emb_dim: 512
-        temperature: 0.07
+        temperature: 0.2
         ranking_margin: 0.05
         # Pre training  
         pretrain_optimizer:
