@@ -194,3 +194,18 @@ def loc_rescale_factors_from_miss_masks(loc_miss_masks, args):
         rescale_factors = torch.stack(rescale_factors, dim=1)
 
     return rescale_factors
+
+
+def extract_non_diagonal_matrix(input):
+    """
+    Extract the non-diagonal elements from the input matrix at the last two dimensions.
+    input shape: [b, n, n]
+    """
+    flatten_input = input.reshape([-1, input.shape[-2], input.shape[-1]])
+    b, n, _ = flatten_input.shape
+
+    non_diagonal_input = flatten_input.flatten(start_dim=1)[:, 1:]
+    non_diagonal_input = non_diagonal_input.view(b, n - 1, n + 1)[:, :, :-1]
+    non_diagonal_input = non_diagonal_input.reshape([b, n, n - 1])
+
+    return non_diagonal_input
