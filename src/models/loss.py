@@ -351,6 +351,7 @@ class CMCV3Loss(nn.Module):
         self.similarity_f = nn.CosineSimilarity(dim=-1)
         self.orthonal_loss_f = nn.CosineEmbeddingLoss(reduction="mean")
         self.ranking_loss_f = nn.MarginRankingLoss(margin=self.config["ranking_margin"], reduction="mean")
+        self.ranking_loss_f = nn.TripletMarginWithDistanceLoss
 
     def mask_correlated_samples(self, seq_len, batch_size, temporal=False):
         """
@@ -375,30 +376,43 @@ class CMCV3Loss(nn.Module):
 
         return mask
 
-    def forward_contrastive_loss(self, mod1_feature, mod2_feature):
+    def forward_contrastive_loss(self, embeddings1, embeddings2, finegrain=False):
         """
         Among sequences, only samples at paired temporal locations are compared.
-        mod_seq_feature shape: [b, seq, dim]
+        embeddings shape: [b, seq, dim]
         """
-        # [b, seq, dim] -- > [seq, b, dim]
-        mod1_seq_features = mod1_feature.transpose(0, 1)
-        mod2_seq_features = mod2_feature.transpose(0, 1)
-        seq_len, batch_size, dim = mod1_seq_features.shape
-        N = 2 * batch_size
+        # get shape
+        batch, seq, dim = embeddings1.shape
+
+        # Put the compared dimension into the second dimension
+        if finegrain:
+            """Compare within the sequences, [b, seq, dim]"""
+            in_embeddings1 = embeddings1
+            in_embeddings2 = embeddings2
+            N = 2 * seq
+            dim_parallel = batch
+            dim_compare = seq
+        else:
+            """Compare between the sequences, [seq, b, dim]"""
+            in_embeddings1 = embeddings1.transpose(0, 1)
+            in_embeddings2 = embeddings2.transpose(0, 1)
+            N = 2 * batch
+            dim_parallel = seq
+            dim_compare = batch
 
         # Calculate similarity
-        z = torch.cat((mod1_seq_features, mod2_seq_features), dim=1)
+        z = torch.cat((in_embeddings1, in_embeddings2), dim=1)
         sim = self.similarity_f(z.unsqueeze(2), z.unsqueeze(1)) / self.temperature
-        sim_i_j = torch.diagonal(sim, batch_size, dim1=-2, dim2=-1)
-        sim_j_i = torch.diagonal(sim, -batch_size, dim1=-2, dim2=-1)
+        sim_i_j = torch.diagonal(sim, dim_compare, dim1=-2, dim2=-1)
+        sim_j_i = torch.diagonal(sim, -dim_compare, dim1=-2, dim2=-1)
 
         # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
-        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=1).reshape(seq_len, N, 1)
-        negative_samples = sim[self.mask_correlated_samples(seq_len, batch_size)].reshape(seq_len, N, -1)
+        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=1).reshape(dim_parallel, N, 1)
+        negative_samples = sim[self.mask_correlated_samples(dim_parallel, dim_compare)].reshape(dim_parallel, N, -1)
 
         # Compute loss
-        labels = torch.zeros(seq_len * N).to(positive_samples.device).long()
-        logits = torch.cat((positive_samples, negative_samples), dim=2).reshape(seq_len * N, -1)
+        labels = torch.zeros(dim_parallel * N).to(positive_samples.device).long()
+        logits = torch.cat((positive_samples, negative_samples), dim=2).reshape(dim_parallel * N, -1)
         contrastive_loss = self.criterion(logits, labels)
 
         return contrastive_loss
@@ -458,36 +472,6 @@ class CMCV3Loss(nn.Module):
         correlation_loss = self.ranking_loss_f(sim_left_half, sim_right_half, y)
 
         return correlation_loss
-
-    def forward_fine_temporal_contrastive_loss(self, mod1_feature, mod2_feature):
-        """
-        In the fine-grained temporal contrastive loss, samples within a sequence are compared to each other.
-        mod_seq_feature shape: [b, seq, dim]
-        """
-        # we want to compare each sequence
-        # [b, seq, dim]
-        mod1_seq_features = mod1_feature
-        mod2_seq_features = mod2_feature
-        batch_size, seq_len, dim = mod1_seq_features.shape
-
-        N = 2 * seq_len
-
-        # Calculate similarity
-        z = torch.cat((mod1_seq_features, mod2_seq_features), dim=1)
-        sim = self.similarity_f(z.unsqueeze(2), z.unsqueeze(1)) / self.temperature
-        sim_i_j = torch.diagonal(sim, seq_len, dim1=-2, dim2=-1)
-        sim_j_i = torch.diagonal(sim, -seq_len, dim1=-2, dim2=-1)
-
-        # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
-        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=1).reshape(batch_size, N, 1)
-        negative_samples = sim[self.mask_correlated_samples(batch_size, seq_len)].reshape(batch_size, N, -1)
-
-        # Compute loss
-        labels = torch.zeros(batch_size * N).to(positive_samples.device).long()
-        logits = torch.cat((positive_samples, negative_samples), dim=2).reshape(batch_size * N, -1)
-        contrastive_loss = self.criterion(logits, labels)
-
-        return contrastive_loss
 
     def forward_coarse_temporal_contrastive_loss(self, embeddings):
         """
@@ -571,13 +555,31 @@ class CMCV3Loss(nn.Module):
                 split_mod_features2[mod]["private"],
             )
 
-        # Step 4: Temporal consistency
+        # Step 4 version 0: Ranking temporal consistentcy
+        # temporal_correlation_loss = 0
+        # for split_mod_features in [split_mod_features1, split_mod_features2]:
+        #     for mod in self.modalities:
+        #         for feature_type in ["shared", "private"]:
+        #             temporal_correlation_loss += self.forward_temporal_ranking_loss(
+        #                 split_mod_features[mod][feature_type]
+        #             )
+
+        # Step 4 version 1: Coarse-grained temporal consistency
+        # temporal_consistency_loss = 0
+        # for split_mod_features in [split_mod_features1, split_mod_features2]:
+        #     for mod in self.modalities:
+        #         temporal_consistency_loss += self.forward_coarse_temporal_contrastive_loss(
+        #             split_mod_features[mod]["temporal"]
+        #         )
+
+        # Step 4 version 2: Fine-grained temporal consistency
         temporal_consistency_loss = 0
-        for split_mod_features in [split_mod_features1, split_mod_features2]:
-            for mod in self.modalities:
-                temporal_consistency_loss += self.forward_coarse_temporal_contrastive_loss(
-                    split_mod_features[mod]["temporal"]
-                )
+        for mod in self.modalities:
+            temporal_consistency_loss += self.forward_contrastive_loss(
+                split_mod_features1[mod]["temporal"],
+                split_mod_features2[mod]["temporal"],
+                finegrain=True,
+            )
 
         # Step 5: orthogonality loss
         orthogonality_loss = 0
@@ -600,13 +602,10 @@ class CMCV3Loss(nn.Module):
                             split_mod_features[mod2][space],
                         )
 
-        loss = (
-            shared_contrastive_loss
-            + private_contrastive_loss
-            + orthogonality_loss
-            # + self.config["ranking_loss_weight"] * temporal_correlation_loss
-            + temporal_consistency_loss
-        )
+        # print(
+        #     f"shared: {shared_contrastive_loss: .3f}, private: {private_contrastive_loss: .3f}, orthogonality: {orthogonality_loss: .3f}, temporal: {temporal_consistency_loss: .3f},"
+        # )
+        loss = shared_contrastive_loss + private_contrastive_loss + orthogonality_loss + temporal_consistency_loss
         return loss
 
 
