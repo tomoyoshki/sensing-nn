@@ -351,7 +351,6 @@ class CMCV3Loss(nn.Module):
         self.similarity_f = nn.CosineSimilarity(dim=-1)
         self.orthonal_loss_f = nn.CosineEmbeddingLoss(reduction="mean")
         self.ranking_loss_f = nn.MarginRankingLoss(margin=self.config["ranking_margin"], reduction="mean")
-        self.ranking_loss_f = nn.TripletMarginWithDistanceLoss
 
     def mask_correlated_samples(self, seq_len, batch_size, temporal=False):
         """
@@ -435,7 +434,7 @@ class CMCV3Loss(nn.Module):
 
         return orthogonal_loss
 
-    def forward_temporal_ranking_loss(self, embeddings):
+    def forward_temporal_intra_ranking_loss(self, embeddings):
         """
         Enforce the temporal correlations within each subsequence, for both shared space and private space.
         sim(anchor, sample1) >= sim(anchor, sample2) ... >= sim(anchor, sampleN)
@@ -445,33 +444,63 @@ class CMCV3Loss(nn.Module):
         sim = self.similarity_f(embeddings.unsqueeze(2), embeddings.unsqueeze(1))
         B, N = sim.shape[:2]
 
-        # Step 1: Subtract similarities of different columns -> [batch, seq, seq - 1], moved to MarginRankingLoss step 4
-        # sim_diff = sim[:, :, -1] - sim[:, :, 1:]
-
-        # Step 2: Create diagonal masks [b, seq, seq - 1]
+        # Step 1: Create diagonal masks [b, seq, seq - 1]
         base_mask = torch.zeros(N, N - 1)
+
         # upper right are ones
         upper_right = torch.triu(torch.ones(N, N - 1), diagonal=1)
+
         # bottom left are negative ones
         bottom_left = torch.rot90(upper_right, k=2)
+
         # sum together
         mask = base_mask + upper_right + -1 * bottom_left
 
-        # Step 3: Flatten the inputs and targets
+        # Step 2: Flatten the inputs and targets
         # We want left_half - right_half >= 0
         sim_left_half = sim[:, :, :-1].reshape(B, -1)
         sim_right_half = sim[:, :, 1:].reshape(B, -1)
 
         # mask [seq, seq - 1] -> [B, seq, seq - 1] -> [B, seq ^ 2]
         y = mask.unsqueeze(0).repeat(B, 1, 1).reshape(B, -1).to(self.args.device)
-        # Since left - right >= 0, right has higher rank than left, therefore negating y
-        y = -1.0 * y
-        # Step 4: Loss, (Step 1 is moved to Step 4 (sim[:, :, -1] - sim[:, :, 1:] == x1 - x2 in MarginRankingLoss))
+
+        # Step 3: Loss, (Step 1 is moved to Step 4 (sim[:, :, -1] - sim[:, :, 1:] == x1 - x2 in MarginRankingLoss))
         # target requires same number of dimension as the inputs
         # Masked portions are zero values and do not contribute to the loss calculation
         correlation_loss = self.ranking_loss_f(sim_left_half, sim_right_half, y)
 
         return correlation_loss
+
+    def forward_temporal_inter_ranking_loss(self, embeddings):
+        """
+        Enforce temporally close samples to be closer than temporally distant samples.
+        embeddings: [batch_size, seq_len, dim]
+        """
+        batch_size, seq_len, dim = embeddings.shape
+        in_embeddings = embeddings.reshape(batch_size * seq_len, dim)
+
+        # calculate the Euclidean distance between any pairs of samples, [batch * seq, batch * seq]
+        distance = torch.cdist(in_embeddings, in_embeddings, p=2)
+        distance = distance.reshape(batch_size, seq_len, batch_size, seq_len)
+        distance = distance.permute(0, 2, 1, 3)  # [b, b, seq, seq]
+
+        # sequence level distance, [batch, batch]
+        mask = torch.ones(batch_size * seq_len, batch_size * seq_len).to(self.args.device).fill_diagonal_(0)
+        mask = mask.reshape(batch_size, seq_len, batch_size, seq_len).permute(0, 2, 1, 3)  # [b, b, seq, seq]
+        distance = (distance * mask).sum(dim=[2, 3]) / mask.sum(dim=[2, 3])
+
+        # in-sequence distance should be lower than inter-sequence distance
+        avg_intra_seq_dist = torch.diagonal(distance, 0, dim1=0, dim2=1).repeat_interleave(batch_size - 1)
+        avg_inter_seq_dist = extract_non_diagonal_matrix(distance).flatten()
+
+        # target: x1 < x2, therefore y = -1
+        ranking_loss = self.ranking_loss_f(
+            avg_intra_seq_dist,
+            avg_inter_seq_dist,
+            -torch.ones_like(avg_intra_seq_dist).to(self.args.device),
+        )
+
+        return ranking_loss
 
     def forward_coarse_temporal_contrastive_loss(self, embeddings):
         """
@@ -524,17 +553,15 @@ class CMCV3Loss(nn.Module):
         for mod in self.modalities:
             b, dim = mod_features1[mod].shape
 
-            split_dim = dim // 3
+            split_dim = dim // 2
             split_mod_features1[mod] = {
                 "shared": mod_features1[mod][:, 0:split_dim].reshape(b // seq_len, seq_len, -1),
                 "private": mod_features1[mod][:, split_dim : 2 * split_dim].reshape(b // seq_len, seq_len, -1),
-                "temporal": mod_features1[mod][:, 2 * split_dim :].reshape(b // seq_len, seq_len, -1),
             }
 
             split_mod_features2[mod] = {
                 "shared": mod_features2[mod][:, 0:split_dim].reshape(b // seq_len, seq_len, -1),
                 "private": mod_features2[mod][:, split_dim : 2 * split_dim].reshape(b // seq_len, seq_len, -1),
-                "temporal": mod_features2[mod][:, 2 * split_dim :].reshape(b // seq_len, seq_len, -1),
             }
 
         # Step 2: shared space contrastive loss
@@ -555,12 +582,12 @@ class CMCV3Loss(nn.Module):
                 split_mod_features2[mod]["private"],
             )
 
-        # Step 4 version 0: Ranking temporal consistentcy
-        # temporal_correlation_loss = 0
+        # Step 4 version 0: Intra sequence temporal ranking consistentcy
+        # temporal_consistency_loss = 0
         # for split_mod_features in [split_mod_features1, split_mod_features2]:
         #     for mod in self.modalities:
         #         for feature_type in ["shared", "private"]:
-        #             temporal_correlation_loss += self.forward_temporal_ranking_loss(
+        #             temporal_consistency_loss += self.forward_temporal_intra_ranking_loss(
         #                 split_mod_features[mod][feature_type]
         #             )
 
@@ -573,39 +600,48 @@ class CMCV3Loss(nn.Module):
         #         )
 
         # Step 4 version 2: Fine-grained temporal consistency
+        # temporal_consistency_loss = 0
+        # for mod in self.modalities:
+        #     temporal_consistency_loss += self.forward_contrastive_loss(
+        #         split_mod_features1[mod]["private"],
+        #         split_mod_features2[mod]["private"],
+        #         finegrain=True,
+        #     )
+
+        # Step 4 version 3: Intra-sequence distance < inter-sequence distance
         temporal_consistency_loss = 0
-        for mod in self.modalities:
-            temporal_consistency_loss += self.forward_contrastive_loss(
-                split_mod_features1[mod]["temporal"],
-                split_mod_features2[mod]["temporal"],
-                finegrain=True,
-            )
+        for split_mod_features in [split_mod_features1, split_mod_features2]:
+            for mod in self.modalities:
+                temporal_consistency_loss += self.forward_temporal_inter_ranking_loss(
+                    split_mod_features1[mod]["private"]
+                )
 
         # Step 5: orthogonality loss
         orthogonality_loss = 0
         for split_mod_features in [split_mod_features1, split_mod_features2]:
             for i, mod in enumerate(self.modalities):
                 # orthognoality between shared, private, and temporal space
-                spaces = ["shared", "private", "temporal"]
-                for space_id, space1 in enumerate(spaces):
-                    for space2 in spaces[space_id + 1 :]:
-                        orthogonality_loss += self.forward_orthogonality_loss(
-                            split_mod_features[mod][space1],
-                            split_mod_features[mod][space2],
-                        )
+                orthogonality_loss += self.forward_orthogonality_loss(
+                    split_mod_features[mod]["shared"],
+                    split_mod_features[mod]["private"],
+                )
 
                 # orthogonality between modalities
                 for mod2 in self.modalities[i + 1 :]:
-                    for space in spaces[1:]:
-                        orthogonality_loss += self.forward_orthogonality_loss(
-                            split_mod_features[mod][space],
-                            split_mod_features[mod2][space],
-                        )
+                    orthogonality_loss += self.forward_orthogonality_loss(
+                        split_mod_features[mod]["private"],
+                        split_mod_features[mod2]["private"],
+                    )
 
         # print(
         #     f"shared: {shared_contrastive_loss: .3f}, private: {private_contrastive_loss: .3f}, orthogonality: {orthogonality_loss: .3f}, temporal: {temporal_consistency_loss: .3f},"
         # )
-        loss = shared_contrastive_loss + private_contrastive_loss + orthogonality_loss + temporal_consistency_loss
+        loss = (
+            shared_contrastive_loss
+            + private_contrastive_loss
+            + orthogonality_loss
+            + temporal_consistency_loss * self.config["ranking_losS_weight"]
+        )
         return loss
 
 
