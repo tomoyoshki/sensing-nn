@@ -8,7 +8,7 @@ def extract_sample_features(args, classifier, aug_freq_loc_inputs):
     """
     Compute the sample features for the given input.
     """
-    if args.learn_framework in {"CMC", "CMCV2"}:
+    if args.learn_framework in {"CMC", "CMCV2", "GMC"}:
         mod_features = classifier(aug_freq_loc_inputs, class_head=False)
         mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
         features = torch.cat(mod_features, dim=1)

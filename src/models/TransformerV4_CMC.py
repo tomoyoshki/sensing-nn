@@ -9,9 +9,7 @@ from input_utils.padding_utils import get_padded_size
 from input_utils.mask_utils import mask_input
 from models.FusionModules import TransformerFusionBlock
 from timm.models.layers import trunc_normal_
-from models.MAEModule import window_masking
-
-import logging
+from models.GMCModules import Swish
 
 from models.SwinModules import (
     BasicLayer,
@@ -201,6 +199,19 @@ class TransformerV4_CMC(nn.Module):
             self.mae_mod_fusion_layer = nn.Sequential(
                 nn.Linear(self.config["loc_out_channels"] * len(self.modalities), self.config["fc_dim"]),
                 nn.GELU(),
+                nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
+            )
+            self.sample_dim = self.config["fc_dim"]
+        elif self.args.learn_framework == "GMC":
+            """Projection head"""
+            self.gmc_joint_projector = nn.Linear(
+                self.config["loc_out_channels"] * len(self.modalities), self.config["loc_out_channels"]
+            )
+            self.gmc_shared_projector = nn.Sequential(
+                nn.Linear(self.config["loc_out_channels"], self.config["fc_dim"]),
+                Swish(),
+                nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
+                Swish(),
                 nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
             )
             self.sample_dim = self.config["fc_dim"]
@@ -396,6 +407,21 @@ class TransformerV4_CMC(nn.Module):
             if self.args.learn_framework == "MAE":
                 """Return the merged sample features"""
                 sample_features = self.forward_mae_fusion(mod_features)
+                return sample_features
+            elif self.args.learn_framework == "GMC":
+                """Append a joint features that is the concated of all the mod views"""
+                latent_features = []
+                # individual mod features
+                for i in range(len(self.modalities)):
+                    latent_features.append(F.normalize(self.gmc_shared_projector(mod_features[i]), dim=-1))
+
+                # joint features
+                concated_features = torch.cat(mod_features, dim=1)
+                joint_features = self.gmc_joint_projector(concated_features)
+
+                # join together
+                sample_features = dict(zip(self.modalities, latent_features))
+                sample_features["joint"] = F.normalize(self.gmc_shared_projector(joint_features), dim=-1)
                 return sample_features
             else:
                 """CMC, Cosmo, and Cocoa, return the dict of mod features"""
