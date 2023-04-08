@@ -350,7 +350,8 @@ class CMCV3Loss(nn.Module):
         self.criterion = nn.CrossEntropyLoss(reduction="mean")
         self.similarity_f = nn.CosineSimilarity(dim=-1)
         self.orthonal_loss_f = nn.CosineEmbeddingLoss(reduction="mean")
-        self.ranking_loss_f = nn.MarginRankingLoss(margin=self.config["ranking_margin"], reduction="mean")
+        self.intra_ranking_loss_f = nn.MarginRankingLoss(margin=self.config["intra_rank_margin"], reduction="mean")
+        self.inter_ranking_loss_f = nn.MarginRankingLoss(margin=self.config["inter_rank_margin"], reduction="mean")
 
     def mask_correlated_samples(self, seq_len, batch_size, temporal=False):
         """
@@ -456,8 +457,7 @@ class CMCV3Loss(nn.Module):
         # sum together
         mask = base_mask + upper_right + -1 * bottom_left
 
-        # Step 2: Flatten the inputs and targets
-        # We want left_half - right_half >= 0
+        # Step 2: Flatten the inputs and targets， left_half - right_half >= 0
         sim_left_half = sim[:, :, :-1].reshape(B, -1)
         sim_right_half = sim[:, :, 1:].reshape(B, -1)
 
@@ -467,7 +467,7 @@ class CMCV3Loss(nn.Module):
         # Step 3: Loss, (Step 1 is moved to Step 4 (sim[:, :, -1] - sim[:, :, 1:] == x1 - x2 in MarginRankingLoss))
         # target requires same number of dimension as the inputs
         # Masked portions are zero values and do not contribute to the loss calculation
-        correlation_loss = self.ranking_loss_f(sim_left_half, sim_right_half, y)
+        correlation_loss = self.intra_ranking_loss_f(sim_left_half, sim_right_half, y)
 
         return correlation_loss
 
@@ -494,7 +494,7 @@ class CMCV3Loss(nn.Module):
         avg_inter_seq_dist = extract_non_diagonal_matrix(distance).flatten()
 
         # target: x1 < x2, therefore y = -1
-        ranking_loss = self.ranking_loss_f(
+        ranking_loss = self.inter_ranking_loss_f(
             avg_intra_seq_dist,
             avg_inter_seq_dist,
             -torch.ones_like(avg_intra_seq_dist).to(self.args.device),
@@ -548,20 +548,24 @@ class CMCV3Loss(nn.Module):
         """
         seq_len = self.args.dataset_config["seq_len"]
 
+        # Step 0: Reshape features
+        for mod_features in [mod_features1, mod_features2]:
+            for mod in self.modalities:
+                mod_features[mod] = mod_features[mod].reshape(-1, seq_len, mod_features[mod].shape[-1])
+
         # Step 1: split features into "shared" space and "private" space of each (mod, subsequence), [b, seq, dim]
         split_mod_features1, split_mod_features2 = {}, {}
         for mod in self.modalities:
-            b, dim = mod_features1[mod].shape
-
+            b, seq, dim = mod_features1[mod].shape
             split_dim = dim // 2
-            split_mod_features1[mod] = {
-                "shared": mod_features1[mod][:, 0:split_dim].reshape(b // seq_len, seq_len, -1),
-                "private": mod_features1[mod][:, split_dim : 2 * split_dim].reshape(b // seq_len, seq_len, -1),
-            }
 
+            split_mod_features1[mod] = {
+                "shared": mod_features1[mod][:, :, 0:split_dim],
+                "private": mod_features1[mod][:, :, split_dim : 2 * split_dim],
+            }
             split_mod_features2[mod] = {
-                "shared": mod_features2[mod][:, 0:split_dim].reshape(b // seq_len, seq_len, -1),
-                "private": mod_features2[mod][:, split_dim : 2 * split_dim].reshape(b // seq_len, seq_len, -1),
+                "shared": mod_features2[mod][:, :, 0:split_dim],
+                "private": mod_features2[mod][:, :, split_dim : 2 * split_dim],
             }
 
         # Step 2: shared space contrastive loss
@@ -582,16 +586,14 @@ class CMCV3Loss(nn.Module):
                 split_mod_features2[mod]["private"],
             )
 
-        # Step 4 version 0: Intra sequence temporal ranking consistentcy
-        # temporal_consistency_loss = 0
-        # for split_mod_features in [split_mod_features1, split_mod_features2]:
-        #     for mod in self.modalities:
-        #         for feature_type in ["shared", "private"]:
-        #             temporal_consistency_loss += self.forward_temporal_intra_ranking_loss(
-        #                 split_mod_features[mod][feature_type]
-        #             )
+        # Step 4 version 1: Inter- and intra-sequence temporal consistency
+        temporal_consistency_loss = 0
+        for mod_features in [mod_features1, mod_features2]:
+            for mod in self.modalities:
+                temporal_consistency_loss += self.forward_temporal_inter_ranking_loss(mod_features[mod])
+                # temporal_consistency_loss += self.forward_temporal_intra_ranking_loss(mod_features[mod])
 
-        # Step 4 version 1: Coarse-grained temporal consistency
+        # Step 4 version 2: Coarse-grained temporal contrastive consistency
         # temporal_consistency_loss = 0
         # for split_mod_features in [split_mod_features1, split_mod_features2]:
         #     for mod in self.modalities:
@@ -599,7 +601,7 @@ class CMCV3Loss(nn.Module):
         #             split_mod_features[mod]["temporal"]
         #         )
 
-        # Step 4 version 2: Fine-grained temporal consistency
+        # Step 4 version 3: Fine-grained temporal contrastive consistency
         # temporal_consistency_loss = 0
         # for mod in self.modalities:
         #     temporal_consistency_loss += self.forward_contrastive_loss(
@@ -607,14 +609,6 @@ class CMCV3Loss(nn.Module):
         #         split_mod_features2[mod]["private"],
         #         finegrain=True,
         #     )
-
-        # Step 4 version 3: Intra-sequence distance < inter-sequence distance
-        temporal_consistency_loss = 0
-        for split_mod_features in [split_mod_features1, split_mod_features2]:
-            for mod in self.modalities:
-                temporal_consistency_loss += self.forward_temporal_inter_ranking_loss(
-                    split_mod_features1[mod]["private"]
-                )
 
         # Step 5: orthogonality loss
         orthogonality_loss = 0
@@ -634,13 +628,15 @@ class CMCV3Loss(nn.Module):
                     )
 
         # print(
-        #     f"shared: {shared_contrastive_loss: .3f}, private: {private_contrastive_loss: .3f}, orthogonality: {orthogonality_loss: .3f}, temporal: {temporal_consistency_loss: .3f},"
+        #     f"shared: {shared_contrastive_loss: .3f}, private: {private_contrastive_loss: .3f}, ",
+        #     f"orthogonality: {orthogonality_loss: .3f}, temporal: {temporal_consistency_loss: .3f}",
         # )
+
         loss = (
             shared_contrastive_loss
-            + private_contrastive_loss
-            + orthogonality_loss
-            + temporal_consistency_loss * self.config["ranking_losS_weight"]
+            + private_contrastive_loss * self.config["private_contrastive_loss_weight"]
+            + orthogonality_loss * self.config["orthogonal_loss_weight"]
+            + temporal_consistency_loss * self.config["rank_loss_weight"]
         )
         return loss
 
