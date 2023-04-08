@@ -175,7 +175,7 @@ class CMCLoss(nn.Module):
         self.config = args.dataset_config["CMC"]
         self.batch_size = args.batch_size
         self.temperature = args.dataset_config[args.learn_framework]["temperature"]
-
+        self.modalities = args.dataset_config["modality_names"]
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
         self.similarity_f = nn.CosineSimilarity(dim=2)
 
@@ -214,8 +214,15 @@ class CMCLoss(nn.Module):
 
         return loss
 
-    def forward(self, seismic_features, audio_features, index):
-        loss = self.forward_similiarity(seismic_features, audio_features)
+    def forward(self, mod_features, index):
+        """
+        Iterate over pairs of modalities and calculate the loss.
+        """
+        loss = 0
+
+        for i, mod1 in enumerate(self.modalities):
+            for mod2 in self.modalities[i + 1 :]:
+                loss += self.forward_similiarity(mod_features[mod1], mod_features[mod2])
 
         return loss
 
@@ -791,7 +798,7 @@ class MAELoss(nn.Module):
                 pred = decoded_x[loc][mod]
 
                 if self.args.model == "TransformerV4":
-                    in_channel = self.args.dataset_config["loc_mod_in_freq_channels"]["shake"][mod]
+                    in_channel = self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]
                     target = self.patchify(
                         padded_x[loc][mod],
                         self.backbone_config["patch_size"]["freq"][mod],
@@ -800,7 +807,7 @@ class MAELoss(nn.Module):
                 else:
                     patch_size = self.generative_config["patch_size"][mod]
                     patch_area = patch_size[0] * patch_size[1]
-                    in_channel = self.args.dataset_config["loc_mod_in_freq_channels"]["shake"][mod]
+                    in_channel = self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]
                     target = self.patchify(
                         padded_x[loc][mod],
                         patch_size,
