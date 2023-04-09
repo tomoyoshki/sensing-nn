@@ -92,11 +92,16 @@ class MultiModalSequenceDataset(Dataset):
         """
         seq_len = self.args.dataset_config["seq_len"]
 
+        if self.args.dataset == "RealWorld_HAR":
+            delimiter = "-"
+        else:
+            delimiter = "_"
+
         seq_to_samples = {}
         for sample_idx, sample_file in enumerate(self.sample_files):
             # Sequence ID is separeted by the last underscore symbol.
             basename = os.path.basename(sample_file)
-            seq = basename.rsplit("_", 1)[0]
+            seq = basename.rsplit(delimiter, 1)[0]
 
             if seq not in seq_to_samples:
                 seq_to_samples[seq] = [(sample_idx, sample_file)]
@@ -105,7 +110,7 @@ class MultiModalSequenceDataset(Dataset):
 
         # sort the sequences
         for seq in seq_to_samples:
-            seq_to_samples[seq].sort(key=lambda x: int(os.path.basename(x[1]).rsplit("_", 1)[1].split(".")[0]))
+            seq_to_samples[seq].sort(key=lambda x: int(os.path.basename(x[1]).rsplit(delimiter, 1)[1].split(".")[0]))
             seq_to_samples[seq] = [e[0] for e in seq_to_samples[seq]]
 
         # divide sequences into subsequences of fixed length
