@@ -805,78 +805,92 @@ class TS2VecLoss(nn.Module):
             mask = mask.unsqueeze(0).repeat(seq_len, 1, 1)
         return mask
 
-    def instance_contrastive_loss(self, mod1_feature, mod2_feature):
-        """
-        We do not sample negative examples explicitly.
-        Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1)
-        augmented examples within a minibatch as negative examples.
-        mod_seq_feature shape: [b, seq, dim]
-        """
-        # [b, seq, dim] -- > [seq, b, dim]
-        mod1_seq_features = mod1_feature.transpose(0, 1)
-        mod2_seq_features = mod2_feature.transpose(0, 1)
-        seq_len, batch_size, dim = mod1_seq_features.shape
-        N = 2 * batch_size
+    # def instance_contrastive_loss(self, mod1_feature, mod2_feature, idx=None):
+    #     """
+    #     TS2Vec instance wise contrastive loss, same as SimCLR
+    #     """
+    #     batch_size = mod1_feature.shape[0]
+    #     N = 2 * batch_size
+    #     # Calculate similarity
+    #     z = torch.cat((mod1_feature, mod2_feature), dim=0)
+    #     sim = self.similarity_f(z.unsqueeze(1), z.unsqueeze(0)) / self.temperature
+    #     sim_i_j = torch.diag(sim, batch_size)
+    #     sim_j_i = torch.diag(sim, -batch_size)
 
-        # Calculate similarity
-        z = torch.cat((mod1_seq_features, mod2_seq_features), dim=1)
-        sim = self.similarity_f(z.unsqueeze(2), z.unsqueeze(1)) / self.temperature
-        sim_i_j = torch.diagonal(sim, batch_size, dim1=-2, dim2=-1)
-        sim_j_i = torch.diagonal(sim, -batch_size, dim1=-2, dim2=-1)
+    #     positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)
+    #     negative_samples = sim[self.mask_correlated_samples(None, batch_size)].reshape(N, -1)
 
-        # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
-        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=1).reshape(seq_len, N, 1)
-        negative_samples = sim[self.mask_correlated_samples(seq_len, batch_size)].reshape(seq_len, N, -1)
+    #     labels = torch.zeros(N).to(positive_samples.device).long()
+    #     logits = torch.cat((positive_samples, negative_samples), dim=1)
+    #     loss = self.criterion(logits, labels) / N
+    #     return loss
 
-        # Compute loss
-        labels = torch.zeros(seq_len * N).to(positive_samples.device).long()
-        logits = torch.cat((positive_samples, negative_samples), dim=2).reshape(seq_len * N, -1)
-        contrastive_loss = self.criterion(logits, labels)
+    # def temporal_contrastive_loss(self, mod1_feature, mod2_feature):
+    #     """
+    #     TS2Vec temporal wise contrastive loss,
+    #     cross transformation feature time sample considered as positive
+    #     other time samples within a seq are considered as negative
+    #     """
 
-        return contrastive_loss
+    #     # we want to compare each sequence
+    #     # [b, seq, dim]
+    #     mod1_seq_features = mod1_feature
+    #     mod2_seq_features = mod2_feature
+    #     batch_size, seq_len, dim = mod1_seq_features.shape
 
-    def temporal_contrastive_loss(self, mod1_feature, mod2_feature):
-        """
-        We do not sample negative examples explicitly.
-        Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1)
-        augmented examples within a minibatch as negative examples.
-        mod_seq_feature shape: [b, seq, dim]
-        """
+    #     N = 2 * seq_len
 
-        # we want to compare each sequence
-        # [b, seq, dim]
-        mod1_seq_features = mod1_feature
-        mod2_seq_features = mod2_feature
-        batch_size, seq_len, dim = mod1_seq_features.shape
+    #     # Calculate similarity
+    #     z = torch.cat((mod1_seq_features, mod2_seq_features), dim=1)
+    #     sim = self.similarity_f(z.unsqueeze(2), z.unsqueeze(1)) / self.temperature
+    #     sim_i_j = torch.diagonal(sim, seq_len, dim1=-2, dim2=-1)
+    #     sim_j_i = torch.diagonal(sim, -seq_len, dim1=-2, dim2=-1)
 
-        N = 2 * seq_len
+    #     positive_samples = torch.cat((sim_i_j, sim_j_i), dim=1).reshape(batch_size, N, 1)
+    #     negative_samples = sim[self.mask_correlated_samples(batch_size, seq_len)].reshape(batch_size, N, -1)
 
-        # Calculate similarity
-        z = torch.cat((mod1_seq_features, mod2_seq_features), dim=1)
-        sim = self.similarity_f(z.unsqueeze(2), z.unsqueeze(1)) / self.temperature
-        sim_i_j = torch.diagonal(sim, seq_len, dim1=-2, dim2=-1)
-        sim_j_i = torch.diagonal(sim, -seq_len, dim1=-2, dim2=-1)
+    #     # Compute loss
+    #     labels = torch.zeros(batch_size * N).to(positive_samples.device).long()
+    #     logits = torch.cat((positive_samples, negative_samples), dim=2).reshape(batch_size * N, -1)
+    #     contrastive_loss = self.criterion(logits, labels)
 
-        # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
-        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=1).reshape(batch_size, N, 1)
-        negative_samples = sim[self.mask_correlated_samples(batch_size, seq_len)].reshape(batch_size, N, -1)
+    #     return contrastive_loss
+    def instance_contrastive_loss(self, z1, z2):
+        B, T = z1.size(0), z1.size(1)
+        if B == 1:
+            return z1.new_tensor(0.0)
+        z = torch.cat([z1, z2], dim=0)  # 2B x T x C
+        z = z.transpose(0, 1)  # T x 2B x C
+        sim = torch.matmul(z, z.transpose(1, 2))  # T x 2B x 2B
+        logits = torch.tril(sim, diagonal=-1)[:, :, :-1]  # T x 2B x (2B-1)
+        logits += torch.triu(sim, diagonal=1)[:, :, 1:]
+        logits = -F.log_softmax(logits, dim=-1)
 
-        # Compute loss
-        labels = torch.zeros(batch_size * N).to(positive_samples.device).long()
-        logits = torch.cat((positive_samples, negative_samples), dim=2).reshape(batch_size * N, -1)
-        contrastive_loss = self.criterion(logits, labels)
+        i = torch.arange(B, device=z1.device)
+        loss = (logits[:, i, B + i - 1].mean() + logits[:, B + i, i].mean()) / 2
+        return loss
 
-        return contrastive_loss
+    def temporal_contrastive_loss(self, z1, z2):
+        B, T = z1.size(0), z1.size(1)
+        if T == 1:
+            return z1.new_tensor(0.0)
+        z = torch.cat([z1, z2], dim=1)  # B x 2T x C
+        sim = torch.matmul(z, z.transpose(1, 2))  # B x 2T x 2T
+        logits = torch.tril(sim, diagonal=-1)[:, :, :-1]  # B x 2T x (2T-1)
+        logits += torch.triu(sim, diagonal=1)[:, :, 1:]
+        logits = -F.log_softmax(logits, dim=-1)
+
+        t = torch.arange(T, device=z1.device)
+        loss = (logits[:, t, T + t - 1].mean() + logits[:, T + t, t].mean()) / 2
+        return loss
 
     def forward(self, mod_features1, mod_features2, idx=None):
         """
         loss = instance contrastive loss + temporal contrastive loss
         Procedure:
-            (1) Split the features into (batch, subsequence, shared/private).
-            (2) For each batch, compute the shared contrastive loss between modalities.
-            (3) For each batch and modality, compute the private contrastive loss between samples.
-            (4) Compute orthogonality loss beween shared-private and private-private representations.
-            (5) For each subsequence, compute the temporal correlation loss.
+            (1) For each batch, compute the instance contrastive loss
+            (2) Split input into time sequences
+            (3) For each time squence, compute the temporal contrastive loss
         """
         batch_size = mod_features1.shape[0]
         seq_len = self.args.dataset_config["seq_len"]
