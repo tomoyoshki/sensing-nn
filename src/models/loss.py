@@ -640,7 +640,7 @@ class CMCV3Loss(nn.Module):
         # )
 
         loss = (
-            shared_contrastive_loss
+            shared_contrastive_loss * self.config["shared_contrastive_loss_weight"]
             + private_contrastive_loss * self.config["private_contrastive_loss_weight"]
             + orthogonality_loss * self.config["orthogonal_loss_weight"]
             + temporal_consistency_loss * self.config["rank_loss_weight"]

@@ -58,7 +58,7 @@ class MultiModalDataset(Dataset):
         sample = torch.load(self.sample_files[idx])
         data = sample["data"]
 
-        # ACIDS
+        # ACIDS and Parkland
         if isinstance(sample["label"], dict):
             if self.args.task == "vehicle_classification":
                 label = sample["label"]["vehicle_type"]
