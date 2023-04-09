@@ -17,6 +17,8 @@ from models.CMCModules import CMC
 from models.CMCV2Modules import CMCV2
 from models.CosmoModules import Cosmo
 from models.CocoaModules import Cocoa
+from models.TNCModule import TNC
+
 
 # Generative Learning utils
 from models.MAEModule import MAE
@@ -26,7 +28,18 @@ from models.MTSSModules import MTSS
 from models.ModPredModules import ModPred
 
 # loss functions
-from models.loss import DINOLoss, SimCLRLoss, MoCoLoss, CMCLoss, CosmoLoss, MAELoss, CocoaLoss, CMCV2Loss, CMCV3Loss
+from models.loss import (
+    DINOLoss,
+    SimCLRLoss,
+    MoCoLoss,
+    CMCLoss,
+    CosmoLoss,
+    MAELoss,
+    CocoaLoss,
+    CMCV2Loss,
+    CMCV3Loss,
+    TNCLoss,
+)
 
 
 def init_backbone_model(args):
@@ -72,6 +85,8 @@ def init_contrastive_framework(args, backbone_model):
         default_model = Cosmo(args, backbone_model)
     elif args.learn_framework == "Cocoa":
         default_model = Cocoa(args, backbone_model)
+    elif args.learn_framework == "TNC":
+        default_model = TNC(args, backbone_model)
     else:
         raise NotImplementedError(f"Invalid {args.train_mode} framework {args.learn_framework} provided")
 
@@ -154,6 +169,8 @@ def init_loss_func(args):
             loss_func = CosmoLoss(args).to(args.device)
         elif args.learn_framework in {"Cocoa"}:
             loss_func = CocoaLoss(args).to(args.device)
+        elif args.learn_framework in {"TNC"}:
+            loss_func = TNCLoss(args).to(args.device)
         else:
             raise NotImplementedError(f"Loss function for {args.learn_framework} yet implemented")
     elif args.train_mode == "generative":
