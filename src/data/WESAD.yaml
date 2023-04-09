@@ -327,9 +327,9 @@ CMCV2:
                 freq_augmenters: ["phase_shift"]
 
 Cosmo:
-        temperature: 1
+        temperature: 0.2
         num_positive: 10
-        emb_dim: 256
+        emb_dim: 128
         contrast_mode: all
         # Pre training  
         pretrain_optimizer:
@@ -343,9 +343,9 @@ Cosmo:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 1000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 200
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
@@ -384,9 +384,9 @@ Cocoa:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 1000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 200
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
@@ -422,9 +422,9 @@ MTSS:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 1000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 200
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
@@ -438,9 +438,9 @@ MTSS:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 500
+                train_epochs: 200
                 start_epoch: 0
-                decay_epochs: 150
+                decay_epochs: 50
                 decay_rate: 0.2
         # data augmenters
         random_augmenters:
