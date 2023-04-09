@@ -187,9 +187,9 @@ SimCLR:
                 name: "step"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 120
+                train_epochs: 200
                 start_epoch: 0
-                decay_epochs: 30
+                decay_epochs: 50
                 decay_rate: 0.2
         # Augmenters
         random_augmenters:
@@ -228,9 +228,9 @@ MoCo:
                 name: "step"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 120
+                train_epochs: 200
                 start_epoch: 0
-                decay_epochs: 30
+                decay_epochs: 50
                 decay_rate: 0.2
         # Augmenters
         random_augmenters:
@@ -238,7 +238,7 @@ MoCo:
                 freq_augmenters: ["phase_shift"]
 
 CMC:
-        emb_dim: 64
+        emb_dim: 128
         softmax: True
         temperature: 0.07
         # Pre training  
@@ -260,7 +260,7 @@ CMC:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.001
+                start_lr: 0.0001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
@@ -280,13 +280,13 @@ CMC:
                 freq_augmenters: ["phase_shift"]
 
 CMCV2:
-        emb_dim: 64
+        emb_dim: 128
         temperature: 0.07
-        ranking_margin: 0.0
         inter_rank_margin: 1
         intra_rank_margin: 0.05
+        shared_contrastive_loss_weight: 0
         private_contrastive_loss_weight: 1
-        orthogonal_loss_weight: 1
+        orthogonal_loss_weight: 2
         rank_loss_weight: 0
         # Pre training  
         pretrain_optimizer:

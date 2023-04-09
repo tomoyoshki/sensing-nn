@@ -100,6 +100,7 @@ def set_task(args):
         "ACIDS": "vehicle_classification",
         "Parkland": "vehicle_classification",
         "WESAD": "stress_classification",
+        "RealWorld_HAR": "activity_classification",
     }
 
     task = task_default_task[args.dataset] if args.task is None else args.task
