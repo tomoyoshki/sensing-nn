@@ -92,6 +92,21 @@ def get_train_mode(learn_framework):
     return train_mode
 
 
+def set_task(args):
+    """
+    Set the default task according to the dataset.
+    """
+    task_default_task = {
+        "ACIDS": "vehicle_classification",
+        "Parkland": "vehicle_classification",
+        "WESAD": "stress_classification",
+    }
+
+    task = task_default_task[args.dataset] if args.task is None else args.task
+
+    return task
+
+
 def set_auto_params(args):
     """Automatically set the parameters for the experiment."""
     # gpu configuration
@@ -102,6 +117,9 @@ def set_auto_params(args):
 
     # retrieve the user name
     args.username = get_username()
+
+    # set downstream task
+    args.task = set_task(args)
 
     # parse the model yaml file
     dataset_yaml = f"./data/{args.dataset}.yaml"
