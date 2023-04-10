@@ -4,7 +4,7 @@ import getpass
 from tkinter.messagebox import NO
 import torch
 import pickle
-
+import random
 import numpy as np
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
@@ -28,9 +28,9 @@ Configuration:
             -wrist: {ACC, BVP}
             -label: in 700HZ, 
                 * 0 = not defined / transient, 
-                * 1 = baseline, 
-                * 2 = stress, 
-                * 3 = amusement, 
+                * 1 = baseline: 53%, 
+                * 2 = stress: 30%, 
+                * 3 = amusement: 17%, 
                 * 4 = meditation, 
                 * 5/6/7 = should be ignored in this dataset
     3) Data is synchronized and cleaned up, no missing value; no time information is included.
@@ -38,17 +38,17 @@ Configuration:
     5) We only use data from the chest.
 """
 
-SEGMENT_SPAN = 3
+SEGMENT_SPAN = 2
 INTERVAL_SPAN = 0.2
 OVERLAP_RATIO = 0.0
 LABEL_FREQ = 700
 
 FREQS = {
-    "chest": {"EMG": 700, "EDA": 700, "Resp": 700},
+    "chest": {"ECG": 700, "EMG": 700, "EDA": 700, "Resp": 700},
     # "wrist": {"ACC": 32, "BVP": 64},
 }
 
-PRESERVED_LABELS = {2: 0, 3: 1}
+PRESERVED_LABELS = {1: 0, 2: 1}
 
 
 def extract_user_list(input_path):
@@ -102,7 +102,7 @@ def extract_loc_mod_tensor(raw_data, sample_time_len, freq):
     # Step 1: Divide the segment into fixed-length intervals
     interval_sensor_values = split_array_with_overlap(raw_data, OVERLAP_RATIO, interval_len=int(INTERVAL_SPAN * freq))
 
-    # Step 2: Convert numpy array to tensor, and conver to [c. i, s] shape
+    # Step 2: Convert numpy array to tensor, and convert to [c. i, s] shape
     time_tensor = torch.from_numpy(interval_sensor_values).float()
     time_tensor = time_tensor.permute(2, 0, 1)
 
@@ -123,7 +123,7 @@ def extract_loc_mod_tensor(raw_data, sample_time_len, freq):
     # Numpy array --> Torch tensor, in shape (i, s, c)
     freq_tensor = torch.from_numpy(interval_spectrums).float()
 
-    # (i, s, c) --> (c, i, s) = (6 or 2, 9, 50)
+    # (i, s, c) --> (c, i, s)
     freq_tensor = torch.permute(freq_tensor, (2, 0, 1))
 
     return time_tensor, freq_tensor
@@ -201,7 +201,7 @@ def process_one_user(input_path, freq_output_path, time_output_path, user_id):
     # split data into samples
     splitted_segments = {"label": [], "signal": {}}
     splitted_segments["label"] = split_array_with_overlap(
-        all_samples["label"], OVERLAP_RATIO, interval_len=SEGMENT_SPAN * LABEL_FREQ
+        all_samples["label"], overlap_ratio=0, interval_len=SEGMENT_SPAN * LABEL_FREQ
     )
 
     # split data nd extract features
@@ -217,7 +217,7 @@ def process_one_user(input_path, freq_output_path, time_output_path, user_id):
                     continue
                 else:
                     splitted_segments["signal"][loc][mod] = split_array_with_overlap(
-                        all_signals[loc][mod], OVERLAP_RATIO, interval_len=SEGMENT_SPAN * FREQS[loc][mod]
+                        all_signals[loc][mod], overlap_ratio=0, interval_len=SEGMENT_SPAN * FREQS[loc][mod]
                     )
 
     # divide the data into list of individual samples
@@ -227,6 +227,10 @@ def process_one_user(input_path, freq_output_path, time_output_path, user_id):
         unique, counts = np.unique(label_array, return_counts=True)
         # filter the classes
         if len(unique) > 1 or unique[0] not in PRESERVED_LABELS:
+            continue
+        elif unique[0] == 0 and random.random() > 0.33:
+            continue
+        elif unique[0] == 1 and random.random() > 0.5:
             continue
         else:
             sample = {"label": unique[0], "id": sample_id, "signal": {}}
@@ -253,8 +257,8 @@ def process_one_user_wrapper(args):
 if __name__ == "__main__":
     username = getpass.getuser()
     input_path = f"/home/{username}/data/WESAD/raw_data/WESAD"
-    freq_output_path = f"/home/{username}/data/WESAD/freq_individual_samples"
-    time_output_path = f"/home/{username}/data/WESAD/time_individual_samples"
+    time_output_path = f"/home/{username}/data/WESAD/time_individual_samples_three_class"
+    freq_output_path = f"/home/{username}/data/WESAD/freq_individual_samples_three_class"
 
     for f in [freq_output_path, time_output_path]:
         if not os.path.exists(f):
@@ -262,7 +266,6 @@ if __name__ == "__main__":
 
     # extract user list
     user_list = extract_user_list(input_path)
-    # print(user_list)
 
     # Parallel pairing of samples
     # pool = Pool(processes=cpu_count())

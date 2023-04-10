@@ -1,38 +1,39 @@
 # data paths  
-pretrain_index_file: /home/sl29/data/WESAD/time_data_partition/train_index.txt
+pretrain_index_file: /home/sl29/data/WESAD/time_data_partition_three_class/train_index.txt
 stress_classification:
-        num_classes: 2 
-        class_names: ["stress", "amusement"]
-        train_index_file: /home/sl29/data/WESAD/time_data_partition/train_index.txt
-        val_index_file: /home/sl29/data/WESAD/time_data_partition/test_index.txt 
-        test_index_file: /home/sl29/data/WESAD/time_data_partition/test_index.txt
+        num_classes: 2
+        class_names: ["baseline", "stress"]
+        train_index_file: /home/sl29/data/WESAD/time_data_partition_three_class/train_index.txt
+        val_index_file: /home/sl29/data/WESAD/time_data_partition_three_class/test_index.txt 
+        test_index_file: /home/sl29/data/WESAD/time_data_partition_three_class/test_index.txt
 
 # Segments
-num_segments: 15
+num_segments: 10
 
 # Locations 
 num_locaiton: 1
 location_names: ["chest"]
 
 # Modality names
-num_sensors: 3
-modality_names: ["EMG", "EDA", "Resp"]
+num_sensors: 4
+modality_names: ["ECG", "EMG", "EDA", "Resp"]
 
 # Location modalities
-loc_modalities: 
-        chest: ["EMG", "EDA", "Resp"]
 loc_mod_in_freq_channels:
         chest:
+                ECG: 2
                 EMG: 2
                 EDA: 2
                 Resp: 2
 loc_mod_in_time_channels:
         chest:
+                ECG: 1
                 EMG: 1
                 EDA: 1
                 Resp: 1
 loc_mod_spectrum_len:
         chest:
+                ECG: 140
                 EMG: 140
                 EDA: 140
                 Resp: 140
@@ -45,18 +46,20 @@ DeepSense:
         dropout_ratio: 0.4
         # single interval + location + modality
         loc_mod_in_conv_stride:
-                EMG: [1, 1]
-                EDA: [1, 1]
-                Resp: [1, 1]
+                ECG: [1, 7]
+                EMG: [1, 7]
+                EDA: [1, 7]
+                Resp: [1, 7]
         loc_mod_conv_lens: 
-                EMG: [[1, 10], [1, 10], [1, 10]]
-                EDA: [[1, 10], [1, 10], [1, 10]]
-                Resp: [[1, 10], [1, 10], [1, 10]]
+                ECG: [[1, 7], [1, 5], [1, 5]]
+                EMG: [[1, 7], [1, 5], [1, 5]]
+                EDA: [[1, 7], [1, 5], [1, 5]]
+                Resp: [[1, 7], [1, 5], [1, 5]]
         loc_mod_out_channels: 16
         loc_mod_conv_inter_layers: 2
         # single interval + location
         loc_conv_lens: [[1, 4], [1, 4], [1, 4]]
-        loc_out_channels: 32
+        loc_out_channels: 16
         loc_conv_inter_layers: 1
         # recurrent layer
         recurrent_dim: 32
@@ -71,22 +74,22 @@ DeepSense:
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 1
         # LR scheduler
         lr_scheduler:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 1000
+                train_epochs: 500
                 start_epoch: 0
-                decay_epochs: 200
+                decay_epochs: 100
                 decay_rate: 0.2
         # Data Augmenters:
         random_augmenters:
                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
                 freq_augmenters: ["phase_shift"]
         fixed_augmenters:
-                time_augmenters: ["channel_shuffle", "mixup"]
+                time_augmenters: ["no"]
                 freq_augmenters: ["phase_shift"]
 
 TransformerV4:
@@ -95,26 +98,29 @@ TransformerV4:
         attn_drop_rate: 0.2
         # loc mod freq feature
         in_stride:
+                ECG: 1
                 EMG: 1
                 EDA: 1
                 Resp: 1
         # single modality
         time_freq_out_channels: 32
-        time_freq_head_num: 4
+        time_freq_head_num: 2
         time_freq_block_num: 
-                EMG: [2, 2, 2]
-                EDA: [2, 2, 2]
-                Resp: [2, 2, 2]
+                ECG: [2, 2]
+                EMG: [2, 2]
+                EDA: [2, 2]
+                Resp: [2, 2]
         # modality fusion
-        mod_out_channels: 128
-        mod_head_num: 4
-        mod_block_num: 2
+        mod_out_channels: 32
+        mod_head_num: 2
+        mod_block_num: 1
         # location fusion
-        loc_out_channels: 128 # loc_out_channels == mod_out_channels
-        loc_head_num: 4
-        loc_block_num: 2
+        loc_out_channels: 32 # loc_out_channels == mod_out_channels
+        loc_head_num: 2
+        loc_block_num: 1
         # SwinTransformer configs
         window_size: 
+                ECG: [2, 5]
                 EMG: [2, 5]
                 EDA: [2, 5]
                 Resp: [2, 5]
@@ -124,16 +130,17 @@ TransformerV4:
         patch_norm: True
         patch_size:
                 freq:
+                        ECG: [1, 7]
                         EMG: [1, 7]
                         EDA: [1, 7]
                         Resp: [1, 7]
         # FC layer
-        fc_dim: 128
+        fc_dim: 64
         pretrained_head: "linear"
         # Optimizer config
         optimizer:
                 name: "AdamW"
-                start_lr: 0.00005
+                start_lr: 0.0005
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
@@ -152,7 +159,7 @@ TransformerV4:
                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
                 freq_augmenters: ["phase_shift"]
         fixed_augmenters:
-                time_augmenters: ["mixup"]
+                time_augmenters: ["no"]
                 freq_augmenters: ["phase_shift"]
 
 # ---------------------------------------- Contrastive Learning Frameworks ------------------------------------
@@ -238,17 +245,17 @@ MoCo:
                 freq_augmenters: ["phase_shift"]
 
 CMC:
-        emb_dim: 128
+        emb_dim: 64
         softmax: True
         temperature: 0.07
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.00001
+                start_lr: 0.0001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 0.5
         pretrain_lr_scheduler:
                 name: "cosine"
                 warmup_prefix: True
@@ -265,7 +272,7 @@ CMC:
                 min_lr: 0.0000001
                 clip_grad: 5.0
                 weight_decay: 0.05
-                decay_rate: 0.00001
+                decay_rate: 0.2
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -284,10 +291,10 @@ CMCV2:
         temperature: 0.07
         inter_rank_margin: 1
         intra_rank_margin: 0.05
-        shared_contrastive_loss_weight: 0
+        shared_contrastive_loss_weight: 1
         private_contrastive_loss_weight: 1
-        orthogonal_loss_weight: 2
-        rank_loss_weight: 0
+        orthogonal_loss_weight: 3
+        rank_loss_weight: 5
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
@@ -307,11 +314,11 @@ CMCV2:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.001
+                start_lr: 0.0001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
-                weight_decay: 0.0005
+                weight_decay: 0.03
                 decay_rate: 0.2
         finetune_lr_scheduler:
                 name: "cosine"
