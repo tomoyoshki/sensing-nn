@@ -781,6 +781,9 @@ class CocoaLoss(nn.Module):
 
 class TS2VecLoss(nn.Module):
     def __init__(self, args):
+        """TS2Vec loss
+        https://github.com/yuezhihan/ts2vec
+        """
         super(TS2VecLoss, self).__init__()
         self.args = args
         self.config = args.dataset_config["TS2Vec"]
@@ -804,6 +807,24 @@ class TS2VecLoss(nn.Module):
         if seq_len is not None:
             mask = mask.unsqueeze(0).repeat(seq_len, 1, 1)
         return mask
+
+    def hierarchical_contrastive_loss(self, z1, z2, alpha=0.5, temporal_unit=0):
+        loss = torch.tensor(0.0, device=z1.device)
+        d = 0
+        while z1.size(1) > 1:
+            if alpha != 0:
+                loss += alpha * self.instance_contrastive_loss(z1, z2)
+            if d >= temporal_unit:
+                if 1 - alpha != 0:
+                    loss += (1 - alpha) * self.temporal_contrastive_loss(z1, z2)
+            d += 1
+            z1 = F.max_pool1d(z1.transpose(1, 2), kernel_size=2).transpose(1, 2)
+            z2 = F.max_pool1d(z2.transpose(1, 2), kernel_size=2).transpose(1, 2)
+        if z1.size(1) == 1:
+            if alpha != 0:
+                loss += alpha * self.instance_contrastive_loss(z1, z2)
+            d += 1
+        return loss / d
 
     # def instance_contrastive_loss(self, mod1_feature, mod2_feature, idx=None):
     #     """
@@ -899,13 +920,14 @@ class TS2VecLoss(nn.Module):
         split_mod_features1 = mod_features1.reshape(batch_size // seq_len, seq_len, -1)
         split_mod_features2 = mod_features2.reshape(batch_size // seq_len, seq_len, -1)
 
+        loss = self.hierarchical_contrastive_loss(split_mod_features1, split_mod_features2)
         # step 1: Instance wise contrastive loss
-        instance_contrastive_loss = self.instance_contrastive_loss(split_mod_features1, split_mod_features2)
+        # instance_contrastive_loss = self.instance_contrastive_loss(split_mod_features1, split_mod_features2)
 
         # step 2.2 calculate temporal contrastive loss
-        temporal_contrastive_loss = self.temporal_contrastive_loss(split_mod_features1, split_mod_features2)
+        # temporal_contrastive_loss = self.temporal_contrastive_loss(split_mod_features1, split_mod_features2)
 
-        loss = instance_contrastive_loss + temporal_contrastive_loss
+        # loss = instance_contrastive_loss + temporal_contrastive_loss
         return loss
 
 
