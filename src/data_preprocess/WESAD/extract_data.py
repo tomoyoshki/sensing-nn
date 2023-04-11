@@ -40,11 +40,12 @@ Configuration:
 
 SEGMENT_SPAN = 2
 INTERVAL_SPAN = 0.2
-OVERLAP_RATIO = 0.0
+INTERVAL_OVERLAP_RATIO = 0.0
+SEGMENT_OVERLAP_RATIO = 0.0
 LABEL_FREQ = 700
 
 FREQS = {
-    "chest": {"ECG": 700, "EMG": 700, "EDA": 700, "Resp": 700},
+    "chest": {"ACC": 700, "ECG": 700, "EMG": 700, "EDA": 700, "Resp": 700},
     # "wrist": {"ACC": 32, "BVP": 64},
 }
 
@@ -100,7 +101,9 @@ def extract_loc_mod_tensor(raw_data, sample_time_len, freq):
     num_dim = np.shape(raw_data)[1]
 
     # Step 1: Divide the segment into fixed-length intervals
-    interval_sensor_values = split_array_with_overlap(raw_data, OVERLAP_RATIO, interval_len=int(INTERVAL_SPAN * freq))
+    interval_sensor_values = split_array_with_overlap(
+        raw_data, INTERVAL_OVERLAP_RATIO, interval_len=int(INTERVAL_SPAN * freq)
+    )
 
     # Step 2: Convert numpy array to tensor, and convert to [c. i, s] shape
     time_tensor = torch.from_numpy(interval_sensor_values).float()
@@ -201,7 +204,7 @@ def process_one_user(input_path, freq_output_path, time_output_path, user_id):
     # split data into samples
     splitted_segments = {"label": [], "signal": {}}
     splitted_segments["label"] = split_array_with_overlap(
-        all_samples["label"], overlap_ratio=0, interval_len=SEGMENT_SPAN * LABEL_FREQ
+        all_samples["label"], SEGMENT_OVERLAP_RATIO, interval_len=SEGMENT_SPAN * LABEL_FREQ
     )
 
     # split data nd extract features
@@ -217,7 +220,7 @@ def process_one_user(input_path, freq_output_path, time_output_path, user_id):
                     continue
                 else:
                     splitted_segments["signal"][loc][mod] = split_array_with_overlap(
-                        all_signals[loc][mod], overlap_ratio=0, interval_len=SEGMENT_SPAN * FREQS[loc][mod]
+                        all_signals[loc][mod], SEGMENT_OVERLAP_RATIO, interval_len=SEGMENT_SPAN * FREQS[loc][mod]
                     )
 
     # divide the data into list of individual samples

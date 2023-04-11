@@ -634,10 +634,10 @@ class CMCV3Loss(nn.Module):
                         split_mod_features[mod2]["private"],
                     )
 
-        print(
-            f"shared: {shared_contrastive_loss: .3f}, private: {private_contrastive_loss: .3f}, ",
-            f"orthogonality: {orthogonality_loss: .3f}, temporal: {temporal_consistency_loss: .3f}",
-        )
+        # print(
+        #     f"shared: {shared_contrastive_loss: .3f}, private: {private_contrastive_loss: .3f}, ",
+        #     f"orthogonality: {orthogonality_loss: .3f}, temporal: {temporal_consistency_loss: .3f}",
+        # )
 
         loss = (
             shared_contrastive_loss * self.config["shared_contrastive_loss_weight"]
