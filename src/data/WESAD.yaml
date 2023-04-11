@@ -185,7 +185,7 @@ SimCLR:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.01
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
@@ -210,7 +210,7 @@ MoCo:
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.0001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
@@ -436,7 +436,7 @@ MTSS:
         # Fine tuning 
         finetune_optimizer:
                 name: "AdamW"
-                start_lr: 0.001
+                start_lr: 0.0001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
@@ -451,15 +451,17 @@ MTSS:
                 decay_rate: 0.2
         # data augmenters
         random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter"]
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
                 freq_augmenters: ["phase_shift"]
 
 MAE:
         masked_ratio:
+                ECG: 0.75
                 EMG: 0.75
                 EDA: 0.75
                 Resp: 0.75
         patch_size:
+                ECG: [1, 7]
                 EMG: [1, 7]
                 EDA: [1, 7]
                 Resp: [1, 7]
@@ -474,9 +476,9 @@ MAE:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 1000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 200
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
