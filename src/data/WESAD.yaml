@@ -213,7 +213,7 @@ MoCo:
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.001
+                start_lr: 0.0001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
@@ -233,7 +233,7 @@ MoCo:
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.001
+                weight_decay: 0.05
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
