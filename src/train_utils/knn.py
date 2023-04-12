@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from sklearn.metrics import accuracy_score
-from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 
 
 def extract_sample_features(args, classifier, aug_freq_loc_inputs):
@@ -58,7 +58,7 @@ def compute_knn(args, classifier, augmenter, data_loader_train):
     sample_embeddings = np.concatenate(sample_embeddings)
     labels = np.concatenate(labels)
 
-    estimator = KNeighborsClassifier()
+    estimator = KNeighborsRegressor() if "regression" in args.task else KNeighborsClassifier()
     estimator.fit(sample_embeddings, labels)
 
     return estimator
@@ -86,7 +86,9 @@ def compute_embedding(args, classifier, augmenter, data_loader):
 
     embs_l = []
     all_labels = []
-    classes = args.dataset_config[args.task]["class_names"]
+
+    if "regression" not in args.task:
+        classes = args.dataset_config[args.task]["class_names"]
 
     for time_loc_inputs, labels, _ in data_loader:
         # FFT and move to target device
@@ -97,9 +99,13 @@ def compute_embedding(args, classifier, augmenter, data_loader):
         embs_l.append(features.detach().cpu())
 
         # Label extraction
-        if labels.dim() > 1:
-            labels = labels.argmax(dim=1, keepdim=False)
-        all_labels.append([classes[i] for i in labels])
+        if "regression" in args.task:
+            all_labels.append(labels.detach().cpu().numpy().tolist())
+        else:
+            if args.task and labels.dim() > 1:
+                labels = labels.argmax(dim=1, keepdim=False)
+
+            all_labels.append([classes[i] for i in labels])
 
     embs = torch.cat(embs_l, dim=0)
     all_labels = np.concatenate(all_labels, axis=0)

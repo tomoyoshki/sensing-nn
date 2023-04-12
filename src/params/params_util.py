@@ -109,6 +109,25 @@ def set_task(args):
     return task
 
 
+def set_batch_size(args):
+    """
+    Automatically set the batch size for different (dataset, task, train_mode).
+    """
+    if args.batch_size is None:
+        if args.dataset == "PPG":
+            if args.stage == "pretrain":
+                args.batch_size = 512
+            else:
+                args.batch_size = 256
+        else:
+            if args.stage == "pretrain":
+                args.batch_size = 256
+            else:
+                args.batch_size = 128
+
+    return args
+
+
 def set_auto_params(args):
     """Automatically set the parameters for the experiment."""
     # gpu configuration
@@ -156,6 +175,9 @@ def set_auto_params(args):
     # set the train mode
     args.train_mode = get_train_mode(args.learn_framework)
     print(f"Set train mode: {args.train_mode}")
+
+    # set batch size
+    args = set_batch_size(args)
 
     # set output path
     args = set_model_weight_folder(args)

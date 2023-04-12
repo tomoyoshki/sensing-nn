@@ -36,7 +36,7 @@ seq_len: 4
 
 # DeepSense config
 DeepSense:
-        dropout_ratio: 0.4
+        dropout_ratio: 0.2
         # single interval + location + modality
         loc_mod_in_conv_stride:
                 ACC: [1, 2]
@@ -44,22 +44,22 @@ DeepSense:
         loc_mod_conv_lens: 
                 ACC: [[1, 2], [1, 5], [1, 5]]
                 BVP: [[1, 4], [1, 5], [1, 5]]
-        loc_mod_out_channels: 16
-        loc_mod_conv_inter_layers: 2
+        loc_mod_out_channels: 64
+        loc_mod_conv_inter_layers: 3
         # single interval + location
         loc_conv_lens: [[1, 4], [1, 4], [1, 4]]
-        loc_out_channels: 16
-        loc_conv_inter_layers: 1
+        loc_out_channels: 64
+        loc_conv_inter_layers: 2
         # recurrent layer
-        recurrent_dim: 32
+        recurrent_dim: 64
         recurrent_layers: 2
         # FC layer
-        fc_dim: 32
+        fc_dim: 128
         pretrained_head: "linear"
         # Optimizer config
         optimizer:
                 name: "AdamW"
-                start_lr: 0.0001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
@@ -79,32 +79,32 @@ DeepSense:
                 freq_augmenters: ["phase_shift"]
 
 TransformerV4:
-        dropout_ratio: 0.5
-        drop_path_rate: 0.5
-        attn_drop_rate: 0.5
+        dropout_ratio: 0.4
+        drop_path_rate: 0.1
+        attn_drop_rate: 0.2
         # loc mod freq feature
         in_stride:
                 ACC: 1
                 BVP: 1
         # single modality
-        time_freq_out_channels: 8
+        time_freq_out_channels: 32
         time_freq_head_num: 4
         time_freq_block_num: 
-                ACC: [2]
-                BVP: [2]
+                ACC: [2, 2]
+                BVP: [2, 2]
         # modality fusion
-        mod_out_channels: 8
+        mod_out_channels: 64
         mod_head_num: 4
         mod_block_num: 1
         # location fusion
-        loc_out_channels: 8 # loc_out_channels == mod_out_channels
+        loc_out_channels: 64 # loc_out_channels == mod_out_channels
         loc_head_num: 4
         loc_block_num: 1
         # SwinTransformer configs
         window_size: 
                 ACC: [2, 4]
                 BVP: [2, 4]
-        mlp_ratio: 1.
+        mlp_ratio: 4.
         qkv_bias: True
         APE: False
         patch_norm: True
@@ -113,12 +113,12 @@ TransformerV4:
                         ACC: [1, 2]
                         BVP: [1, 4]
         # FC layer
-        fc_dim: 8
+        fc_dim: 64
         pretrained_head: "linear"
         # Optimizer config
         optimizer:
                 name: "AdamW"
-                start_lr: 0.0005
+                start_lr: 0.0001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
@@ -139,7 +139,7 @@ TransformerV4:
 
 # ---------------------------------------- Contrastive Learning Frameworks ------------------------------------
 SimCLR:
-        emb_dim: 128
+        emb_dim: 64
         temperature: 0.07
         # Pre training  
         pretrain_optimizer:
@@ -179,7 +179,7 @@ SimCLR:
                 freq_augmenters: ["phase_shift"]
 
 MoCo:
-        emb_dim: 128
+        emb_dim: 64
         temperature: 0.07
         momentum: 0.99
         # Pre training  
@@ -222,11 +222,11 @@ MoCo:
 CMC:
         emb_dim: 64
         softmax: True
-        temperature: 0.5
+        temperature: 0.07
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.0001
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
