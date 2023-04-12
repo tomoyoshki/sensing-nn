@@ -128,6 +128,8 @@ def init_loss_func(args):
     if args.train_mode == "supervised" or args.stage == "finetune":
         if args.multi_class:
             loss_func = nn.BCELoss()
+        elif "regression" in args.task:
+            loss_func = nn.MSELoss()
         else:
             loss_func = nn.CrossEntropyLoss()
     elif args.train_mode == "predictive":
