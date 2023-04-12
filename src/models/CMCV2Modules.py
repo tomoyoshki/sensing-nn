@@ -23,7 +23,7 @@ class CMCV2(nn.Module):
         super(CMCV2, self).__init__()
 
         self.args = args
-        self.config = args.dataset_config["CMC"]
+        self.config = args.dataset_config["CMCV2"]
         self.backbone_config = args.dataset_config[args.model]
         self.modalities = args.dataset_config["modality_names"]
 

@@ -341,7 +341,11 @@ CMCV2:
         emb_dim: 256
         temperature: 0.07
         ranking_margin: 0.0
-        ranking_loss_weight: 1
+        inter_rank_margin: 1
+        intra_rank_margin: 0.05
+        private_contrastive_loss_weight: 1
+        orthogonal_loss_weight: 3
+        rank_loss_weight: 5
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"

@@ -34,8 +34,8 @@ def partition_data(paired_data_path, output_path, user_list, train_ratio=0.8):
     """
     # partition the user list into training and testing
     random.shuffle(user_list)
-    train_user_count = 11
-    val_user_count = 2
+    train_user_count = 12
+    val_user_count = 0
     train_users = set(user_list[:train_user_count])
     val_users = set(user_list[train_user_count : train_user_count + val_user_count])
     test_users = set(user_list[train_user_count + val_user_count :])
@@ -96,8 +96,8 @@ def partition_data(paired_data_path, output_path, user_list, train_ratio=0.8):
 
 if __name__ == "__main__":
     username = getpass.getuser()
-    paired_data_path = f"/home/{username}/data/WESAD/time_individual_samples"
-    output_path = f"/home/{username}/data/WESAD/time_data_partition"
+    paired_data_path = f"/home/{username}/data/WESAD/time_individual_samples_three_class"
+    output_path = f"/home/{username}/data/WESAD/time_data_partition_three_class"
 
     if not os.path.exists(output_path):
         os.mkdir(output_path)
