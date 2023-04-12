@@ -214,7 +214,7 @@ class TransformerV4_CMC(nn.Module):
                 Swish(),
                 nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
             )
-            self.sample_dim = self.config["fc_dim"]
+            self.sample_dim = self.config["loc_out_channels"] * len(self.modalities)
         else:
             self.sample_dim = self.config["loc_out_channels"] * len(self.modalities)
 

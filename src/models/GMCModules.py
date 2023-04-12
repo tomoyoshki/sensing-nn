@@ -20,15 +20,6 @@ class GMC(nn.Module):
         # build encoders f(·) = {f1:M(·)}∪{f1(·), . . . , fM(·)}
         self.backbone = backbone
 
-        # build shared projector
-        self.projector = nn.Sequential(
-            nn.Linear(self.model_config["fc_dim"], self.model_config["fc_dim"] * 2),
-            Swish(),
-            nn.Linear(self.model_config["fc_dim"] * 2, self.model_config["fc_dim"] * 2),
-            Swish(),
-            nn.Linear(self.model_config["fc_dim"] * 2, self.model_config["fc_dim"]),
-        )
-
     def forward(self, freq_input):
         """
         Input:
