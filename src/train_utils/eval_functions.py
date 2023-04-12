@@ -11,10 +11,10 @@ from train_utils.knn import extract_sample_features
 from train_utils.loss_calc_utils import calc_pretrain_loss
 
 
-def eval_task_metrics(args, labels, predictions):
+def eval_task_metrics(args, labels, predictions, regression=False):
     """Evaluate the downstream task metrics."""
     # different acc and f1-score definitions for single-class and multi-class problems
-    if "regression" in args.task:
+    if regression:
         mae = mean_absolute_error(labels, predictions)
         return [mae]
     else:
@@ -89,7 +89,7 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
     all_labels = np.concatenate(all_labels, axis=0)
 
     # calculate the classification metrics
-    metrics = eval_task_metrics(args, all_labels, all_predictions)
+    metrics = eval_task_metrics(args, all_labels, all_predictions, regression=("regression" in args.task))
 
     return mean_classifier_loss, metrics
 
@@ -125,7 +125,7 @@ def eval_pretrained_model(args, default_model, estimator, augmenter, dataloader,
 
     # compute metrics
     mean_loss = np.mean(loss_list)
-    metrics = eval_task_metrics(args, labels, predictions)
+    metrics = eval_task_metrics(args, labels, predictions, regression=("regression" in args.task))
 
     return mean_loss, metrics
 
