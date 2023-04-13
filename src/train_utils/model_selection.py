@@ -44,7 +44,6 @@ from models.loss import (
 def init_backbone_model(args):
     """Automatically select the model according to args."""
     if args.model == "DeepSense":
-        print("Hello World")
         if args.learn_framework in {"MoCo", "MoCoFusion"} and args.stage == "pretrain":
             return DeepSense
         elif args.learn_framework in {"CMC", "CMCV2", "Cosmo", "Cocoa", "MAE", "GMC"}:
