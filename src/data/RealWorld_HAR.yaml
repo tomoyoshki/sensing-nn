@@ -61,13 +61,14 @@ DeepSense:
         loc_mod_conv_inter_layers: 4
         # single interval + location
         loc_conv_lens: [[1, 4], [1, 4], [1, 4]]
-        loc_out_channels: 256
+        loc_out_channels: 128
         loc_conv_inter_layers: 3
         # recurrent layer
         recurrent_dim: 256
         recurrent_layers: 2
         # FC layer
         fc_dim: 256
+        pretrained_head: "linear"
         # Optimizer config
         optimizer:
                 name: "AdamW"
