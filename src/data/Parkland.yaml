@@ -343,6 +343,7 @@ CMCV2:
         ranking_margin: 0.0
         inter_rank_margin: 1
         intra_rank_margin: 0.05
+        shared_contrastive_loss_weight: 1
         private_contrastive_loss_weight: 1
         orthogonal_loss_weight: 3
         rank_loss_weight: 5

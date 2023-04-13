@@ -53,17 +53,17 @@ DeepSense:
                 Acc: [[1, 5], [1, 5], [1, 5]]
                 Gyro: [[1, 5], [1, 5], [1, 5]]
                 Mag: [[1, 5], [1, 5], [1, 5]]
-        loc_mod_out_channels: 128
-        loc_mod_conv_inter_layers: 3
+        loc_mod_out_channels: 64
+        loc_mod_conv_inter_layers: 2
         # single interval + location
         loc_conv_lens: [[1, 4], [1, 4], [1, 4]]
-        loc_out_channels: 128
+        loc_out_channels: 64
         loc_conv_inter_layers: 2
         # recurrent layer
-        recurrent_dim: 128
+        recurrent_dim: 64
         recurrent_layers: 2
         # FC layer
-        fc_dim: 256
+        fc_dim: 128
         pretrained_head: "linear"
         # Optimizer config
         optimizer:
@@ -171,9 +171,9 @@ SimCLR:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2500
+                train_epochs: 1000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 200
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
@@ -212,9 +212,9 @@ MoCo:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2500
+                train_epochs: 1000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 200
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
@@ -257,9 +257,9 @@ CMC:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 1000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 200
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
@@ -268,7 +268,7 @@ CMC:
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 0.005
                 decay_rate: 0.00001
         finetune_lr_scheduler:
                 name: "step"
@@ -289,6 +289,7 @@ CMCV2:
         ranking_margin: 0.0
         inter_rank_margin: 1
         intra_rank_margin: 0.05
+        shared_contrastive_loss_weight: 1
         private_contrastive_loss_weight: 1
         orthogonal_loss_weight: 3
         rank_loss_weight: 5
@@ -304,9 +305,9 @@ CMCV2:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 6000
+                train_epochs: 1000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 200
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
@@ -347,9 +348,9 @@ Cosmo:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 1000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 200
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
@@ -388,9 +389,9 @@ Cocoa:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 1000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 200
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
@@ -426,9 +427,9 @@ MTSS:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 1000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 200
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
@@ -471,9 +472,9 @@ MAE:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2500
+                train_epochs: 1000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 200
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
