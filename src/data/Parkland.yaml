@@ -470,7 +470,7 @@ Cocoa:
 
 GMC:
         emb_dim: 256
-        temperature: 0.07
+        temperature: 0.2
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
@@ -506,7 +506,7 @@ GMC:
                 decay_rate: 0.2
         # Augmenters
         random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
                 freq_augmenters: ["phase_shift"]
 
 MTSS:
