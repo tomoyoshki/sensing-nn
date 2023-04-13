@@ -113,7 +113,7 @@ class DeepSense_CMC(nn.Module):
         elif self.args.learn_framework == "GMC":
             """Projection head"""
             self.gmc_joint_projector = nn.Linear(
-                self.config["recurrent_dim"] * len(self.modalities), self.config["recurrent_dim"]
+                self.config["recurrent_dim"] * 2 * len(self.modalities), self.config["recurrent_dim"] * 2
             )
             self.gmc_shared_projector = nn.Sequential(
                 nn.Linear(self.config["recurrent_dim"] * 2, self.config["fc_dim"]),
@@ -122,7 +122,7 @@ class DeepSense_CMC(nn.Module):
                 Swish(),
                 nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
             )
-            self.sample_dim = self.config["loc_out_channels"] * len(self.modalities)
+            self.sample_dim = self.config["recurrent_dim"] * 2 * len(self.modalities)
         else:
             self.sample_dim = self.config["recurrent_dim"] * 2 * len(self.modalities)
 
