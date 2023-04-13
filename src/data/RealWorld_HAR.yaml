@@ -68,6 +68,7 @@ DeepSense:
         recurrent_layers: 2
         # FC layer
         fc_dim: 256
+        pretrained_head: "linear"
         # Optimizer config
         optimizer:
                 name: "AdamW"
