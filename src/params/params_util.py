@@ -102,6 +102,7 @@ def set_task(args):
         "WESAD": "stress_classification",
         "RealWorld_HAR": "activity_classification",
         "PPG": "hr_regression",
+        "PAMAP2": "activity_classification",
     }
 
     task = task_default_task[args.dataset] if args.task is None else args.task
