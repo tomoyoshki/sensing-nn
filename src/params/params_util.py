@@ -93,8 +93,6 @@ def get_train_mode(learn_framework):
     return train_mode
 
 
-<<<<<<< HEAD
-=======
 def set_task(args):
     """
     Set the default task according to the dataset.
@@ -132,7 +130,6 @@ def set_batch_size(args):
     return args
 
 
->>>>>>> 7fbfff994bafea966da52abdb6f33c38f5146425
 def set_auto_params(args):
     """Automatically set the parameters for the experiment."""
     # gpu configuration
