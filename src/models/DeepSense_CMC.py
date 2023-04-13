@@ -321,7 +321,7 @@ class DeepSense_CMC(nn.Module):
                 latent_features = []
                 # individual mod features
                 for i in range(len(self.modalities)):
-                    latent_features.append(F.normalize(self.gmc_shared_projector(mod_features[i]), dim=-1))
+                    latent_features.append(nn.functional.normalize(self.gmc_shared_projector(mod_features[i]), dim=-1))
 
                 # joint features
                 concated_features = torch.cat(mod_features, dim=1)

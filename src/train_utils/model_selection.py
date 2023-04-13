@@ -47,7 +47,6 @@ def init_backbone_model(args):
         if args.learn_framework in {"MoCo", "MoCoFusion"} and args.stage == "pretrain":
             return DeepSense
         elif args.learn_framework in {"CMC", "CMCV2", "Cosmo", "Cocoa", "MAE", "GMC"}:
-            print("DeepSense CMC args")
             classifier = DeepSense_CMC(args)
         else:
             classifier = DeepSense(args, self_attention=False)
