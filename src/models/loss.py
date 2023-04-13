@@ -103,14 +103,22 @@ class SimCLRLoss(nn.Module):
         self.temperature = args.dataset_config[args.learn_framework]["temperature"]
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
         self.similarity_f = nn.CosineSimilarity(dim=2)
+        self.args = args
 
     def mask_correlated_samples(self, batch_size):
+        """
+        Mark diagonal elements and elements of upper-right and lower-left diagonals as 0.
+        """
         N = 2 * batch_size
-        mask = torch.ones((N, N), dtype=bool)
+        diag_mat = torch.eye(batch_size).to(self.args.device)
+        mask = torch.ones((N, N)).to(self.args.device)
+
         mask = mask.fill_diagonal_(0)
-        for i in range(batch_size):
-            mask[i, batch_size + i] = 0
-            mask[batch_size + i, i] = 0
+        mask[0:batch_size, batch_size : 2 * batch_size] -= diag_mat
+        mask[batch_size : 2 * batch_size, 0:batch_size] -= diag_mat
+
+        mask = mask.bool()
+
         return mask
 
     def forward(self, z_i, z_j, idx=None):
@@ -180,12 +188,19 @@ class CMCLoss(nn.Module):
         self.similarity_f = nn.CosineSimilarity(dim=2)
 
     def mask_correlated_samples(self, batch_size):
+        """
+        Mark diagonal elements and elements of upper-right and lower-left diagonals as 0.
+        """
         N = 2 * batch_size
-        mask = torch.ones((N, N), dtype=bool)
+        diag_mat = torch.eye(batch_size).to(self.args.device)
+        mask = torch.ones((N, N)).to(self.args.device)
+
         mask = mask.fill_diagonal_(0)
-        for i in range(batch_size):
-            mask[i, batch_size + i] = 0
-            mask[batch_size + i, i] = 0
+        mask[0:batch_size, batch_size : 2 * batch_size] -= diag_mat
+        mask[batch_size : 2 * batch_size, 0:batch_size] -= diag_mat
+
+        mask = mask.bool()
+
         return mask
 
     def forward_similiarity(self, z_i, z_j, idx=None):
@@ -239,12 +254,19 @@ class CMCV2Loss(nn.Module):
         self.orthonal_loss_f = nn.CosineEmbeddingLoss(reduction="mean")
 
     def mask_correlated_samples(self, batch_size):
+        """
+        Mark diagonal elements and elements of upper-right and lower-left diagonals as 0.
+        """
         N = 2 * batch_size
-        mask = torch.ones((N, N), dtype=bool)
+        diag_mat = torch.eye(batch_size).to(self.args.device)
+        mask = torch.ones((N, N)).to(self.args.device)
+
         mask = mask.fill_diagonal_(0)
-        for i in range(batch_size):
-            mask[i, batch_size + i] = 0
-            mask[batch_size + i, i] = 0
+        mask[0:batch_size, batch_size : 2 * batch_size] -= diag_mat
+        mask[batch_size : 2 * batch_size, 0:batch_size] -= diag_mat
+
+        mask = mask.bool()
+
         return mask
 
     def forward_contrastive_loss(self, mod1_feature, mod2_feature):

@@ -141,10 +141,13 @@ def init_pretrain_framework(args, backbone_model):
 def init_loss_func(args):
     """Initialize the loss function according to the config."""
     if args.train_mode == "supervised" or args.stage == "finetune":
-        if args.multi_class:
-            loss_func = nn.BCELoss()
+        if "regression" in args.task:
+            loss_func = nn.MSELoss()
         else:
-            loss_func = nn.CrossEntropyLoss()
+            if args.multi_class:
+                loss_func = nn.BCELoss()
+            else:
+                loss_func = nn.CrossEntropyLoss()
     elif args.train_mode == "predictive":
         """Predictive pretraining only."""
         if args.learn_framework == "MTSS":

@@ -96,14 +96,15 @@ def partition_data(paired_data_path, output_path, user_list, train_ratio=0.8):
 
 if __name__ == "__main__":
     username = getpass.getuser()
-    paired_data_path = f"/home/{username}/data/WESAD/time_individual_samples_four_class"
-    output_path = f"/home/{username}/data/WESAD/time_data_partition_four_class"
+    input_path = f"/home/{username}/data/PPG_DaLiA/raw_data/PPG_FieldStudy"
+    paired_data_path = f"/home/{username}/data/PPG_DaLiA/time_individual_samples"
+    output_path = f"/home/{username}/data/PPG_DaLiA/time_data_partition"
 
     if not os.path.exists(output_path):
         os.mkdir(output_path)
 
     # extract user list
-    users = extract_user_list(f"/home/{username}/data/WESAD/raw_data/WESAD")
+    users = extract_user_list(f"/home/{username}/data/PPG_DaLiA/raw_data/PPG_FieldStudy")
 
     # partition the dta
     partition_data(paired_data_path, output_path, users)

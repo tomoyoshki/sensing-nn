@@ -45,11 +45,11 @@ SEGMENT_OVERLAP_RATIO = 0.0
 LABEL_FREQ = 700
 
 FREQS = {
-    "chest": {"ACC": 700, "ECG": 700, "EMG": 700, "EDA": 700, "Resp": 700},
+    "chest": {"ACC": 700, "ECG": 700, "EMG": 700, "EDA": 700},
     # "wrist": {"ACC": 32, "BVP": 64},
 }
 
-PRESERVED_LABELS = {1: 0, 2: 1}
+PRESERVED_LABELS = {1: 0, 2: 1, 3: 2, 4: 3}
 
 
 def extract_user_list(input_path):
@@ -235,6 +235,8 @@ def process_one_user(input_path, freq_output_path, time_output_path, user_id):
             continue
         elif unique[0] == 1 and random.random() > 0.5:
             continue
+        elif unique[0] == 3 and random.random() > 0.33:
+            continue
         else:
             sample = {"label": unique[0], "id": sample_id, "signal": {}}
             sample_id += 1
@@ -260,8 +262,8 @@ def process_one_user_wrapper(args):
 if __name__ == "__main__":
     username = getpass.getuser()
     input_path = f"/home/{username}/data/WESAD/raw_data/WESAD"
-    time_output_path = f"/home/{username}/data/WESAD/time_individual_samples_three_class"
-    freq_output_path = f"/home/{username}/data/WESAD/freq_individual_samples_three_class"
+    time_output_path = f"/home/{username}/data/WESAD/time_individual_samples_four_class"
+    freq_output_path = f"/home/{username}/data/WESAD/freq_individual_samples_four_class"
 
     for f in [freq_output_path, time_output_path]:
         if not os.path.exists(f):
