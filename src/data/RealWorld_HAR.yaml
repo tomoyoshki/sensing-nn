@@ -61,13 +61,14 @@ DeepSense:
         loc_mod_conv_inter_layers: 4
         # single interval + location
         loc_conv_lens: [[1, 4], [1, 4], [1, 4]]
-        loc_out_channels: 256
+        loc_out_channels: 128
         loc_conv_inter_layers: 3
         # recurrent layer
         recurrent_dim: 256
         recurrent_layers: 2
         # FC layer
         fc_dim: 256
+        pretrained_head: "linear"
         # Optimizer config
         optimizer:
                 name: "AdamW"
@@ -312,9 +313,9 @@ CMCV2:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 1000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 200
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:
@@ -522,9 +523,9 @@ MAE:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 2000
+                train_epochs: 1000
                 start_epoch: 0
-                decay_epochs: 500
+                decay_epochs: 200
                 decay_rate: 0.2
         # Fine tuning 
         finetune_optimizer:

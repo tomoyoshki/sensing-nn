@@ -38,7 +38,10 @@ def finetune(
     # Training loop
     logging.info("---------------------------Start Fine Tuning-------------------------------")
     start = time_sync()
-    best_val_acc = 0
+    if "regression" in args.task:
+        best_mae = np.inf
+    else:
+        best_val_acc = 0
     best_weight = os.path.join(
         args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_best.pt"
     )
@@ -80,7 +83,7 @@ def finetune(
         # validation and logging
         if epoch % val_epochs == 0:
             train_loss = np.mean(train_loss_list)
-            val_acc, val_loss = val_and_logging(
+            val_metric, val_loss = val_and_logging(
                 args,
                 epoch,
                 tb_writer,
@@ -96,9 +99,14 @@ def finetune(
             torch.save(classifier.state_dict(), latest_weight)
 
             # Save the best model according to validation result
-            if val_acc > best_val_acc:
-                best_val_acc = val_acc
-                torch.save(classifier.state_dict(), best_weight)
+            if "regression" in args.task:
+                if val_metric < best_mae:
+                    best_mae = val_metric
+                    torch.save(classifier.state_dict(), best_weight)
+            else:
+                if val_metric > best_val_acc:
+                    best_val_acc = val_metric
+                    torch.save(classifier.state_dict(), best_weight)
 
         # Update the learning rate scheduler
         lr_scheduler.step(epoch)

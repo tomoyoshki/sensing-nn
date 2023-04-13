@@ -103,6 +103,7 @@ class SimCLRLoss(nn.Module):
         self.temperature = args.dataset_config[args.learn_framework]["temperature"]
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
         self.similarity_f = nn.CosineSimilarity(dim=2)
+        self.args = args
 
     def mask_correlated_samples(self, batch_size):
         """

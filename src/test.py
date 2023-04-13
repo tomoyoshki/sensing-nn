@@ -33,10 +33,13 @@ def test(args):
     args.classifier = classifier
 
     # define the loss function
-    if args.multi_class:
-        classifier_loss_func = nn.BCELoss()
+    if "regression" in args.task:
+        classifier_loss_func = nn.MSELoss()
     else:
-        classifier_loss_func = nn.CrossEntropyLoss()
+        if args.multi_class:
+            classifier_loss_func = nn.BCELoss()
+        else:
+            classifier_loss_func = nn.CrossEntropyLoss()
 
     # print model layers
     if args.verbose:
@@ -44,14 +47,18 @@ def test(args):
             if param.requires_grad:
                 print(name)
 
-    test_classifier_loss, test_acc, test_f1, test_conf_matrix = eval_supervised_model(
+    test_classifier_loss, test_metrics = eval_supervised_model(
         args, classifier, augmenter, test_dataloader, classifier_loss_func
     )
-    print(f"Test classifier loss: {test_classifier_loss: .5f}")
-    print(f"Test acc: {test_acc: .5f}, test f1: {test_f1: .5f}")
-    print(f"Test confusion matrix:\n {test_conf_matrix}")
+    if "regression" in args.task:
+        print(f"Test classifier loss: {test_classifier_loss: .5f}, test mse: {test_metrics[0]: .5f}")
+        return test_classifier_loss, test_metrics[0]
+    else:
+        print(f"Test classifier loss: {test_classifier_loss: .5f}")
+        print(f"Test acc: {test_metrics[0]: .5f}, test f1: {test_metrics[1]: .5f}")
+        print(f"Test confusion matrix:\n {test_metrics[2]}")
 
-    return test_classifier_loss, test_acc, test_f1
+        return test_classifier_loss, test_metrics[0], test_metrics[1]
 
 
 def main_test():

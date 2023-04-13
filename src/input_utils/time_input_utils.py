@@ -27,27 +27,34 @@ def fft_preprocess(time_input, args):
 
 def count_range(args, data_loader):
     """Count the data range for each modality."""
-    loc_mod_max_abs = {}
-    for i, (loc_inputs, labels) in tqdm(enumerate(data_loader), total=len(data_loader)):
+    value_range = {}
+    all_mod_tensors = {}
+
+    for i, (loc_inputs, labels, _) in tqdm(enumerate(data_loader), total=len(data_loader)):
         for loc in loc_inputs:
             for mod in loc_inputs[loc]:
-                if mod not in loc_mod_max_abs:
-                    loc_mod_max_abs[mod] = torch.max(torch.abs(loc_inputs[loc][mod])).item()
+                if mod not in value_range:
+                    all_mod_tensors[mod] = [loc_inputs[loc][mod]]
                 else:
-                    loc_mod_max_abs[mod] = max(
-                        loc_mod_max_abs[mod],
-                        torch.max(torch.abs(loc_inputs[loc][mod])).item(),
-                    )
+                    all_mod_tensors[mod].append(loc_inputs[loc][mod])
 
-    log_file = os.path.join(args.log_path, f"value_range.json")
+    # compute mean and std
+    for mod in args.dataset_config["modality_names"]:
+        all_mod_tensors[mod] = torch.cat(all_mod_tensors[mod], dim=0)
+        value_range[mod] = {}
+        value_range[mod]["max"] = torch.max(all_mod_tensors[mod])
+        value_range[mod]["min"] = torch.min(all_mod_tensors[mod])
+        value_range[mod]["mean"] = torch.mean(all_mod_tensors[mod], dim=0)
+        value_range[mod]["std"] = torch.std(all_mod_tensors[mod], dim=0)
+
+    log_file = os.path.join(args.log_path, f"value_range.pt")
 
     # load existing file
     if os.path.exists(log_file):
-        value_range_cache = json.load(open(log_file, "r"))
+        value_range_cache = torch.load(log_file)
     else:
         value_range_cache = {}
 
     # save the new value range
-    value_range_cache["time"] = loc_mod_max_abs
-    with open(log_file, "w") as f:
-        f.write(json.dumps(value_range_cache, indent=4))
+    value_range_cache["time"] = value_range
+    torch.save(value_range_cache, log_file)
