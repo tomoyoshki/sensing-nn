@@ -116,7 +116,7 @@ class DeepSense_CMC(nn.Module):
                 self.config["recurrent_dim"] * len(self.modalities), self.config["recurrent_dim"]
             )
             self.gmc_shared_projector = nn.Sequential(
-                nn.Linear(self.config["recurrent_dim"], self.config["fc_dim"]),
+                nn.Linear(self.config["recurrent_dim"] * 2, self.config["fc_dim"]),
                 Swish(),
                 nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
                 Swish(),
