@@ -93,6 +93,46 @@ def get_train_mode(learn_framework):
     return train_mode
 
 
+<<<<<<< HEAD
+=======
+def set_task(args):
+    """
+    Set the default task according to the dataset.
+    """
+    task_default_task = {
+        "ACIDS": "vehicle_classification",
+        "Parkland": "vehicle_classification",
+        "WESAD": "stress_classification",
+        "RealWorld_HAR": "activity_classification",
+        "PPG": "hr_regression",
+        "PAMAP2": "activity_classification",
+    }
+
+    task = task_default_task[args.dataset] if args.task is None else args.task
+
+    return task
+
+
+def set_batch_size(args):
+    """
+    Automatically set the batch size for different (dataset, task, train_mode).
+    """
+    if args.batch_size is None:
+        if args.dataset == "PPG":
+            if args.stage == "pretrain":
+                args.batch_size = 512
+            else:
+                args.batch_size = 256
+        else:
+            if args.stage == "pretrain":
+                args.batch_size = 256
+            else:
+                args.batch_size = 128
+
+    return args
+
+
+>>>>>>> 7fbfff994bafea966da52abdb6f33c38f5146425
 def set_auto_params(args):
     """Automatically set the parameters for the experiment."""
     # gpu configuration
@@ -137,6 +177,9 @@ def set_auto_params(args):
     # set the train mode
     args.train_mode = get_train_mode(args.learn_framework)
     print(f"Set train mode: {args.train_mode}")
+
+    # set batch size
+    args = set_batch_size(args)
 
     # set output path
     args = set_model_weight_folder(args)

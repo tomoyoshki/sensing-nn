@@ -1,82 +1,69 @@
 # data paths  
-pretrain_index_file: /home/sl29/data/RealWorld-HAR/time_data_partition/train_index.txt
-activity_classification:
-        num_classes: 8 
-        class_names: ["climbingdown", "climbingup", "jumping", "lying", "running", "sitting", "standing", "walking"]
-        train_index_file: /home/sl29/data/RealWorld-HAR/time_data_partition/train_index.txt
-        val_index_file: /home/sl29/data/RealWorld-HAR/time_data_partition/test_index.txt
-        test_index_file: /home/sl29/data/RealWorld-HAR/time_data_partition/test_index.txt
-
+pretrain_index_file: /home/sl29/data/PPG_DaLiA/time_data_partition/train_index.txt
+hr_regression:
+        num_classes: 1
+        train_index_file: /home/sl29/data/PPG_DaLiA/time_data_partition/train_index.txt
+        val_index_file: /home/sl29/data/PPG_DaLiA/time_data_partition/test_index.txt 
+        test_index_file: /home/sl29/data/PPG_DaLiA/time_data_partition/test_index.txt
 
 # Segments
-num_segments: 9
+num_segments: 8
 
-# Locations
-num_locaiton: 5
-# location_names: ["head", "chest", "upperarm", "waist", "shin"]
-location_names: ["waist"]
+# Locations 
+num_locaiton: 1
+location_names: ["wrist"]
 
 # Modality names
 num_sensors: 4
-modality_names: ["acc", "gyr", "mag", "lig"]
-
-# For sequence-based contrastive learning 
-seq_len: 4
+modality_names: ["ACC", "BVP"]
 
 # Location modalities
 loc_mod_in_freq_channels:
-        waist: 
-                acc: 6
-                gyr: 6
-                mag: 6
-                lig: 2
+        wrist:
+                ACC: 6
+                BVP: 2
 loc_mod_in_time_channels:
-        waist: 
-                acc: 3
-                gyr: 3
-                mag: 3
-                lig: 1
+        wrist:
+                ACC: 3
+                BVP: 1
 loc_mod_spectrum_len:
-        waist: 
-                acc: 50
-                gyr: 50
-                mag: 50
-                lig: 50
+        wrist:
+                ACC: 32
+                BVP: 64
+
+# For sequence-based contrastive learning 
+seq_len: 4
 
 # DeepSense config
 DeepSense:
         dropout_ratio: 0.2
         # single interval + location + modality
         loc_mod_in_conv_stride:
-                acc: [1, 1]
-                gyr: [1, 1]
-                mag: [1, 1]
-                lig: [1, 1]    
-        loc_mod_conv_lens:
-                acc: [[1, 3], [1, 3], [1, 3]]
-                gyr: [[1, 3], [1, 3], [1, 3]]
-                mag: [[1, 3], [1, 3], [1, 3]]
-                lig: [[1, 3], [1, 3], [1, 3]] 
-        loc_mod_out_channels: 128
-        loc_mod_conv_inter_layers: 4
+                ACC: [1, 2]
+                BVP: [1, 4]
+        loc_mod_conv_lens: 
+                ACC: [[1, 2], [1, 5], [1, 5]]
+                BVP: [[1, 4], [1, 5], [1, 5]]
+        loc_mod_out_channels: 64
+        loc_mod_conv_inter_layers: 3
         # single interval + location
         loc_conv_lens: [[1, 4], [1, 4], [1, 4]]
-        loc_out_channels: 128
-        loc_conv_inter_layers: 3
+        loc_out_channels: 64
+        loc_conv_inter_layers: 2
         # recurrent layer
-        recurrent_dim: 256
+        recurrent_dim: 64
         recurrent_layers: 2
         # FC layer
-        fc_dim: 256
+        fc_dim: 128
         pretrained_head: "linear"
         # Optimizer config
         optimizer:
                 name: "AdamW"
-                start_lr: 0.00005
+                start_lr: 0.001
                 warmup_lr: 0.000001
-                min_lr: 0.0000001
+                min_lr: 0.000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 1
         # LR scheduler
         lr_scheduler:
                 name: "cosine"
@@ -87,85 +74,72 @@ DeepSense:
                 decay_epochs: 100
                 decay_rate: 0.2
         # Data Augmenters:
-        random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
-                freq_augmenters: ["phase_shift"]
         fixed_augmenters:
-                time_augmenters: ["mixup"]
+                time_augmenters: ["no"]
                 freq_augmenters: ["phase_shift"]
 
 TransformerV4:
-        dropout_ratio: 0.2
+        dropout_ratio: 0.4
         drop_path_rate: 0.1
         attn_drop_rate: 0.2
         # loc mod freq feature
         in_stride:
-                acc: 1
-                gyr: 1
-                mag: 1
-                lig: 1
+                ACC: 1
+                BVP: 1
         # single modality
         time_freq_out_channels: 32
         time_freq_head_num: 4
         time_freq_block_num: 
-                acc: [2, 2, 2]
-                gyr: [2, 2, 2]
-                mag: [2, 2, 2]
-                lig: [2, 2, 2]
+                ACC: [2, 2]
+                BVP: [2, 2]
         # modality fusion
-        mod_out_channels: 128
+        mod_out_channels: 64
         mod_head_num: 4
-        mod_block_num: 2
+        mod_block_num: 1
         # location fusion
-        loc_out_channels: 128 # loc_out_channels == mod_out_channels
+        loc_out_channels: 64 # loc_out_channels == mod_out_channels
         loc_head_num: 4
-        loc_block_num: 2
+        loc_block_num: 1
         # SwinTransformer configs
         window_size: 
-                acc: [3, 3]
-                gyr: [3, 3]
-                mag: [3, 3]
-                lig: [3, 3]
+                ACC: [2, 4]
+                BVP: [2, 4]
         mlp_ratio: 4.
         qkv_bias: True
         APE: False
         patch_norm: True
         patch_size:
                 freq:
-                        acc: [1, 2]
-                        gyr: [1, 2]
-                        mag: [1, 2]
-                        lig: [1, 2]
+                        ACC: [1, 2]
+                        BVP: [1, 4]
         # FC layer
-        fc_dim: 256
+        fc_dim: 64
         pretrained_head: "linear"
         # Optimizer config
         optimizer:
                 name: "AdamW"
-                start_lr: 0.00005
+                start_lr: 0.0001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 1
         # LR scheduler
         lr_scheduler:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 200
+                train_epochs: 500
                 start_epoch: 0
-                decay_epochs: 50
+                decay_epochs: 100
                 decay_rate: 0.2
         # Data Augmenters:
-        random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter", "channel_shuffle"]
-                freq_augmenters: ["phase_shift"]
         fixed_augmenters:
-                time_augmenters: ["mixup"]
+                time_augmenters: ["no"]
                 freq_augmenters: ["phase_shift"]
 
+# ---------------------------------------- Contrastive Learning Frameworks ------------------------------------
 SimCLR:
-        emb_dim: 256
+        emb_dim: 64
         temperature: 0.07
         # Pre training  
         pretrain_optimizer:
@@ -189,47 +163,6 @@ SimCLR:
                 start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.000001
-                clip_grad: 5.0
-                weight_decay: 0.0001
-        finetune_lr_scheduler:
-                name: "step"
-                warmup_prefix: True
-                warmup_epochs: 0
-                train_epochs: 200
-                start_epoch: 0
-                decay_epochs: 50
-                decay_rate: 0.2
-        # Augmenters
-        random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
-                freq_augmenters: ["phase_shift"]
-
-MoCo:
-        emb_dim: 256
-        temperature: 0.07
-        momentum: 0.99
-        # Pre training  
-        pretrain_optimizer:
-                name: "AdamW"
-                start_lr: 0.0001
-                warmup_lr: 0.000001
-                min_lr: 0.0000001
-                clip_grad: 5.0
-                weight_decay: 0.05
-        pretrain_lr_scheduler:
-                name: "cosine"
-                warmup_prefix: True
-                warmup_epochs: 0
-                train_epochs: 1000
-                start_epoch: 0
-                decay_epochs: 200
-                decay_rate: 0.2
-        # Fine tuning 
-        finetune_optimizer:
-                name: "Adam"
-                start_lr: 0.001
-                warmup_lr: 0.000001
-                min_lr: 0.0000001
                 clip_grad: 5.0
                 weight_decay: 0.00001
         finetune_lr_scheduler:
@@ -245,20 +178,16 @@ MoCo:
                 time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
                 freq_augmenters: ["phase_shift"]
 
-CMC:
-        emb_dim: 256
-        nce_k: 16384
-        nce_t: 0.07
-        nce_momentum: 0.2
-        softmax: True
+MoCo:
+        emb_dim: 64
         temperature: 0.07
-        input_size: 256
+        momentum: 0.99
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.0005
+                start_lr: 0.0001
                 warmup_lr: 0.000001
-                min_lr: 0.0000001
+                min_lr: 0.000001
                 clip_grad: 5.0
                 weight_decay: 0.05
         pretrain_lr_scheduler:
@@ -272,12 +201,53 @@ CMC:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
+                start_lr: 0.01
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        finetune_lr_scheduler:
+                name: "step"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 200
+                start_epoch: 0
+                decay_epochs: 50
+                decay_rate: 0.2
+        # Augmenters
+        random_augmenters:
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
+                freq_augmenters: ["phase_shift"]
+
+CMC:
+        emb_dim: 64
+        softmax: True
+        temperature: 0.07
+        # Pre training  
+        pretrain_optimizer:
+                name: "AdamW"
                 start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.005
-                decay_rate: 0.00001
+                weight_decay: 0.5
+        pretrain_lr_scheduler:
+                name: "cosine"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 1000
+                start_epoch: 0
+                decay_epochs: 200
+                decay_rate: 0.2
+        # Fine tuning 
+        finetune_optimizer:
+                name: "Adam"
+                start_lr: 0.001
+                warmup_lr: 0.000001
+                min_lr: 0.000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+                decay_rate: 0.2
         finetune_lr_scheduler:
                 name: "step"
                 warmup_prefix: True
@@ -292,23 +262,22 @@ CMC:
                 freq_augmenters: ["phase_shift"]
 
 CMCV2:
-        emb_dim: 256
-        temperature: 0.07
-        ranking_margin: 0.0
+        emb_dim: 64
+        temperature: 0.2
         inter_rank_margin: 1
         intra_rank_margin: 0.05
         shared_contrastive_loss_weight: 1
         private_contrastive_loss_weight: 1
-        orthogonal_loss_weight: 3
-        rank_loss_weight: 5
+        orthogonal_loss_weight: 1
+        rank_loss_weight: 1
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.0005
+                start_lr: 0.0001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 0.5
         pretrain_lr_scheduler:
                 name: "cosine"
                 warmup_prefix: True
@@ -320,55 +289,14 @@ CMCV2:
         # Fine tuning 
         finetune_optimizer:
                 name: "Adam"
-                start_lr: 0.001
+                start_lr: 0.005
                 warmup_lr: 0.000001
                 min_lr: 0.000001
-                clip_grad: 5.0
-                weight_decay: 0.005
-                decay_rate: 0.2
-        finetune_lr_scheduler:
-                name: "cosine"
-                warmup_prefix: True
-                warmup_epochs: 0
-                train_epochs: 200
-                start_epoch: 0
-                decay_epochs: 50
-                decay_rate: 0.2
-        # Augmenters
-        random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
-                freq_augmenters: ["phase_shift"]
-
-GMC:
-        emb_dim: 256
-        temperature: 0.07
-        # Pre training  
-        pretrain_optimizer:
-                name: "AdamW"
-                start_lr: 0.0005
-                warmup_lr: 0.000001
-                min_lr: 0.0000001
                 clip_grad: 5.0
                 weight_decay: 0.05
-        pretrain_lr_scheduler:
-                name: "cosine"
-                warmup_prefix: True
-                warmup_epochs: 0
-                train_epochs: 2000
-                start_epoch: 0
-                decay_epochs: 500
-                decay_rate: 0.2
-        # Fine tuning 
-        finetune_optimizer:
-                name: "Adam"
-                start_lr: 0.001
-                warmup_lr: 0.000001
-                min_lr: 0.000001
-                clip_grad: 5.0
-                weight_decay: 0.005
                 decay_rate: 0.2
         finetune_lr_scheduler:
-                name: "cosine"
+                name: "step"
                 warmup_prefix: True
                 warmup_epochs: 0
                 train_epochs: 200
@@ -381,9 +309,9 @@ GMC:
                 freq_augmenters: ["phase_shift"]
 
 Cosmo:
-        temperature: 1
+        temperature: 0.2
         num_positive: 10
-        emb_dim: 256
+        emb_dim: 128
         contrast_mode: all
         # Pre training  
         pretrain_optimizer:
@@ -498,20 +426,16 @@ MTSS:
                 decay_rate: 0.2
         # data augmenters
         random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling", "jitter"]
+                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
                 freq_augmenters: ["phase_shift"]
 
 MAE:
         masked_ratio:
-                acc: 0.75
-                gyr: 0.75
-                mag: 0.75
-                lig: 0.75
+                ACC: 0.75
+                BVP: 0.75
         patch_size:
-                acc: [1, 2]
-                gyr: [1, 2]
-                mag: [1, 2]
-                lig: [1, 2]
+                ACC: [1, 2]
+                BVP: [1, 4]
         pretrain_optimizer:
                 name: "AdamW"
                 start_lr: 0.0001

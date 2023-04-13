@@ -34,8 +34,8 @@ def partition_data(paired_data_path, output_path, user_list, train_ratio=0.8):
     """
     # partition the user list into training and testing
     random.shuffle(user_list)
-    train_user_count = 11
-    val_user_count = 2
+    train_user_count = 12
+    val_user_count = 0
     train_users = set(user_list[:train_user_count])
     val_users = set(user_list[train_user_count : train_user_count + val_user_count])
     test_users = set(user_list[train_user_count + val_user_count :])
@@ -96,19 +96,15 @@ def partition_data(paired_data_path, output_path, user_list, train_ratio=0.8):
 
 if __name__ == "__main__":
     username = getpass.getuser()
-<<<<<<< HEAD
-    paired_data_path = f"/home/{username}/data/WESAD/time_individual_samples"
-    output_path = f"/home/{username}/data/WESAD/time_data_partition"
-=======
-    paired_data_path = f"/home/{username}/data/WESAD/time_individual_samples_four_class"
-    output_path = f"/home/{username}/data/WESAD/time_data_partition_four_class"
->>>>>>> 7fbfff994bafea966da52abdb6f33c38f5146425
+    input_path = f"/home/{username}/data/PPG_DaLiA/raw_data/PPG_FieldStudy"
+    paired_data_path = f"/home/{username}/data/PPG_DaLiA/time_individual_samples"
+    output_path = f"/home/{username}/data/PPG_DaLiA/time_data_partition"
 
     if not os.path.exists(output_path):
         os.mkdir(output_path)
 
     # extract user list
-    users = extract_user_list(f"/home/{username}/data/WESAD/raw_data/WESAD")
+    users = extract_user_list(f"/home/{username}/data/PPG_DaLiA/raw_data/PPG_FieldStudy")
 
     # partition the dta
     partition_data(paired_data_path, output_path, users)

@@ -13,6 +13,9 @@ class MixupAugmenter(nn.Module):
         self.config["num_classes"] = args.dataset_config[args.task]["num_classes"]
         self.mixup_func = Mixup(**args.dataset_config["mixup"])
 
+        if "regression" in args.task:
+            raise Exception("Mixup is not supported for regression task.")
+
     def forward(self, org_loc_inputs, labels=None):
         """
         Fake forward function of the no miss modality generator.
