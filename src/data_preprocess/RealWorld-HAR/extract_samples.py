@@ -21,7 +21,7 @@ NOTE:
 """
 
 SEGMENT_SPAN = 5000
-INTERVAL_SPAN = 500
+INTERVAL_SPAN = 1000
 SEGMENT_SAMPLE_COUNT = 250
 INTERVAL_SAMPLE_COUNT = 50
 SEGMENT_INTERVAL_COUNT = 9
@@ -284,7 +284,6 @@ def process_one_file(input_file, freq_output_path, time_output_path):
                     if (record_time - sample_start_time >= SEGMENT_SPAN - 1e-3) or (
                         not record_activity_id == sample_activity_id
                     ):
-
                         # save the segment if it is long enough
                         if len(segment) >= SEGMENT_SAMPLE_COUNT * 0.8:
                             # padding the data
