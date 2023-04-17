@@ -107,51 +107,6 @@ DeepSense:
         fixed_augmenters:
                 time_augmenters: ["channel_shuffle", "mixup"]
                 freq_augmenters: ["phase_shift"]
-        
-# ResNet config              
-ResNet:
-        interval_num: 7
-        dropout_ratio: 0.2
-        # single interval + location + modality
-        loc_mod_in_conv_stride:
-                audio: [1, 4]
-                seismic: [1, 4]
-                acc: 1
-        loc_mod_conv_lens: 
-                audio: [[1, 4], [4, 4], [3, 3]]
-                seismic: [[1,4], [4, 4], [3, 3]]
-        loc_mod_out_channels: 256
-        loc_mod_conv_inter_layers: 3
-        # single interval + location
-        loc_conv_lens: [[3, 3], [3, 3], [3, 3]]
-        loc_out_channels: 256
-        loc_conv_inter_layers: 2
-        # FC layer
-        fc_dim: 256
-        # Optimizer config
-        optimizer:
-                name: "AdamW"
-                start_lr: 0.00001
-                warmup_lr: 0.000001
-                min_lr: 0.0000001
-                clip_grad: 5.0
-                weight_decay: 0.05
-        # LR scheduler
-        lr_scheduler:
-                name: "step"
-                warmup_prefix: True
-                warmup_epochs: 0
-                train_epochs: 1500
-                start_epoch: 0
-                decay_epochs: 200
-                decay_rate: 0.2
-        # Data Augmenters:
-        random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
-                freq_augmenters: ["phase_shift"]
-        fixed_augmenters:
-                time_augmenters: ["no"]
-                freq_augmenters: ["no"]
 
 TransformerV4:
         dropout_ratio: 0.2
@@ -298,9 +253,6 @@ MoCo:
 
 CMC:
         emb_dim: 256
-        nce_k: 4096
-        nce_t: 0.07
-        nce_momentum: 0.9
         softmax: True
         input_size: 256
         temperature: 0.2
@@ -343,10 +295,14 @@ CMC:
                 freq_augmenters: ["phase_shift"]
 
 CMCV2:
-        emb_dim: 384
-        temperature: 0.07
-        ranking_margin: 0.05
-        ranking_losS_weight: 1
+        emb_dim: 256
+        temperature: 0.2
+        inter_rank_margin: 1
+        intra_rank_margin: 0.05
+        shared_contrastive_loss_weight: 1
+        private_contrastive_loss_weight: 1
+        orthogonal_loss_weight: 3
+        rank_loss_weight: 10
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"

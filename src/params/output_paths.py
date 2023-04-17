@@ -25,7 +25,14 @@ def remove_files(path_list):
             os.remove(p)
 
 
-def set_model_weight_suffix(train_mode, learn_framework=None, task=None, label_ratio=None, miss_modalities=None):
+def set_model_weight_suffix(
+    train_mode,
+    learn_framework=None,
+    task=None,
+    label_ratio=None,
+    miss_modalities=None,
+    tag=None,
+):
     """Automatically get the model path.
 
     Args:
@@ -46,6 +53,9 @@ def set_model_weight_suffix(train_mode, learn_framework=None, task=None, label_r
         else:
             raise Exception(f"Unknown train mode: {train_mode}")
 
+    if tag is not None:
+        suffix += f"-{tag}"
+
     return suffix
 
 
@@ -58,6 +68,7 @@ def find_most_recent_weight(
     task=None,
     label_ratio=None,
     return_suffix=False,
+    tag=None,
 ):
     """Find the most recent weight path for the given (model, train_mode, framework).)"""
     # base model path
@@ -66,7 +77,7 @@ def find_most_recent_weight(
     dataset_model_path += "_debug" if args.debug else ""
 
     # identify the proper suffix
-    suffix = set_model_weight_suffix(train_mode, learn_framework, task, label_ratio)
+    suffix = set_model_weight_suffix(train_mode, learn_framework, task, label_ratio, tag=tag)
 
     # find the most recent weight (training, finetuning, testing)
     newest_id = -1
@@ -110,6 +121,7 @@ def set_model_weight_folder(args):
         args.task,
         args.label_ratio,
         return_suffix=True,
+        tag=args.tag,
     )
 
     # set the weight path to avoid redundancy

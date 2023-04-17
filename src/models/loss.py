@@ -429,6 +429,7 @@ class CMCV3Loss(nn.Module):
         """
         Compute the orthogonality loss for the modality features. No cross-sample operation is involved.
         input shape: [b, seq_len, dim]
+        We use y=-1 to make embedding1 and embedding2 orthogonal.
         """
         # convert [batch, seq, dim] to [batch * seq, dim]
         flat_embeddings1 = embeddings1.reshape(-1, embeddings1.shape[-1])
@@ -438,7 +439,7 @@ class CMCV3Loss(nn.Module):
         orthogonal_loss = self.orthonal_loss_f(
             flat_embeddings1,
             flat_embeddings2,
-            target=torch.ones(batch).to(embeddings1.device),
+            target=-torch.ones(batch).to(embeddings1.device),
         )
 
         return orthogonal_loss
