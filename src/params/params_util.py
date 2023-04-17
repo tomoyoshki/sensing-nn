@@ -77,6 +77,7 @@ def get_train_mode(learn_framework):
         "CMC": "contrastive",
         "CMCV2": "contrastive",
         "Cocoa": "contrastive",
+        "TNC": "contrastive",
         "GMC": "contrastive",
         "MTSS": "predictive",
         "ModPred": "predictive",
@@ -155,7 +156,7 @@ def set_auto_params(args):
     args.verbose = str_to_bool(args.verbose)
     args.count_range = str_to_bool(args.count_range)
     args.balanced_sample = str_to_bool(args.balanced_sample) and args.dataset in {"ACIDS", "Parkland_Miata"}
-    args.sequence_sampler = True if args.learn_framework in {"CMCV2"} else False
+    args.sequence_sampler = True if args.learn_framework in {"CMCV2", "TS2Vec", "TNC"} else False
     args.debug = str_to_bool(args.debug)
 
     # threshold

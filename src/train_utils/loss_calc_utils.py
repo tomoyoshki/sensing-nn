@@ -16,6 +16,10 @@ def calc_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_in
         aug_freq_loc_inputs = augmenter.forward("random", time_loc_inputs)
         mod_features = default_model(aug_freq_loc_inputs)
         loss = loss_func(mod_features)
+    elif args.learn_framework == "TNC":
+        aug_freq_loc_inputs = augmenter.forward("random", time_loc_inputs)
+        mod_disc_features, neighbors = default_model(aug_freq_loc_inputs)
+        loss = loss_func(mod_disc_features, neighbors)
     else:
         """SimCLR, MoCo, MTSS, ModPred, SimCLRFusion, MoCoFusion, CMCV2"""
         aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)

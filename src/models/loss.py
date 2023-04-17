@@ -698,6 +698,27 @@ class CosmoLoss(nn.Module):
         return loss
 
 
+class TNCLoss(nn.Module):
+    def __init__(self, args, idx=None):
+        super(TNCLoss, self).__init__()
+        self.args = args
+        self.config = args.dataset_config["TNC"]
+        self.modalities = args.dataset_config["modality_names"]
+        self.w = self.config["weight"]
+
+        self.bce_loss = torch.nn.BCEWithLogitsLoss()
+
+    def forward(self, disc_features, neighbors):
+        disc_pos, disc_neg = disc_features
+        pos_neighbors, neg_neighbors = neighbors
+        p_loss = self.bce_loss(disc_pos, pos_neighbors)
+        n_loss = self.bce_loss(disc_neg, neg_neighbors)
+        n_loss_u = self.bce_loss(disc_neg, neg_neighbors)
+        loss = (p_loss + self.w * n_loss_u + (1 - self.w) * n_loss) / 2
+
+        return loss
+
+
 class CocoaLoss(nn.Module):
     def __init__(self, args, idx=None):
         """Cocoa loss similar to CMC
