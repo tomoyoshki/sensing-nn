@@ -19,6 +19,12 @@ def parse_base_args(option="train"):
         default="true",
         help="Whether tbe current execution is for debugging.",
     )
+    parser.add_argument(
+        "-tag",
+        type=str,
+        default=None,
+        help="The tag of execution, for record only.",
+    )
 
     # dataset config
     parser.add_argument(
