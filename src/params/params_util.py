@@ -107,6 +107,9 @@ def set_task(args):
     }
 
     task = task_default_task[args.dataset] if args.task is None else args.task
+    
+    
+    print("Task: ", task)
 
     return task
 
@@ -140,6 +143,9 @@ def set_auto_params(args):
 
     # retrieve the user name
     args.username = get_username()
+
+    # set downstream task
+    args.task = set_task(args)
 
     # parse the model yaml file
     dataset_yaml = f"./data/{args.dataset}.yaml"

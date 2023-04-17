@@ -36,8 +36,8 @@ def parse_base_args(option="train"):
     parser.add_argument(
         "-task",
         type=str,
-        default="vehicle_classification",
-        help="Dataset to evaluate.",
+        default=None,
+        help="The downstream task to evaluate.",
     )
     parser.add_argument(
         "-model",
