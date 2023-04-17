@@ -66,19 +66,24 @@ class Cosmo(nn.Module):
 
     def cosmo_rand_fusion(self, mod_features):
         """
-        Random fusion function from Cosmo paper. Assume only two modalities are used here.
+        Random fusion function from Cosmo paper
         Ref: https://github.com/xmouyang/Cosmo/blob/6e64da45049f074853026e522d826c3803526e06/sample-code-UTD/Cosmo/cosmo_design.py#L8
         """
-        mod1_feature = mod_features[0].unsqueeze(1).tile(1, self.num_positive, 1)  # [b, num_positive, dim]
-        mod2_feature = mod_features[1].unsqueeze(1).tile(1, self.num_positive, 1)  # [b, num_positive, dim]
-        b, _, dim = mod1_feature.shape
 
-        fusion_weight = torch.arange(1, self.num_positive + 1) / (self.num_positive + 1)  # [num_positive]
+        # [num_mod, b, dim] -> [num_mod, b, num_posiive, dim]
+        mod_features = torch.stack(mod_features, dim=0)
+        aug_mod_features = mod_features.unsqueeze(2).tile(1, 1, self.num_positive, 1)
+        _, b, _, dim = aug_mod_features.shape # [num_mods, b, num_pos,]      
+        
+        # fusion weight a_jk  j * k
+        fusion_weight = torch.rand(len(self.modalities), self.num_positive) # [num_mod, num_pos]
         fusion_weight = fusion_weight.to(self.args.device)
-        fusion_weight = fusion_weight.unsqueeze(0).unsqueeze(2).tile([b, 1, dim])  # [b, num_positive, dim]
-
-        fused_feature = mod1_feature * fusion_weight + mod2_feature * (1 - fusion_weight)  # [b, num_positive, dim]
-
+        fusion_weight = fusion_weight / fusion_weight.sum(0) # enforce sum(a_jk)=1 : j in {1, M}
+        fusion_weight = fusion_weight.unsqueeze(1).unsqueeze(3).tile([1, b, 1, dim]) # [num_mod, b, num_pos, dim]
+        
+        fused_feature = aug_mod_features * fusion_weight # [num_mod, b, num_pos, dim]
+        fused_feature = fused_feature.sum(0) # [b, num_pos, dim] sum(a_jk, r_j) : j in {1, M} k in {1, P}
+        
         return fused_feature
 
     def rand_fusion(self, mod_features):
