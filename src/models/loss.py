@@ -767,6 +767,156 @@ class CocoaLoss(nn.Module):
         return loss
 
 
+class TS2VecLoss(nn.Module):
+    def __init__(self, args):
+        """TS2Vec loss
+        https://github.com/yuezhihan/ts2vec
+        """
+        super(TS2VecLoss, self).__init__()
+        self.args = args
+        self.config = args.dataset_config["TS2Vec"]
+        self.modalities = args.dataset_config["modality_names"]
+        self.temperature = args.dataset_config[args.learn_framework]["temperature"]
+        self.criterion = nn.CrossEntropyLoss(reduction="mean")
+        self.similarity_f = nn.CosineSimilarity(dim=-1)
+
+    def mask_correlated_samples(self, seq_len=None, batch_size=0):
+        """
+        Return a mask where the correlated sample locations are 0.
+        Output: [seq, 2b, 2b]
+        """
+        N = 2 * batch_size
+        mask = torch.ones((N, N), dtype=bool)
+        mask = mask.fill_diagonal_(0)
+        for i in range(batch_size):
+            mask[i, batch_size + i] = 0
+            mask[batch_size + i, i] = 0
+
+        if seq_len is not None:
+            mask = mask.unsqueeze(0).repeat(seq_len, 1, 1)
+        return mask
+
+    def hierarchical_contrastive_loss(self, z1, z2, alpha=0.5, temporal_unit=0):
+        loss = torch.tensor(0.0, device=z1.device)
+        d = 0
+        while z1.size(1) > 1:
+            if alpha != 0:
+                loss += alpha * self.instance_contrastive_loss(z1, z2)
+            if d >= temporal_unit:
+                if 1 - alpha != 0:
+                    loss += (1 - alpha) * self.temporal_contrastive_loss(z1, z2)
+            d += 1
+            z1 = F.max_pool1d(z1.transpose(1, 2), kernel_size=2).transpose(1, 2)
+            z2 = F.max_pool1d(z2.transpose(1, 2), kernel_size=2).transpose(1, 2)
+        if z1.size(1) == 1:
+            if alpha != 0:
+                loss += alpha * self.instance_contrastive_loss(z1, z2)
+            d += 1
+        return loss / d
+
+    # def instance_contrastive_loss(self, mod1_feature, mod2_feature, idx=None):
+    #     """
+    #     TS2Vec instance wise contrastive loss, same as SimCLR
+    #     """
+    #     batch_size = mod1_feature.shape[0]
+    #     N = 2 * batch_size
+    #     # Calculate similarity
+    #     z = torch.cat((mod1_feature, mod2_feature), dim=0)
+    #     sim = self.similarity_f(z.unsqueeze(1), z.unsqueeze(0)) / self.temperature
+    #     sim_i_j = torch.diag(sim, batch_size)
+    #     sim_j_i = torch.diag(sim, -batch_size)
+
+    #     positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)
+    #     negative_samples = sim[self.mask_correlated_samples(None, batch_size)].reshape(N, -1)
+
+    #     labels = torch.zeros(N).to(positive_samples.device).long()
+    #     logits = torch.cat((positive_samples, negative_samples), dim=1)
+    #     loss = self.criterion(logits, labels) / N
+    #     return loss
+
+    # def temporal_contrastive_loss(self, mod1_feature, mod2_feature):
+    #     """
+    #     TS2Vec temporal wise contrastive loss,
+    #     cross transformation feature time sample considered as positive
+    #     other time samples within a seq are considered as negative
+    #     """
+
+    #     # we want to compare each sequence
+    #     # [b, seq, dim]
+    #     mod1_seq_features = mod1_feature
+    #     mod2_seq_features = mod2_feature
+    #     batch_size, seq_len, dim = mod1_seq_features.shape
+
+    #     N = 2 * seq_len
+
+    #     # Calculate similarity
+    #     z = torch.cat((mod1_seq_features, mod2_seq_features), dim=1)
+    #     sim = self.similarity_f(z.unsqueeze(2), z.unsqueeze(1)) / self.temperature
+    #     sim_i_j = torch.diagonal(sim, seq_len, dim1=-2, dim2=-1)
+    #     sim_j_i = torch.diagonal(sim, -seq_len, dim1=-2, dim2=-1)
+
+    #     positive_samples = torch.cat((sim_i_j, sim_j_i), dim=1).reshape(batch_size, N, 1)
+    #     negative_samples = sim[self.mask_correlated_samples(batch_size, seq_len)].reshape(batch_size, N, -1)
+
+    #     # Compute loss
+    #     labels = torch.zeros(batch_size * N).to(positive_samples.device).long()
+    #     logits = torch.cat((positive_samples, negative_samples), dim=2).reshape(batch_size * N, -1)
+    #     contrastive_loss = self.criterion(logits, labels)
+
+    #     return contrastive_loss
+    def instance_contrastive_loss(self, z1, z2):
+        B, T = z1.size(0), z1.size(1)
+        if B == 1:
+            return z1.new_tensor(0.0)
+        z = torch.cat([z1, z2], dim=0)  # 2B x T x C
+        z = z.transpose(0, 1)  # T x 2B x C
+        sim = torch.matmul(z, z.transpose(1, 2))  # T x 2B x 2B
+        logits = torch.tril(sim, diagonal=-1)[:, :, :-1]  # T x 2B x (2B-1)
+        logits += torch.triu(sim, diagonal=1)[:, :, 1:]
+        logits = -F.log_softmax(logits, dim=-1)
+
+        i = torch.arange(B, device=z1.device)
+        loss = (logits[:, i, B + i - 1].mean() + logits[:, B + i, i].mean()) / 2
+        return loss
+
+    def temporal_contrastive_loss(self, z1, z2):
+        B, T = z1.size(0), z1.size(1)
+        if T == 1:
+            return z1.new_tensor(0.0)
+        z = torch.cat([z1, z2], dim=1)  # B x 2T x C
+        sim = torch.matmul(z, z.transpose(1, 2))  # B x 2T x 2T
+        logits = torch.tril(sim, diagonal=-1)[:, :, :-1]  # B x 2T x (2T-1)
+        logits += torch.triu(sim, diagonal=1)[:, :, 1:]
+        logits = -F.log_softmax(logits, dim=-1)
+
+        t = torch.arange(T, device=z1.device)
+        loss = (logits[:, t, T + t - 1].mean() + logits[:, T + t, t].mean()) / 2
+        return loss
+
+    def forward(self, mod_features1, mod_features2, idx=None):
+        """
+        loss = instance contrastive loss + temporal contrastive loss
+        Procedure:
+            (1) For each batch, compute the instance contrastive loss
+            (2) Split input into time sequences
+            (3) For each time squence, compute the temporal contrastive loss
+        """
+        batch_size = mod_features1.shape[0]
+        seq_len = self.args.dataset_config["seq_len"]
+
+        # step 0: split features into subsequence
+        split_mod_features1 = mod_features1.reshape(batch_size // seq_len, seq_len, -1)
+        split_mod_features2 = mod_features2.reshape(batch_size // seq_len, seq_len, -1)
+
+        loss = self.hierarchical_contrastive_loss(split_mod_features1, split_mod_features2)
+        # step 1: Instance wise contrastive loss
+        # instance_contrastive_loss = self.instance_contrastive_loss(split_mod_features1, split_mod_features2)
+
+        # step 2.2 calculate temporal contrastive loss
+        # temporal_contrastive_loss = self.temporal_contrastive_loss(split_mod_features1, split_mod_features2)
+
+        # loss = instance_contrastive_loss + temporal_contrastive_loss
+        return loss
 class GMCLoss(nn.Module):
     """GMC Loss function
     https://arxiv.org/pdf/2202.03390.pdf

@@ -37,6 +37,7 @@ from models.loss import (
     MAELoss,
     CocoaLoss,
     CMCV2Loss,
+    TS2VecLoss,
     CMCV3Loss,
     TNCLoss,
     GMCLoss,
@@ -72,7 +73,7 @@ def init_backbone_model(args):
 
 def init_contrastive_framework(args, backbone_model):
     # model config
-    if args.learn_framework in {"SimCLR", "SimCLRFusion"}:
+    if args.learn_framework in {"SimCLR", "SimCLRFusion", "TS2Vec"}:
         default_model = SimCLR(args, backbone_model)
     elif args.learn_framework == "DINO":
         default_model = DINO(args, backbone_model)
@@ -179,6 +180,8 @@ def init_loss_func(args):
             loss_func = TNCLoss(args).to(args.device)
         elif args.learn_framework in {"GMC"}:
             loss_func = GMCLoss(args).to(args.device)
+        elif args.learn_framework in {"TS2Vec"}:
+            loss_func = TS2VecLoss(args).to(args.device)
         else:
             raise NotImplementedError(f"Loss function for {args.learn_framework} yet implemented")
     elif args.train_mode == "generative":
