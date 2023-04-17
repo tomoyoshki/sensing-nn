@@ -183,7 +183,7 @@ class CMCLoss(nn.Module):
         self.config = args.dataset_config["CMC"]
         self.batch_size = args.batch_size
         self.temperature = args.dataset_config[args.learn_framework]["temperature"]
-        self.modalities = args.dataset_config["modality_names"]
+
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
         self.similarity_f = nn.CosineSimilarity(dim=2)
 
@@ -229,15 +229,8 @@ class CMCLoss(nn.Module):
 
         return loss
 
-    def forward(self, mod_features, index):
-        """
-        Iterate over pairs of modalities and calculate the loss.
-        """
-        loss = 0
-
-        for i, mod1 in enumerate(self.modalities):
-            for mod2 in self.modalities[i + 1 :]:
-                loss += self.forward_similiarity(mod_features[mod1], mod_features[mod2])
+    def forward(self, seismic_features, audio_features, index):
+        loss = self.forward_similiarity(seismic_features, audio_features)
 
         return loss
 
@@ -379,8 +372,7 @@ class CMCV3Loss(nn.Module):
         self.criterion = nn.CrossEntropyLoss(reduction="mean")
         self.similarity_f = nn.CosineSimilarity(dim=-1)
         self.orthonal_loss_f = nn.CosineEmbeddingLoss(reduction="mean")
-        self.intra_ranking_loss_f = nn.MarginRankingLoss(margin=self.config["intra_rank_margin"], reduction="mean")
-        self.inter_ranking_loss_f = nn.MarginRankingLoss(margin=self.config["inter_rank_margin"], reduction="mean")
+        self.ranking_loss_f = nn.MarginRankingLoss(margin=self.config["ranking_margin"], reduction="mean")
 
     def mask_correlated_samples(self, seq_len, batch_size, temporal=False):
         """
@@ -405,43 +397,30 @@ class CMCV3Loss(nn.Module):
 
         return mask
 
-    def forward_contrastive_loss(self, embeddings1, embeddings2, finegrain=False):
+    def forward_contrastive_loss(self, mod1_feature, mod2_feature):
         """
         Among sequences, only samples at paired temporal locations are compared.
-        embeddings shape: [b, seq, dim]
+        mod_seq_feature shape: [b, seq, dim]
         """
-        # get shape
-        batch, seq, dim = embeddings1.shape
-
-        # Put the compared dimension into the second dimension
-        if finegrain:
-            """Compare within the sequences, [b, seq, dim]"""
-            in_embeddings1 = embeddings1
-            in_embeddings2 = embeddings2
-            N = 2 * seq
-            dim_parallel = batch
-            dim_compare = seq
-        else:
-            """Compare between the sequences, [seq, b, dim]"""
-            in_embeddings1 = embeddings1.transpose(0, 1)
-            in_embeddings2 = embeddings2.transpose(0, 1)
-            N = 2 * batch
-            dim_parallel = seq
-            dim_compare = batch
+        # [b, seq, dim] -- > [seq, b, dim]
+        mod1_seq_features = mod1_feature.transpose(0, 1)
+        mod2_seq_features = mod2_feature.transpose(0, 1)
+        seq_len, batch_size, dim = mod1_seq_features.shape
+        N = 2 * batch_size
 
         # Calculate similarity
-        z = torch.cat((in_embeddings1, in_embeddings2), dim=1)
+        z = torch.cat((mod1_seq_features, mod2_seq_features), dim=1)
         sim = self.similarity_f(z.unsqueeze(2), z.unsqueeze(1)) / self.temperature
-        sim_i_j = torch.diagonal(sim, dim_compare, dim1=-2, dim2=-1)
-        sim_j_i = torch.diagonal(sim, -dim_compare, dim1=-2, dim2=-1)
+        sim_i_j = torch.diagonal(sim, batch_size, dim1=-2, dim2=-1)
+        sim_j_i = torch.diagonal(sim, -batch_size, dim1=-2, dim2=-1)
 
         # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
-        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=1).reshape(dim_parallel, N, 1)
-        negative_samples = sim[self.mask_correlated_samples(dim_parallel, dim_compare)].reshape(dim_parallel, N, -1)
+        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=1).reshape(seq_len, N, 1)
+        negative_samples = sim[self.mask_correlated_samples(seq_len, batch_size)].reshape(seq_len, N, -1)
 
         # Compute loss
-        labels = torch.zeros(dim_parallel * N).to(positive_samples.device).long()
-        logits = torch.cat((positive_samples, negative_samples), dim=2).reshape(dim_parallel * N, -1)
+        labels = torch.zeros(seq_len * N).to(positive_samples.device).long()
+        logits = torch.cat((positive_samples, negative_samples), dim=2).reshape(seq_len * N, -1)
         contrastive_loss = self.criterion(logits, labels)
 
         return contrastive_loss
@@ -465,7 +444,7 @@ class CMCV3Loss(nn.Module):
 
         return orthogonal_loss
 
-    def forward_temporal_intra_ranking_loss(self, embeddings):
+    def forward_temporal_ranking_loss(self, embeddings):
         """
         Enforce the temporal correlations within each subsequence, for both shared space and private space.
         sim(anchor, sample1) >= sim(anchor, sample2) ... >= sim(anchor, sampleN)
@@ -475,62 +454,63 @@ class CMCV3Loss(nn.Module):
         sim = self.similarity_f(embeddings.unsqueeze(2), embeddings.unsqueeze(1))
         B, N = sim.shape[:2]
 
-        # Step 1: Create diagonal masks [b, seq, seq - 1]
-        base_mask = torch.zeros(N, N - 1)
+        # Step 1: Subtract similarities of different columns -> [batch, seq, seq - 1], moved to MarginRankingLoss step 4
+        # sim_diff = sim[:, :, -1] - sim[:, :, 1:]
 
+        # Step 2: Create diagonal masks [b, seq, seq - 1]
+        base_mask = torch.zeros(N, N - 1)
         # upper right are ones
         upper_right = torch.triu(torch.ones(N, N - 1), diagonal=1)
-
         # bottom left are negative ones
         bottom_left = torch.rot90(upper_right, k=2)
-
         # sum together
         mask = base_mask + upper_right + -1 * bottom_left
 
-        # Step 2: Flatten the inputs and targets， left_half - right_half >= 0
+        # Step 3: Flatten the inputs and targets
+        # We want left_half - right_half >= 0
         sim_left_half = sim[:, :, :-1].reshape(B, -1)
         sim_right_half = sim[:, :, 1:].reshape(B, -1)
 
         # mask [seq, seq - 1] -> [B, seq, seq - 1] -> [B, seq ^ 2]
         y = mask.unsqueeze(0).repeat(B, 1, 1).reshape(B, -1).to(self.args.device)
-
-        # Step 3: Loss, (Step 1 is moved to Step 4 (sim[:, :, -1] - sim[:, :, 1:] == x1 - x2 in MarginRankingLoss))
+        # Since left - right >= 0, right has higher rank than left, therefore negating y
+        y = -1.0 * y
+        # Step 4: Loss, (Step 1 is moved to Step 4 (sim[:, :, -1] - sim[:, :, 1:] == x1 - x2 in MarginRankingLoss))
         # target requires same number of dimension as the inputs
         # Masked portions are zero values and do not contribute to the loss calculation
-        correlation_loss = self.intra_ranking_loss_f(sim_left_half, sim_right_half, y)
+        correlation_loss = self.ranking_loss_f(sim_left_half, sim_right_half, y)
 
         return correlation_loss
 
-    def forward_temporal_inter_ranking_loss(self, embeddings):
+    def forward_fine_temporal_contrastive_loss(self, mod1_feature, mod2_feature):
         """
-        Enforce temporally close samples to be closer than temporally distant samples.
-        embeddings: [batch_size, seq_len, dim]
+        In the fine-grained temporal contrastive loss, samples within a sequence are compared to each other.
+        mod_seq_feature shape: [b, seq, dim]
         """
-        batch_size, seq_len, dim = embeddings.shape
-        in_embeddings = embeddings.reshape(batch_size * seq_len, dim)
+        # we want to compare each sequence
+        # [b, seq, dim]
+        mod1_seq_features = mod1_feature
+        mod2_seq_features = mod2_feature
+        batch_size, seq_len, dim = mod1_seq_features.shape
 
-        # calculate the Euclidean distance between any pairs of samples, [batch * seq, batch * seq]
-        distance = torch.cdist(in_embeddings, in_embeddings, p=2)
-        distance = distance.reshape(batch_size, seq_len, batch_size, seq_len)
-        distance = distance.permute(0, 2, 1, 3)  # [b, b, seq, seq]
+        N = 2 * seq_len
 
-        # sequence level distance, [batch, batch]
-        mask = torch.ones(batch_size * seq_len, batch_size * seq_len).to(self.args.device).fill_diagonal_(0)
-        mask = mask.reshape(batch_size, seq_len, batch_size, seq_len).permute(0, 2, 1, 3)  # [b, b, seq, seq]
-        distance = (distance * mask).sum(dim=[2, 3]) / mask.sum(dim=[2, 3])
+        # Calculate similarity
+        z = torch.cat((mod1_seq_features, mod2_seq_features), dim=1)
+        sim = self.similarity_f(z.unsqueeze(2), z.unsqueeze(1)) / self.temperature
+        sim_i_j = torch.diagonal(sim, seq_len, dim1=-2, dim2=-1)
+        sim_j_i = torch.diagonal(sim, -seq_len, dim1=-2, dim2=-1)
 
-        # in-sequence distance should be lower than inter-sequence distance
-        avg_intra_seq_dist = torch.diagonal(distance, 0, dim1=0, dim2=1).repeat_interleave(batch_size - 1)
-        avg_inter_seq_dist = extract_non_diagonal_matrix(distance).flatten()
+        # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
+        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=1).reshape(batch_size, N, 1)
+        negative_samples = sim[self.mask_correlated_samples(batch_size, seq_len)].reshape(batch_size, N, -1)
 
-        # target: x1 < x2, therefore y = -1
-        ranking_loss = self.inter_ranking_loss_f(
-            avg_intra_seq_dist,
-            avg_inter_seq_dist,
-            -torch.ones_like(avg_intra_seq_dist).to(self.args.device),
-        )
+        # Compute loss
+        labels = torch.zeros(batch_size * N).to(positive_samples.device).long()
+        logits = torch.cat((positive_samples, negative_samples), dim=2).reshape(batch_size * N, -1)
+        contrastive_loss = self.criterion(logits, labels)
 
-        return ranking_loss
+        return contrastive_loss
 
     def forward_coarse_temporal_contrastive_loss(self, embeddings):
         """
@@ -578,24 +558,22 @@ class CMCV3Loss(nn.Module):
         """
         seq_len = self.args.dataset_config["seq_len"]
 
-        # Step 0: Reshape features
-        for mod_features in [mod_features1, mod_features2]:
-            for mod in self.modalities:
-                mod_features[mod] = mod_features[mod].reshape(-1, seq_len, mod_features[mod].shape[-1])
-
         # Step 1: split features into "shared" space and "private" space of each (mod, subsequence), [b, seq, dim]
         split_mod_features1, split_mod_features2 = {}, {}
         for mod in self.modalities:
-            b, seq, dim = mod_features1[mod].shape
-            split_dim = dim // 2
+            b, dim = mod_features1[mod].shape
 
+            split_dim = dim // 3
             split_mod_features1[mod] = {
-                "shared": mod_features1[mod][:, :, 0:split_dim],
-                "private": mod_features1[mod][:, :, split_dim : 2 * split_dim],
+                "shared": mod_features1[mod][:, 0:split_dim].reshape(b // seq_len, seq_len, -1),
+                "private": mod_features1[mod][:, split_dim : 2 * split_dim].reshape(b // seq_len, seq_len, -1),
+                "temporal": mod_features1[mod][:, 2 * split_dim :].reshape(b // seq_len, seq_len, -1),
             }
+
             split_mod_features2[mod] = {
-                "shared": mod_features2[mod][:, :, 0:split_dim],
-                "private": mod_features2[mod][:, :, split_dim : 2 * split_dim],
+                "shared": mod_features2[mod][:, 0:split_dim].reshape(b // seq_len, seq_len, -1),
+                "private": mod_features2[mod][:, split_dim : 2 * split_dim].reshape(b // seq_len, seq_len, -1),
+                "temporal": mod_features2[mod][:, 2 * split_dim :].reshape(b // seq_len, seq_len, -1),
             }
 
         # Step 2: shared space contrastive loss
@@ -616,57 +594,41 @@ class CMCV3Loss(nn.Module):
                 split_mod_features2[mod]["private"],
             )
 
-        # Step 4 version 1: Inter- and intra-sequence temporal consistency
+        # Step 4: Temporal consistency
         temporal_consistency_loss = 0
-        for mod_features in [mod_features1, mod_features2]:
+        for split_mod_features in [split_mod_features1, split_mod_features2]:
             for mod in self.modalities:
-                temporal_consistency_loss += self.forward_temporal_inter_ranking_loss(mod_features[mod])
-                # temporal_consistency_loss += self.forward_temporal_intra_ranking_loss(mod_features[mod])
-
-        # Step 4 version 2: Coarse-grained temporal contrastive consistency
-        # temporal_consistency_loss = 0
-        # for split_mod_features in [split_mod_features1, split_mod_features2]:
-        #     for mod in self.modalities:
-        #         temporal_consistency_loss += self.forward_coarse_temporal_contrastive_loss(
-        #             split_mod_features[mod]["temporal"]
-        #         )
-
-        # Step 4 version 3: Fine-grained temporal contrastive consistency
-        # temporal_consistency_loss = 0
-        # for mod in self.modalities:
-        #     temporal_consistency_loss += self.forward_contrastive_loss(
-        #         split_mod_features1[mod]["private"],
-        #         split_mod_features2[mod]["private"],
-        #         finegrain=True,
-        #     )
+                temporal_consistency_loss += self.forward_coarse_temporal_contrastive_loss(
+                    split_mod_features[mod]["temporal"]
+                )
 
         # Step 5: orthogonality loss
         orthogonality_loss = 0
         for split_mod_features in [split_mod_features1, split_mod_features2]:
             for i, mod in enumerate(self.modalities):
                 # orthognoality between shared, private, and temporal space
-                orthogonality_loss += self.forward_orthogonality_loss(
-                    split_mod_features[mod]["shared"],
-                    split_mod_features[mod]["private"],
-                )
+                spaces = ["shared", "private", "temporal"]
+                for space_id, space1 in enumerate(spaces):
+                    for space2 in spaces[space_id + 1 :]:
+                        orthogonality_loss += self.forward_orthogonality_loss(
+                            split_mod_features[mod][space1],
+                            split_mod_features[mod][space2],
+                        )
 
                 # orthogonality between modalities
                 for mod2 in self.modalities[i + 1 :]:
-                    orthogonality_loss += self.forward_orthogonality_loss(
-                        split_mod_features[mod]["private"],
-                        split_mod_features[mod2]["private"],
-                    )
-
-        # print(
-        #     f"shared: {shared_contrastive_loss: .3f}, private: {private_contrastive_loss: .3f}, ",
-        #     f"orthogonality: {orthogonality_loss: .3f}, temporal: {temporal_consistency_loss: .3f}",
-        # )
+                    for space in spaces[1:]:
+                        orthogonality_loss += self.forward_orthogonality_loss(
+                            split_mod_features[mod][space],
+                            split_mod_features[mod2][space],
+                        )
 
         loss = (
-            shared_contrastive_loss * self.config["shared_contrastive_loss_weight"]
-            + private_contrastive_loss * self.config["private_contrastive_loss_weight"]
-            + orthogonality_loss * self.config["orthogonal_loss_weight"]
-            + temporal_consistency_loss * self.config["rank_loss_weight"]
+            shared_contrastive_loss
+            + private_contrastive_loss
+            + orthogonality_loss
+            # + self.config["ranking_loss_weight"] * temporal_correlation_loss
+            + temporal_consistency_loss
         )
         return loss
 
@@ -784,6 +746,86 @@ class CocoaLoss(nn.Module):
         return loss
 
 
+class GMCLoss(nn.Module):
+    """GMC Loss function
+    https://arxiv.org/pdf/2202.03390.pdf
+    """
+
+    def __init__(self, args):
+        super(GMCLoss, self).__init__()
+        self.args = args
+        self.config = args.dataset_config["GMC"]
+        self.batch_size = args.batch_size
+        self.modalities = args.dataset_config["modality_names"]
+        self.temperature = args.dataset_config[args.learn_framework]["temperature"]
+
+        self.criterion = nn.CrossEntropyLoss(reduction="sum")
+        self.similarity_f = nn.CosineSimilarity(dim=2)
+
+    def infonce(self, mod_features):
+        batch_representations = [mod_features[mod] for mod in self.modalities]
+        batch_representations.append(mod_features["joint"])
+
+        batch_size = batch_representations[0].shape[0]
+        joint_mod_loss_sum = 0
+        for mod in range(len(batch_representations) - 1):
+            # Negative pairs: everything that is not in the current joint-modality pair
+            out_joint_mod = torch.cat([batch_representations[-1], batch_representations[mod]], dim=0)
+            # [2*B, 2*B]
+            sim_matrix_joint_mod = torch.exp(torch.mm(out_joint_mod, out_joint_mod.t().contiguous()) / self.temperature)
+            # Mask for remove diagonal that give trivial similarity, [2*B, 2*B]
+            mask_joint_mod = (
+                torch.ones_like(sim_matrix_joint_mod) - torch.eye(2 * batch_size, device=sim_matrix_joint_mod.device)
+            ).bool()
+            # Remove 2*B diagonals and reshape to [2*B, 2*B-1]
+            sim_matrix_joint_mod = sim_matrix_joint_mod.masked_select(mask_joint_mod).view(2 * batch_size, -1)
+
+            # Positive pairs: cosine loss joint-modality
+            pos_sim_joint_mod = torch.exp(
+                torch.sum(batch_representations[-1] * batch_representations[mod], dim=-1) / self.temperature
+            )
+            # [2*B]
+            pos_sim_joint_mod = torch.cat([pos_sim_joint_mod, pos_sim_joint_mod], dim=0)
+            loss_joint_mod = -torch.log(pos_sim_joint_mod / sim_matrix_joint_mod.sum(dim=-1))
+            joint_mod_loss_sum += loss_joint_mod
+
+        loss = torch.mean(joint_mod_loss_sum)
+        return loss
+
+    def infonce_with_joints_as_negatives(self, mod_features):
+        """ """
+        batch_representations = [mod_features[mod] for mod in self.modalities]
+        batch_representations.append(mod_features["joint"])
+
+        batch_size = batch_representations[0].shape[0]
+        # Similarity among joints, [B, B]
+        sim_matrix_joints = torch.exp(
+            torch.mm(batch_representations[-1], batch_representations[-1].t().contiguous()) / self.temperature
+        )
+        # Mask out the diagonals, [B, B]
+        mask_joints = (
+            torch.ones_like(sim_matrix_joints) - torch.eye(batch_size, device=sim_matrix_joints.device)
+        ).bool()
+        # Remove diagonals and resize, [B, B-1]
+        sim_matrix_joints = sim_matrix_joints.masked_select(mask_joints).view(batch_size, -1)
+
+        # compute loss - for each pair joints-modality
+        # Cosine loss on positive pairs
+        joint_mod_loss_sum = 0
+        for mod in range(len(batch_representations) - 1):
+            pos_sim_joint_mod = torch.exp(
+                torch.sum(batch_representations[-1] * batch_representations[mod], dim=-1) / self.temperature
+            )
+            loss_joint_mod = -torch.log(pos_sim_joint_mod / sim_matrix_joints.sum(dim=-1))
+            joint_mod_loss_sum += loss_joint_mod
+
+        loss = torch.mean(joint_mod_loss_sum)
+        return loss
+
+    def forward(self, mod_features):
+        return self.infonce(mod_features)
+
+
 class MAELoss(nn.Module):
     """MAE Loss function
     https://github.com/facebookresearch/mae/blob/main/models_mae.py
@@ -821,7 +863,7 @@ class MAELoss(nn.Module):
                 pred = decoded_x[loc][mod]
 
                 if self.args.model == "TransformerV4":
-                    in_channel = self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]
+                    in_channel = self.args.dataset_config["loc_mod_in_freq_channels"]["shake"][mod]
                     target = self.patchify(
                         padded_x[loc][mod],
                         self.backbone_config["patch_size"]["freq"][mod],
@@ -830,7 +872,7 @@ class MAELoss(nn.Module):
                 else:
                     patch_size = self.generative_config["patch_size"][mod]
                     patch_area = patch_size[0] * patch_size[1]
-                    in_channel = self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]
+                    in_channel = self.args.dataset_config["loc_mod_in_freq_channels"]["shake"][mod]
                     target = self.patchify(
                         padded_x[loc][mod],
                         patch_size,

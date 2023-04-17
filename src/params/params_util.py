@@ -77,6 +77,7 @@ def get_train_mode(learn_framework):
         "CMC": "contrastive",
         "CMCV2": "contrastive",
         "Cocoa": "contrastive",
+        "GMC": "contrastive",
         "MTSS": "predictive",
         "ModPred": "predictive",
         "ModPredFusion": "predictive",
@@ -106,6 +107,9 @@ def set_task(args):
     }
 
     task = task_default_task[args.dataset] if args.task is None else args.task
+    
+    
+    print("Task: ", task)
 
     return task
 

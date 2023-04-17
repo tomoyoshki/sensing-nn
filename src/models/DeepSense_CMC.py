@@ -10,6 +10,7 @@ from input_utils.normalize import normalize_input
 from input_utils.padding_utils import get_padded_size
 from input_utils.mask_utils import mask_input
 from models.FusionModules import TransformerFusionBlock
+from models.GMCModules import Swish
 
 
 class DeepSense_CMC(nn.Module):
@@ -109,6 +110,19 @@ class DeepSense_CMC(nn.Module):
                 nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
             )
             self.sample_dim = self.config["fc_dim"]
+        elif self.args.learn_framework == "GMC":
+            """Projection head"""
+            self.gmc_joint_projector = nn.Linear(
+                self.config["recurrent_dim"] * 2 * len(self.modalities), self.config["recurrent_dim"] * 2
+            )
+            self.gmc_shared_projector = nn.Sequential(
+                nn.Linear(self.config["recurrent_dim"] * 2, self.config["fc_dim"]),
+                Swish(),
+                nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
+                Swish(),
+                nn.Linear(self.config["fc_dim"], self.config["fc_dim"]),
+            )
+            self.sample_dim = self.config["recurrent_dim"] * 2 * len(self.modalities)
         else:
             self.sample_dim = self.config["recurrent_dim"] * 2 * len(self.modalities)
 
@@ -302,6 +316,21 @@ class DeepSense_CMC(nn.Module):
                 """Return the merged sample features"""
                 sample_features = self.forward_mae_fusion(mod_features)
                 return sample_features, hidden_features
+            elif self.args.learn_framework == "GMC":
+                """Append a joint features that is the concated of all the mod views"""
+                latent_features = []
+                # individual mod features
+                for i in range(len(self.modalities)):
+                    latent_features.append(nn.functional.normalize(self.gmc_shared_projector(mod_features[i]), dim=-1))
+
+                # joint features
+                concated_features = torch.cat(mod_features, dim=1)
+                joint_features = self.gmc_joint_projector(concated_features)
+
+                # join together
+                sample_features = dict(zip(self.modalities, latent_features))
+                sample_features["joint"] = nn.functional.normalize(self.gmc_shared_projector(joint_features), dim=-1)
+                return sample_features
             else:
                 """CMC, Cosmo, and Cocoa, return the dict of mod features"""
                 return dict(zip(self.modalities, mod_features))
