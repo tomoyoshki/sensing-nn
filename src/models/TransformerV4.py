@@ -111,7 +111,7 @@ class TransformerV4(nn.Module):
                 for i_layer, block_num in enumerate(
                     self.config["time_freq_block_num"][mod]
                 ):  # different downsample ratios
-                    down_ratio = 2 ** i_layer
+                    down_ratio = 2**i_layer
                     layer_dim = int(self.config["time_freq_out_channels"] * down_ratio)
                     layer = BasicLayer(
                         dim=layer_dim,  # C in SWIN
@@ -264,7 +264,7 @@ class TransformerV4(nn.Module):
 
         # Step 2: Loc mod feature extraction, [b, i, location, c]
         loc_features = []
-        for loc in self.locations:
+        for loc in loc_mod_features:
             """Extract mod feature with peer-feature context"""
             b, i, mods, c = loc_mod_features[loc].shape
             loc_mod_input = loc_mod_features[loc].reshape([b * i, mods, c])
