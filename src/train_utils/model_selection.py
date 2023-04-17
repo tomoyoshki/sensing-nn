@@ -29,31 +29,18 @@ from models.ModPredModules import ModPred
 
 # loss functions
 from models.loss import (
-    (
     DINOLoss,
-   
     SimCLRLoss,
-   
     MoCoLoss,
-   
     CMCLoss,
-   
     CosmoLoss,
-   
     MAELoss,
-   
     CocoaLoss,
-   
     CMCV2Loss,
-   
-    CMCV3Loss,
     TS2VecLoss,
-),
-<<<<<<< HEAD
+    CMCV3Loss,
     TNCLoss,
-=======
     GMCLoss,
->>>>>>> 3f234988088263973442a7c0b3363af60d2c7492
 )
 
 
@@ -100,13 +87,10 @@ def init_contrastive_framework(args, backbone_model):
         default_model = Cosmo(args, backbone_model)
     elif args.learn_framework == "Cocoa":
         default_model = Cocoa(args, backbone_model)
-<<<<<<< HEAD
     elif args.learn_framework == "TNC":
         default_model = TNC(args, backbone_model)
-=======
     elif args.learn_framework == "GMC":
         default_model = GMC(args, backbone_model)
->>>>>>> 3f234988088263973442a7c0b3363af60d2c7492
     else:
         raise NotImplementedError(f"Invalid {args.train_mode} framework {args.learn_framework} provided")
 
@@ -192,13 +176,10 @@ def init_loss_func(args):
             loss_func = CosmoLoss(args).to(args.device)
         elif args.learn_framework in {"Cocoa"}:
             loss_func = CocoaLoss(args).to(args.device)
-<<<<<<< HEAD
         elif args.learn_framework in {"TNC"}:
             loss_func = TNCLoss(args).to(args.device)
-=======
         elif args.learn_framework in {"GMC"}:
             loss_func = GMCLoss(args).to(args.device)
->>>>>>> 3f234988088263973442a7c0b3363af60d2c7492
         elif args.learn_framework in {"TS2Vec"}:
             loss_func = TS2VecLoss(args).to(args.device)
         else:
