@@ -19,7 +19,7 @@ class SimCLR(nn.Module):
         )
 
     def forward(self, x_1, x_2):
-        # get representation
+        # Transformation representation T, T'
         h_1 = self.backbone(x_1, class_head=False)
         h_2 = self.backbone(x_2, class_head=False)
 
