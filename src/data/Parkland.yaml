@@ -102,51 +102,6 @@ DeepSense:
         fixed_augmenters:
                 time_augmenters: ["mixup"]
                 freq_augmenters: ["no"]
-        
-# ResNet config              
-ResNet:
-        interval_num: 10
-        dropout_ratio: 0.2
-        # single interval + location + modality
-        loc_mod_in_conv_stride:
-                audio: [1, 80]
-                seismic: 1
-                acc: 1
-        loc_mod_conv_lens: 
-                audio: [[1, 80], [4, 5], [4, 5]]
-                seismic: [[3, 3], [3, 3], [3, 3]]
-        loc_mod_out_channels: 256
-        loc_mod_conv_inter_layers: 4
-        # single interval + location
-        loc_conv_lens: [[4, 4], [4, 4], [4, 4]]
-        loc_out_channels: 256
-        loc_conv_inter_layers: 4
-        # FC layer
-        fc_dim: 512
-        # Optimizer config
-        optimizer:
-                name: "AdamW"
-                start_lr: 0.00003
-                warmup_lr: 0.000001
-                min_lr: 0.0000001
-                clip_grad: 5.0
-                weight_decay: 0.05
-        # LR scheduler
-        lr_scheduler:
-                name: "step"
-                warmup_prefix: True
-                warmup_epochs: 0
-                train_epochs: 1500
-                start_epoch: 0
-                decay_epochs: 300
-                decay_rate: 0.2
-        # Augmenters
-        random_augmenters:
-                time_augmenters: ["permutation", "negation", "time_warp", "horizontal_flip", "mag_warp", "scaling"]
-                freq_augmenters: ["phase_shift"]
-        fixed_augmenters:
-                time_augmenters: ["mixup"]
-                freq_augmenters: ["no"]
 
 TransformerV4:
         dropout_ratio: 0.2
@@ -188,7 +143,7 @@ TransformerV4:
         # Optimizer config
         optimizer:
                 name: "AdamW"
-                start_lr: 0.00001
+                start_lr: 0.0005
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
@@ -198,9 +153,9 @@ TransformerV4:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 1500
+                train_epochs: 500
                 start_epoch: 0
-                decay_epochs: 300
+                decay_epochs: 100
                 decay_rate: 0.2
         # Data Augmenters:
         random_augmenters:
@@ -211,7 +166,7 @@ TransformerV4:
                 freq_augmenters: ["phase_shift"]
 
 SimCLR:
-        emb_dim: 512
+        emb_dim: 256
         temperature: 0.07
         # Pre training  
         pretrain_optimizer:
@@ -350,7 +305,7 @@ CMCV2:
         # Pre training  
         pretrain_optimizer:
                 name: "AdamW"
-                start_lr: 0.0005
+                start_lr: 0.001
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
