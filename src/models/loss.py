@@ -1069,3 +1069,68 @@ class MAELoss(nn.Module):
                 total_loss += loss
 
         return total_loss
+
+class TSTCCLoss(nn.Module):
+    """TS-TC Loss function
+    https://github.com/emadeldeen24/TS-TCC/blob/main/trainer/trainer.py
+    """
+
+    def __init__(self, args):
+        super(TSTCCLoss, self).__init__()
+        self.args = args
+        self.config = args.dataset_config["TSTCC"]
+
+        self.criterion = nn.CrossEntropyLoss(reduction="sum")
+        self.similarity_f = nn.CosineSimilarity(dim=2)
+        
+        self.lambda1 = self.config["lambda1"]
+        self.lambda2 = self.config["lambda2"]
+        
+        self.temperature = self.config["temperature"]
+
+    def mask_correlated_samples(self, batch_size):
+        """
+        Mark diagonal elements and elements of upper-right and lower-left diagonals as 0.
+        """
+        N = 2 * batch_size
+        diag_mat = torch.eye(batch_size).to(self.args.device)
+        mask = torch.ones((N, N)).to(self.args.device)
+
+        mask = mask.fill_diagonal_(0)
+        mask[0:batch_size, batch_size : 2 * batch_size] -= diag_mat
+        mask[batch_size : 2 * batch_size, 0:batch_size] -= diag_mat
+
+        mask = mask.bool()
+
+        return mask
+
+    def forward_contrast(self, z_i, z_j, idx=None):
+        """
+        We do not sample negative examples explicitly.
+        Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1)
+        augmented examples within a minibatch as negative examples.
+        """
+        batch_size = z_i.shape[0]
+        N = 2 * batch_size
+
+        # Calculate similarity
+        z = torch.cat((z_i, z_j), dim=0)
+        sim = self.similarity_f(z.unsqueeze(1), z.unsqueeze(0)) / self.temperature
+        sim_i_j = torch.diag(sim, batch_size)
+        sim_j_i = torch.diag(sim, -batch_size)
+
+        # We have 2N samples, but with Distributed training every GPU gets N examples too, resulting in: 2xNxN
+        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)
+        negative_samples = sim[self.mask_correlated_samples(batch_size)].reshape(N, -1)
+
+        labels = torch.zeros(N).to(positive_samples.device).long()
+        logits = torch.cat((positive_samples, negative_samples), dim=1)
+        loss = self.criterion(logits, labels) / N
+
+        return loss
+    
+    def forward(self, temporal_contrast_features, temporal_contrast_loss):
+        tc_features1, tc_features2 = temporal_contrast_features
+        loss = self.forward_contrast(tc_features1, tc_features2) * self.lambda2
+        loss += (temporal_contrast_loss[0] + temporal_contrast_loss[1]) * self.lambda1
+        return loss

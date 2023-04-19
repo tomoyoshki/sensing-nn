@@ -19,7 +19,7 @@ from models.CosmoModules import Cosmo
 from models.CocoaModules import Cocoa
 from models.TNCModule import TNC
 from models.GMCModules import GMC
-
+from models.TSTCCModules import TSTCC
 # Generative Learning utils
 from models.MAEModule import MAE
 
@@ -41,6 +41,7 @@ from models.loss import (
     CMCV3Loss,
     TNCLoss,
     GMCLoss,
+    TSTCCLoss
 )
 
 
@@ -91,6 +92,8 @@ def init_contrastive_framework(args, backbone_model):
         default_model = TNC(args, backbone_model)
     elif args.learn_framework == "GMC":
         default_model = GMC(args, backbone_model)
+    elif args.learn_framework == "TSTCC":
+        default_model = TSTCC(args, backbone_model)
     else:
         raise NotImplementedError(f"Invalid {args.train_mode} framework {args.learn_framework} provided")
 
@@ -182,6 +185,8 @@ def init_loss_func(args):
             loss_func = GMCLoss(args).to(args.device)
         elif args.learn_framework in {"TS2Vec"}:
             loss_func = TS2VecLoss(args).to(args.device)
+        elif args.learn_framework in {"TSTCC"}:
+            loss_func = TSTCCLoss(args).to(args.device)
         else:
             raise NotImplementedError(f"Loss function for {args.learn_framework} yet implemented")
     elif args.train_mode == "generative":
