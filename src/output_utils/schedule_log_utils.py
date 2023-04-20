@@ -13,7 +13,7 @@ def init_execution_flags(status_log_file, datasets, models, tasks, learn_framewo
 
     for dataset in datasets:
         for model in models:
-            for task in tasks:
+            for task in tasks[dataset]:
                 for learn_framework in learn_frameworks:
                     for label_ratio in label_ratios:
                         if f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}" not in status:

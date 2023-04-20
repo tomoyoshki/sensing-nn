@@ -96,7 +96,7 @@ def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, la
                                 f"-model={model}",
                                 f"-label_ratio={label_ratio}",
                                 f"-gpu={cuda_device}",
-                                f"-debug=False",
+                                f"-debug=false",
                             ]
                             print(cmd)
                             p = subprocess.Popen(
