@@ -904,7 +904,7 @@ class TS2VecLoss(nn.Module):
         batch_size = mod_features1.shape[0]
         seq_len = self.args.dataset_config["seq_len"]
 
-        # step 0: split features into subsequence
+        # step 0: split features into subsequence B, T, C
         split_mod_features1 = mod_features1.reshape(batch_size // seq_len, seq_len, -1)
         split_mod_features2 = mod_features2.reshape(batch_size // seq_len, seq_len, -1)
 
