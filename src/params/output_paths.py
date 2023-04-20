@@ -60,7 +60,7 @@ def set_model_weight_suffix(
 
 
 def find_most_recent_weight(
-    args,
+    debug,
     dataset,
     model,
     train_mode,
@@ -74,7 +74,7 @@ def find_most_recent_weight(
     # base model path
     base_path = f"{os.path.abspath(os.path.join(os.getcwd(), os.pardir))}/weights"
     dataset_model_path = os.path.join(base_path, f"{dataset}_{model}")
-    dataset_model_path += "_debug" if args.debug else ""
+    dataset_model_path += "_debug" if debug else ""
 
     # identify the proper suffix
     suffix = set_model_weight_suffix(train_mode, learn_framework, task, label_ratio, tag=tag)
@@ -113,7 +113,7 @@ def set_model_weight_folder(args):
 
     # get the newest id matching the current config
     newest_id, newest_weight, suffix = find_most_recent_weight(
-        args,
+        args.debug,
         args.dataset,
         args.model,
         args.train_mode,

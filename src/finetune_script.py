@@ -45,7 +45,7 @@ def claim_cuda_slot(cuda_device_utils):
 
 def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, label_ratios):
     """
-    Schedule the finetuning jobs.
+    Schedule the finetune jobs.
     """
     start = time.time()
 
@@ -58,13 +58,7 @@ def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, la
     try:
         for dataset in datasets:
             for model in models:
-                for task in tasks:
-                    # skip useless task
-                    if (dataset == "ACIDS" and task == "distance_classification") or (
-                        dataset == "Parkland" and task == "terrain_classification"
-                    ):
-                        continue
-
+                for task in tasks[dataset]:
                     for learn_framework in learn_frameworks:
                         for label_ratio in label_ratios:
                             # check if the job is done
@@ -75,7 +69,7 @@ def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, la
 
                             # check if we have pretrained weight
                             newest_id, _ = find_most_recent_weight(
-                                dataset, model, get_train_mode(learn_framework), learn_framework
+                                False, dataset, model, get_train_mode(learn_framework), learn_framework
                             )
                             if newest_id < 0:
                                 print(f"Skip {dataset}-{model}-{learn_framework}-{task}-{label_ratio}")
@@ -100,11 +94,10 @@ def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, la
                                 "-stage=finetune",
                                 f"-task={task}",
                                 f"-model={model}",
-                                "-batch_size=128",
                                 f"-label_ratio={label_ratio}",
                                 f"-gpu={cuda_device}",
+                                f"-debug=False",
                             ]
-                            # cmd = ["python", "random_process.py"]
                             print(cmd)
                             p = subprocess.Popen(
                                 cmd,
@@ -143,22 +136,29 @@ def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, la
 
 
 if __name__ == "__main__":
-    datasets = ["ACIDS", "Parkland"]
+    datasets = ["ACIDS", "Parkland", "RealWorld_HAR", "PAMAP2"]
     models = ["TransformerV4", "DeepSense"]
     learn_frameworks = [
         "SimCLR",
         "MoCo",
         "CMC",
+        "CMCV2",
+        "MAE",
         "Cosmo",
-        "MTSS",
-        "ModPred",
-        "MoCoFusion",
-        "SimCLRFusion",
-        "ModPredFusion",
         "Cocoa",
+        "MTSS",
+        "TS2Vec",
+        "GMC",
+        "TNC",
+        "TSTCC",
     ]
-    tasks = ["vehicle_classification", "terrain_classification", "speed_classification", "distance_classification"]
-    label_ratios = [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01]
+    tasks = {
+        "ACIDS": ["vehicle_classification"],
+        "Parkland": ["vehicle_classification"],
+        "RealWorld_HAR": ["activity_classification"],
+        "PAMAP2": ["activity_classification"],
+    }
+    label_ratios = [1.0, 0.1, 0.01]
 
     # hardware
     cuda_device_slots = {0: 2, 1: 2, 2: 2, 3: 2}
