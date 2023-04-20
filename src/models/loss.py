@@ -917,6 +917,8 @@ class TS2VecLoss(nn.Module):
 
         # loss = instance_contrastive_loss + temporal_contrastive_loss
         return loss
+
+
 class GMCLoss(nn.Module):
     """GMC Loss function
     https://arxiv.org/pdf/2202.03390.pdf
@@ -1070,6 +1072,7 @@ class MAELoss(nn.Module):
 
         return total_loss
 
+
 class TSTCCLoss(nn.Module):
     """TS-TC Loss function
     https://github.com/emadeldeen24/TS-TCC/blob/main/trainer/trainer.py
@@ -1082,10 +1085,10 @@ class TSTCCLoss(nn.Module):
 
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
         self.similarity_f = nn.CosineSimilarity(dim=2)
-        
+
         self.lambda1 = self.config["lambda1"]
         self.lambda2 = self.config["lambda2"]
-        
+
         self.temperature = self.config["temperature"]
 
     def mask_correlated_samples(self, batch_size):
@@ -1128,7 +1131,7 @@ class TSTCCLoss(nn.Module):
         loss = self.criterion(logits, labels) / N
 
         return loss
-    
+
     def forward(self, temporal_contrast_features, temporal_contrast_loss):
         tc_features1, tc_features2 = temporal_contrast_features
         loss = self.forward_contrast(tc_features1, tc_features2) * self.lambda2
