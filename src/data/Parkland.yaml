@@ -545,7 +545,7 @@ TS2Vec:
                 freq_augmenters: ["phase_shift"]
 
 TSTCC:
-        hidden_dim: 512
+        emb_dim: 512
         temperature: 0.2
         lambda1: 1
         lambda2: 0.7

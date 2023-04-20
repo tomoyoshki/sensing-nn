@@ -59,18 +59,18 @@ class TC(nn.Module):
         self.timestep = self.args.dataset_config["seq_len"] - 1
         
         
-        self.Wk = nn.ModuleList([nn.Linear(self.configs["hidden_dim"], self.num_channels) for i in range(self.timestep)])
+        self.Wk = nn.ModuleList([nn.Linear(self.configs["emb_dim"], self.num_channels) for i in range(self.timestep)])
         self.lsoftmax = nn.LogSoftmax()
         self.device = self.args.device
         
         self.projection_head = nn.Sequential(
-            nn.Linear(self.configs["hidden_dim"], self.num_channels // 2),
+            nn.Linear(self.configs["emb_dim"], self.num_channels // 2),
             nn.BatchNorm1d(self.num_channels // 2),
             nn.ReLU(inplace=True),
             nn.Linear(self.num_channels // 2, self.num_channels // 4),
         )
 
-        self.seq_transformer = Seq_Transformer(patch_size=self.num_channels, dim=self.configs["hidden_dim"], depth=4, heads=4, mlp_dim=64)
+        self.seq_transformer = Seq_Transformer(patch_size=self.num_channels, dim=self.configs["emb_dim"], depth=4, heads=4, mlp_dim=64)
 
     def forward(self, features_aug1, features_aug2):
         batch_size = features_aug1.shape[0]
@@ -133,13 +133,13 @@ class PreNorm(nn.Module):
 
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, dropout=0.):
+    def __init__(self, dim, emb_dim, dropout=0.):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(dim, hidden_dim),
+            nn.Linear(dim, emb_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, dim),
+            nn.Linear(emb_dim, dim),
             nn.Dropout(dropout)
         )
 
