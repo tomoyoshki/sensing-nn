@@ -2,7 +2,7 @@ import os
 import json
 import time
 import sys
-
+import getpass
 import numpy as np
 
 from test import test
@@ -36,9 +36,7 @@ def test_loop(result_file, status_log_file, test_mode):
         "RealWorld_HAR": ["activity_classification"],
         "PAMAP2": ["activity_classification"],
     }
-    label_ratios = [1.0, 0.1, 0.01]
-    if test_mode == "knn":
-        label_ratios = [1.0]
+    label_ratios = [1, 0.1, 0.01]
 
     # check status before testing
     for dataset in datasets:
@@ -46,6 +44,7 @@ def test_loop(result_file, status_log_file, test_mode):
             for task in tasks[dataset]:
                 for learn_framework in learn_frameworks:
                     for label_ratio in label_ratios:
+                        # check if the model has been finetuned
                         if test_mode == "finetune":
                             finetuned_flag = check_execution_flags(
                                 status_log_file, dataset, model, task, learn_framework, label_ratio
@@ -53,13 +52,13 @@ def test_loop(result_file, status_log_file, test_mode):
                         else:
                             finetuned_flag = True
 
+                        # evaluate the model
                         if not finetuned_flag:
                             print(
                                 f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio} has not been finetuned yet."
                             )
                         else:
                             print(f"\nTesting {dataset}-{model}-{learn_framework}-{task}-{label_ratio}.")
-                            # get result
                             try:
                                 try:
                                     # set args
@@ -70,13 +69,11 @@ def test_loop(result_file, status_log_file, test_mode):
                                     args.task = task
                                     args.label_ratio = label_ratio
                                     args.stage = "finetune"
+                                    args.debug = "false"
                                     args = set_auto_params(args)
 
                                     # eval the model
-                                    if test_mode == "finetune":
-                                        classifier_loss, acc, f1 = test(args)
-                                    else:
-                                        classifier_loss, acc, f1 = eval_knn(args)
+                                    classifier_loss, acc, f1 = test(args) if test_mode == "finetune" else eval_knn(args)
 
                                     result = {
                                         f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
@@ -90,9 +87,8 @@ def test_loop(result_file, status_log_file, test_mode):
                                     return
                             except Exception as e:
                                 print("Error: ", e)
-                                """No model available, reset the execution flag"""
-                                print(f"Resetting {dataset}-{model}-{learn_framework}-{task}-{label_ratio}.\n")
                                 if test_mode == "finetune":
+                                    print(f"Resetting {dataset}-{model}-{learn_framework}-{task}-{label_ratio}.\n")
                                     reset_execution_flags(
                                         status_log_file, dataset, model, task, learn_framework, label_ratio
                                     )
@@ -103,16 +99,17 @@ def test_loop(result_file, status_log_file, test_mode):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2 or sys.argv[1] == "-test_mode=finetune":
+    args = parse_base_args("test")
+    if args.test_mode == "finetune":
         test_mode = "finetune"
-    elif sys.argv[1] == "-test_mode=knn":
+    elif args.test_mode == "knn":
         test_mode = "knn"
     else:
-        print(f"Invalid argument {sys.argv[1]}")
-        exit(1)
+        raise Exception(f"Invalid evaluation mode {args.eval_mode}")
 
-    status_log_file = f"/home/tkimura4/FoundationSense2/result/{test_mode}_status.json"
-    result_file = f"/home/tkimura4/FoundationSense2/result/{test_mode}_result.json"
+    username = getpass.getuser()
+    status_log_file = f"/home/{username}/FoundationSense/result/finetune_status.json"
+    result_file = f"/home/{username}/FoundationSense/result/{test_mode}_result.json"
 
     start = time.time()
     test_loop(result_file, status_log_file, test_mode)

@@ -2,6 +2,7 @@ import os
 import json
 import time
 import subprocess
+import datetime
 
 from collections import OrderedDict
 from output_utils.schedule_log_utils import init_execution_flags, update_execution_flags, check_execution_flags
@@ -109,6 +110,7 @@ def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, la
                                 "cuda_device": cuda_device,
                                 "info": (dataset, model, task, learn_framework, label_ratio),
                             }
+                            print(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
                             print(f"Assigned cuda device: {cuda_device} for PID: {p.pid}")
                             print(f"CUDA device util status: {cuda_device_utils} \n")
 

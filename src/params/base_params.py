@@ -54,12 +54,6 @@ def parse_base_args(option="train"):
         help="No/Contrastive/Predictive/Reconstructive learning framework to use",
     )
     parser.add_argument(
-        "-inference_mode",
-        type=str,
-        default="original",
-        help="The used mode for model inference (original).",
-    )
-    parser.add_argument(
         "-stage",
         type=str,
         default="pretrain",
@@ -70,6 +64,20 @@ def parse_base_args(option="train"):
         type=float,
         default=1.0,
         help="Only used in supervised training or finetune stage, specify the ratio of labeled data.",
+    )
+
+    # inference and test options
+    parser.add_argument(
+        "-inference_mode",
+        type=str,
+        default="original",
+        help="The used mode for model inference (original).",
+    )
+    parser.add_argument(
+        "-test_mode",
+        type=str,
+        default="finetune",
+        help="Whether to finetune the model or evaluate KNN model",
     )
 
     # used for separate training and inference
@@ -122,14 +130,6 @@ def parse_base_args(option="train"):
         type=str,
         default="true",
         help="Whether to perform balanced sampling on classes.",
-    )
-
-    # test only
-    parser.add_argument(
-        "-test_mode",
-        type=str,
-        default="finetune",
-        help="Whether to finetune the model or evaluate KNN model",
     )
 
     args = parser.parse_args()
