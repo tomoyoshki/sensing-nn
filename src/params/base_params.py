@@ -124,6 +124,14 @@ def parse_base_args(option="train"):
         help="Whether to perform balanced sampling on classes.",
     )
 
+    # test only
+    parser.add_argument(
+        "-test_mode",
+        type=str,
+        default="finetune",
+        help="Whether to finetune the model or evaluate KNN model",
+    )
+
     args = parser.parse_args()
 
     # set option first
