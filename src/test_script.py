@@ -84,6 +84,48 @@ def test_loop(result_file, status_log_file, test_mode):
                             update_finetune_result(tmp_result, result_file)
 
 
+def calc_mean_result(result_file):
+    """Calculate the mean result"""
+    out_result = {}
+    out_file = result_file.replace(".json", "_mean.json")
+
+    with open(result_file, "r") as f:
+        org_result = json.load(f)
+
+    for dataset in datasets:
+        for model in models:
+            for task in tasks[dataset]:
+                for learn_framework in learn_frameworks:
+                    for label_ratio in label_ratios:
+                        # check result
+                        if f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}" not in org_result:
+                            print(f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio} not in result.")
+                            continue
+
+                        tmp_result = org_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"]
+                        tmp_acc = np.array(tmp_result["acc"])
+                        tmp_f1 = np.array(tmp_result["f1"])
+                        tmp_loss = np.array(tmp_result["loss"])
+
+                        out_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = {
+                            "acc": {
+                                "mean": tmp_acc.mean(),
+                                "std": tmp_acc.std(),
+                            },
+                            "f1": {
+                                "mean": tmp_f1.mean(),
+                                "std": tmp_f1.std(),
+                            },
+                            "loss": {
+                                "mean": tmp_loss.mean(),
+                                "std": tmp_loss.std(),
+                            },
+                        }
+
+    with open(out_file, "w") as f:
+        json.dump(out_result, f, indent=4)
+
+
 if __name__ == "__main__":
     args = parse_base_args("test")
     if args.test_mode == "finetune":
@@ -98,7 +140,11 @@ if __name__ == "__main__":
     result_file = f"/home/{username}/FoundationSense/result/{test_mode}_result.json"
 
     start = time.time()
+    # Step 1: test the finetuned models
     test_loop(result_file, status_log_file, test_mode)
+
+    # Step 2: calculate the mean result
+    calc_mean_result(result_file)
     end = time.time()
     print("-" * 80)
     print(f"Total time: {end - start: .4f} seconds")

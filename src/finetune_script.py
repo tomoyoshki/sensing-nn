@@ -117,7 +117,7 @@ def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, la
                                     "cuda_device": cuda_device,
                                     "info": (dataset, model, task, learn_framework, label_ratio, run_id),
                                 }
-                                print(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                                print(f"Current time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                                 print(f"Assigned cuda device: {cuda_device} for PID: {p.pid}")
                                 print(f"CUDA device util status: {cuda_device_utils} \n")
 
