@@ -10,7 +10,7 @@ from input_utils.yaml_utils import load_yaml
 from torch.utils.data import Sampler
 
 
-def create_dataloader(option, args, batch_size=64, workers=5):
+def create_dataloader(dataloader_option, args, batch_size=64, workers=5):
     """create the dataloader for the given data path.
 
     Args:
@@ -20,7 +20,7 @@ def create_dataloader(option, args, batch_size=64, workers=5):
     """
     # select the index file
     label_ratio = 1
-    if option == "train":
+    if dataloader_option == "train":
         if args.train_mode not in {"supervised"} and args.stage == "pretrain":
             """self-supervised training"""
             index_file = args.dataset_config["pretrain_index_file"]
@@ -28,14 +28,17 @@ def create_dataloader(option, args, batch_size=64, workers=5):
             """supervised training"""
             index_file = args.dataset_config[args.task]["train_index_file"]
             label_ratio = args.label_ratio
-    elif option == "val":
+    elif dataloader_option == "val":
         index_file = args.dataset_config[args.task]["val_index_file"]
     else:
         index_file = args.dataset_config[args.task]["test_index_file"]
 
     # init the flags
     balanced_sample_flag = (
-        args.balanced_sample and option == "train" and (args.train_mode == "supervised" or args.stage == "finetune")
+        args.balanced_sample
+        and args.option == "train"
+        and dataloader_option == "train"
+        and (args.train_mode == "supervised" or args.stage == "finetune")
     )
     sequence_sampler_flag = args.sequence_sampler and args.train_mode == "contrastive" and args.stage == "pretrain"
 
@@ -56,7 +59,9 @@ def create_dataloader(option, args, batch_size=64, workers=5):
         sampler = BatchSeqSampler(args, batch_size, dataset)
         dataloader = DataLoader(dataset, batch_sampler=sampler, num_workers=workers)
     else:
-        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=(option == "train"), num_workers=workers)
+        dataloader = DataLoader(
+            dataset, batch_size=batch_size, shuffle=(dataloader_option == "train"), num_workers=workers
+        )
 
     return dataloader
 

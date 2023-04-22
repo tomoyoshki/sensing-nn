@@ -4,7 +4,7 @@ import json
 from collections import OrderedDict
 
 
-def init_execution_flags(status_log_file, datasets, models, tasks, learn_frameworks, label_ratios):
+def init_execution_flags(status_log_file, datasets, models, tasks, learn_frameworks, label_ratios, runs):
     """Init the log of finetuning status."""
     if os.path.exists(status_log_file):
         status = json.load(open(status_log_file))
@@ -16,19 +16,24 @@ def init_execution_flags(status_log_file, datasets, models, tasks, learn_framewo
             for task in tasks[dataset]:
                 for learn_framework in learn_frameworks:
                     for label_ratio in label_ratios:
-                        if f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}" not in status:
-                            status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = False
+                        for run_id in range(runs):
+                            # only once for label_ratio = 1.0
+                            if label_ratio == 1.0 and run_id > 0:
+                                continue
+
+                            if f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}-exp{run_id}" not in status:
+                                status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}-exp{run_id}"] = False
 
     with open(status_log_file, "w") as f:
         f.write(json.dumps(status, indent=4))
 
 
-def update_execution_flags(status_log_file, dataset, model, task, learn_framework, label_ratio):
+def update_execution_flag(status_log_file, dataset, model, task, learn_framework, label_ratio, run_id):
     """
     Update the status of finetuning status.
     """
     status = json.load(open(status_log_file))
-    status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = True
+    status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}-exp{run_id}"] = True
 
     # sort the result
     status = dict(sorted(status.items()))
@@ -37,32 +42,32 @@ def update_execution_flags(status_log_file, dataset, model, task, learn_framewor
         f.write(json.dumps(status, indent=4))
 
 
-def reset_execution_flags(status_log_file, dataset, model, task, learn_framework, label_ratio):
+def reset_execution_flag(status_log_file, dataset, model, task, learn_framework, label_ratio, run_id):
     """
     Update the status of finetuning status.
     """
     status = json.load(open(status_log_file))
-    status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = False
+    status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}-exp{run_id}"] = False
 
     with open(status_log_file, "w") as f:
         f.write(json.dumps(status, indent=4))
 
 
-def check_execution_flags(status_log_file, dataset, model, task, learn_framework, label_ratio):
+def check_execution_flag(status_log_file, dataset, model, task, learn_framework, label_ratio, run_id):
     """
     Check the status of finetuning status.
     """
     status = json.load(open(status_log_file))
     flag = (
-        status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"]
-        if f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}" in status
+        status[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}-exp{run_id}"]
+        if f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}-exp{run_id}" in status
         else False
     )
 
     return flag
 
 
-def update_finetune_result(result, result_file):
+def update_finetune_result(tmp_result, result_file):
     """
     dataset --> model --> task --> learn_framework --> label_ratio -- > {acc, f1}
     """
@@ -71,8 +76,16 @@ def update_finetune_result(result, result_file):
     else:
         complete_result = {}
 
-    for config in result:
-        complete_result[config] = result[config]
+    for config in tmp_result:
+        # init metric list
+        if config not in complete_result:
+            complete_result[config] = {}
+            for metric in tmp_result[config]:
+                complete_result[config][metric] = []
+
+        # add the result
+        for metric in tmp_result[config]:
+            complete_result[config][metric].append(round(tmp_result[config][metric], 4))
 
     # sort the result
     complete_result = dict(sorted(complete_result.items()))

@@ -65,6 +65,12 @@ def parse_base_args(option="train"):
         default=1.0,
         help="Only used in supervised training or finetune stage, specify the ratio of labeled data.",
     )
+    parser.add_argument(
+        "-finetune_run_id",
+        type=int,
+        default=None,
+        help="For finetuning with label ratio < 1, we run multiple times",
+    )
 
     # inference and test options
     parser.add_argument(

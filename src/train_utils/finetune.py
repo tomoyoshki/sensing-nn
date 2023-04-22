@@ -12,6 +12,7 @@ from train_utils.lr_scheduler import define_lr_scheduler
 # utils
 from general_utils.time_utils import time_sync
 from general_utils.weight_utils import load_model_weight, set_learnable_params_finetune
+from params.output_paths import set_finetune_weights
 
 
 def finetune(
@@ -31,9 +32,10 @@ def finetune(
     classifier = load_model_weight(classifier, pretrain_weight, load_class_layer=False)
     learnable_parameters = set_learnable_params_finetune(args, classifier)
 
-    # Init the optimizer
+    # Init the optimizer, scheduler, and weight files
     optimizer = define_optimizer(args, learnable_parameters)
     lr_scheduler = define_lr_scheduler(args, optimizer)
+    best_weight, latest_weight = set_finetune_weights(args)
 
     # Training loop
     logging.info("---------------------------Start Fine Tuning-------------------------------")
@@ -42,12 +44,6 @@ def finetune(
         best_mae = np.inf
     else:
         best_val_acc = 0
-    best_weight = os.path.join(
-        args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_best.pt"
-    )
-    latest_weight = os.path.join(
-        args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_latest.pt"
-    )
 
     val_epochs = 5 if args.dataset == "Parkland" else 3
     for epoch in range(args.dataset_config[args.learn_framework]["finetune_lr_scheduler"]["train_epochs"]):

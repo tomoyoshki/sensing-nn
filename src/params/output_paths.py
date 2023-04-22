@@ -180,7 +180,7 @@ def set_model_weight_folder(args):
 
 
 def set_model_weight_file(args):
-    """Automatically select the classifier weight during the training/testing"""
+    """Automatically select the classifier weight during the testing"""
     if args.train_mode == "supervised":
         args.classifier_weight = os.path.join(
             args.weight_folder,
@@ -193,16 +193,46 @@ def set_model_weight_file(args):
                 f"{args.dataset}_{args.model}_pretrain_best.pt",
             )
         else:
-            args.classifier_weight = os.path.join(
-                args.weight_folder,
-                f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_best.pt",
-            )
+            if args.finetune_run_id is not None:
+                args.classifier_weight = os.path.join(
+                    args.weight_folder,
+                    f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_exp{args.finetune_run_id}_best.pt",
+                )
+            else:
+                args.classifier_weight = os.path.join(
+                    args.weight_folder,
+                    f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_best.pt",
+                )
     else:
         raise Exception(f"Invalid training mode provided: {args.stage}")
 
     logging.info(f"=\t[Classifier weight file]: {os.path.basename(args.classifier_weight)}")
 
     return args
+
+
+def set_finetune_weights(args):
+    """Automatically select the finetune weight during the testing"""
+    if args.finetune_run_id is not None:
+        best_weight = os.path.join(
+            args.weight_folder,
+            f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_exp{args.finetune_run_id}_best.pt",
+        )
+        latest_weight = os.path.join(
+            args.weight_folder,
+            f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_exp{args.finetune_run_id}_latest.pt",
+        )
+    else:
+        best_weight = os.path.join(
+            args.weight_folder,
+            f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_best.pt",
+        )
+        latest_weight = os.path.join(
+            args.weight_folder,
+            f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_latest.pt",
+        )
+
+    return best_weight, latest_weight
 
 
 def set_output_paths(args):

@@ -30,6 +30,7 @@ def test(args):
     # Init the classifier model
     classifier = init_backbone_model(args)
     classifier = load_model_weight(classifier, args.classifier_weight, load_class_layer=True)
+    print(f"Weight: {args.classifier_weight}")
     args.classifier = classifier
 
     # define the loss function

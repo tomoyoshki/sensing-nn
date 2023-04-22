@@ -9,56 +9,39 @@ from test import test
 from eval_knn import eval_knn
 from params.base_params import parse_base_args
 from params.params_util import set_auto_params
-from output_utils.schedule_log_utils import check_execution_flags, reset_execution_flags, update_finetune_result
+from params.finetune_configs import *
+from output_utils.schedule_log_utils import check_execution_flag, reset_execution_flag, update_finetune_result
 
 
 def test_loop(result_file, status_log_file, test_mode):
     """The main testing script"""
-    datasets = ["ACIDS", "Parkland", "RealWorld_HAR", "PAMAP2"]
-    models = ["TransformerV4", "DeepSense"]
-    learn_frameworks = [
-        "SimCLR",
-        "MoCo",
-        "CMC",
-        "CMCV2",
-        "MAE",
-        "Cosmo",
-        "Cocoa",
-        "MTSS",
-        "TS2Vec",
-        "GMC",
-        "TNC",
-        "TSTCC",
-    ]
-    tasks = {
-        "ACIDS": ["vehicle_classification"],
-        "Parkland": ["vehicle_classification"],
-        "RealWorld_HAR": ["activity_classification"],
-        "PAMAP2": ["activity_classification"],
-    }
-    label_ratios = [1, 0.1, 0.01]
-
     # check status before testing
     for dataset in datasets:
         for model in models:
             for task in tasks[dataset]:
                 for learn_framework in learn_frameworks:
                     for label_ratio in label_ratios:
-                        # check if the model has been finetuned
-                        if test_mode == "finetune":
-                            finetuned_flag = check_execution_flags(
-                                status_log_file, dataset, model, task, learn_framework, label_ratio
-                            )
-                        else:
-                            finetuned_flag = True
+                        for run_id in range(runs):
+                            # only once for label_ratio = 1.0
+                            if label_ratio == 1.0 and run_id > 0:
+                                continue
 
-                        # evaluate the model
-                        if not finetuned_flag:
-                            print(
-                                f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio} has not been finetuned yet."
+                            # check if the model has been finetuned
+                            finetuned_flag = (
+                                True
+                                if test_mode == "knn"
+                                else check_execution_flag(
+                                    status_log_file, dataset, model, task, learn_framework, label_ratio, run_id
+                                )
                             )
-                        else:
-                            print(f"\nTesting {dataset}-{model}-{learn_framework}-{task}-{label_ratio}.")
+                            if not finetuned_flag:
+                                print(
+                                    f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}-exp{run_id} not finetuned yet."
+                                )
+                                continue
+
+                            # evaluate the model
+                            print(f"\nTesting {dataset}-{model}-{learn_framework}-{task}-{label_ratio}-exp{run_id}.")
                             try:
                                 try:
                                     # set args
@@ -68,6 +51,7 @@ def test_loop(result_file, status_log_file, test_mode):
                                     args.learn_framework = learn_framework
                                     args.task = task
                                     args.label_ratio = label_ratio
+                                    args.finetune_run_id = run_id
                                     args.stage = "finetune"
                                     args.debug = "false"
                                     args = set_auto_params(args)
@@ -75,7 +59,7 @@ def test_loop(result_file, status_log_file, test_mode):
                                     # eval the model
                                     classifier_loss, acc, f1 = test(args) if test_mode == "finetune" else eval_knn(args)
 
-                                    result = {
+                                    tmp_result = {
                                         f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
                                             "loss": classifier_loss,
                                             "acc": acc,
@@ -88,14 +72,16 @@ def test_loop(result_file, status_log_file, test_mode):
                             except Exception as e:
                                 print("Error: ", e)
                                 if test_mode == "finetune":
-                                    print(f"Resetting {dataset}-{model}-{learn_framework}-{task}-{label_ratio}.\n")
-                                    reset_execution_flags(
-                                        status_log_file, dataset, model, task, learn_framework, label_ratio
+                                    print(
+                                        f"Resetting {dataset}-{model}-{learn_framework}-{task}-{label_ratio}-exp{run_id}.\n"
+                                    )
+                                    reset_execution_flag(
+                                        status_log_file, dataset, model, task, learn_framework, label_ratio, run_id
                                     )
                                 continue
 
                             # update result
-                            update_finetune_result(result, result_file)
+                            update_finetune_result(tmp_result, result_file)
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ from train_utils.knn import compute_knn, extract_sample_features
 
 
 def eval_knn(args):
-    """The main function for test."""
+    """The main function for KNN test."""
     # Init data loaders
     train_dataloader = create_dataloader("train", args, batch_size=args.batch_size, workers=args.workers)
     test_dataloader = create_dataloader("test", args, batch_size=args.batch_size, workers=args.workers)
@@ -33,21 +33,19 @@ def eval_knn(args):
     args.augmenter = augmenter
 
     # Init the classifier model
+    """We only need to load the pretrain weight during testing the KNN classifier."""
     classifier = init_backbone_model(args)
-    classifier = load_model_weight(classifier, args.classifier_weight, load_class_layer=True)
+    pretrain_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_pretrain_latest.pt")
+    print(f"Weight: {pretrain_weight}")
+    classifier = load_model_weight(classifier, pretrain_weight, load_class_layer=False)
     args.classifier = classifier
-
-    # print model layers
-    if args.verbose:
-        for name, param in classifier.named_parameters():
-            if param.requires_grad:
-                print(name)
 
     knn_estimator = compute_knn(args, classifier, augmenter, train_dataloader)
     mean_acc, mean_f1, conf_matrix = eval_backbone_knn(args, classifier, knn_estimator, augmenter, test_dataloader)
-    if args.verbose:
-        print(f"KNN pretrain acc: {mean_acc: .5f}, KNN pretrain f1: {mean_f1: .5f}")
-        print(f"KNN pretrain confusion matrix:\n {conf_matrix} \n")
+
+    print(f"KNN pretrain acc: {mean_acc: .5f}, KNN pretrain f1: {mean_f1: .5f}")
+    print(f"KNN pretrain confusion matrix:\n {conf_matrix} \n")
+
     return -1, mean_acc, mean_f1
 
 
