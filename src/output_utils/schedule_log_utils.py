@@ -67,7 +67,7 @@ def check_execution_flag(status_log_file, dataset, model, task, learn_framework,
     return flag
 
 
-def update_finetune_result(tmp_result, result_file):
+def update_finetune_result(run_id, tmp_result, result_file):
     """
     dataset --> model --> task --> learn_framework --> label_ratio -- > {acc, f1}
     """
@@ -78,7 +78,7 @@ def update_finetune_result(tmp_result, result_file):
 
     for config in tmp_result:
         # init metric list
-        if config not in complete_result:
+        if config not in complete_result or run_id == 0:
             complete_result[config] = {}
             for metric in tmp_result[config]:
                 complete_result[config][metric] = []

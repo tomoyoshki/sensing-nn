@@ -69,10 +69,10 @@ def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, la
                                     continue
 
                                 # check if the job is done
-                                if check_execution_flag(
-                                    status_log_file, dataset, model, task, learn_framework, label_ratio, run_id
-                                ):
-                                    continue
+                                # if check_execution_flag(
+                                #     status_log_file, dataset, model, task, learn_framework, label_ratio, run_id
+                                # ):
+                                #     continue
 
                                 # check if we have pretrained weight
                                 newest_id, _ = find_most_recent_weight(

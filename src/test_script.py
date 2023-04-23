@@ -81,13 +81,18 @@ def test_loop(result_file, status_log_file, test_mode):
                                 continue
 
                             # update result
-                            update_finetune_result(tmp_result, result_file)
+                            update_finetune_result(run_id, tmp_result, result_file)
 
 
 def calc_mean_result(result_file):
     """Calculate the mean result"""
-    out_result = {}
+    # load existing mean result
     out_file = result_file.replace(".json", "_mean.json")
+    if os.path.exists(out_file):
+        with open(out_file, "r") as f:
+            out_result = json.load(f)
+    else:
+        out_result = {}
 
     with open(result_file, "r") as f:
         org_result = json.load(f)
