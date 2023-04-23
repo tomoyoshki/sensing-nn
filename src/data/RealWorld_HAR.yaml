@@ -296,7 +296,7 @@ CMCV2:
         temperature: 0.07
         ranking_margin: 0.0
         inter_rank_margin: 1
-        intra_rank_margin: 0.05 # 0.05 for TransformerV4, 0.5 for DeepSense
+        intra_rank_margin: 0.05 
         shared_contrastive_loss_weight: 1
         private_contrastive_loss_weight: 1
         orthogonal_loss_weight: 3
@@ -324,7 +324,7 @@ CMCV2:
                 warmup_lr: 0.000001
                 min_lr: 0.000001
                 clip_grad: 5.0
-                weight_decay: 0.005 # 0.005 for TransformerV4, 0.5 for DeepSense
+                weight_decay: 0.5 # 0.005 for TransformerV4, 0.5 for DeepSense
                 decay_rate: 0.2
         finetune_lr_scheduler:
                 name: "cosine"
