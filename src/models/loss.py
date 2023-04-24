@@ -368,12 +368,17 @@ class CMCV3Loss(nn.Module):
         self.args = args
         self.config = args.dataset_config["CMCV2"]
         self.modalities = args.dataset_config["modality_names"]
-        self.temperature = args.dataset_config[args.learn_framework]["temperature"]
         self.criterion = nn.CrossEntropyLoss(reduction="mean")
         self.similarity_f = nn.CosineSimilarity(dim=-1)
         self.orthonal_loss_f = nn.CosineEmbeddingLoss(reduction="mean")
         self.intra_ranking_loss_f = nn.MarginRankingLoss(margin=self.config["intra_rank_margin"], reduction="mean")
         self.inter_ranking_loss_f = nn.MarginRankingLoss(margin=self.config["inter_rank_margin"], reduction="mean")
+
+        # decide the temperature
+        if isinstance(self.config["CMCV2"]["temperature"], dict):
+            self.temperature = self.config[args.dataset]["temperature"]
+        else:
+            self.temperature = self.config["temperature"]
 
     def mask_correlated_samples(self, seq_len, batch_size, temporal=False):
         """

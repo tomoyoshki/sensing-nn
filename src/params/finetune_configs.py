@@ -3,30 +3,30 @@ Store the finetune configs here for the consistency between test and finetune.
 """
 
 datasets = [
-    "ACIDS",
+    # "ACIDS",
     "Parkland",
-    "RealWorld_HAR",
-    "PAMAP2",
+    # "RealWorld_HAR",
+    # "PAMAP2",
 ]
 
 models = [
-    "TransformerV4",
+    # "TransformerV4",
     "DeepSense",
 ]
 
 learn_frameworks = [
-    "SimCLR",
-    "MoCo",
-    "CMC",
+    # "SimCLR",
+    # "MoCo",
+    # "CMC",
     "CMCV2",
-    "MAE",
-    "Cosmo",
-    "Cocoa",
-    "MTSS",
-    "TS2Vec",
-    "GMC",
-    "TNC",
-    "TSTCC",
+    # "MAE",
+    # "Cosmo",
+    # "Cocoa",
+    # "MTSS",
+    # "TS2Vec",
+    # "GMC",
+    # "TNC",
+    # "TSTCC",
 ]
 
 tasks = {
@@ -45,8 +45,8 @@ tasks = {
 }
 
 label_ratios = [
-    1.0,
-    0.1,
+    # 1.0,
+    # 0.1,
     0.01,
 ]
 
