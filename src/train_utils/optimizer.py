@@ -15,30 +15,36 @@ def define_optimizer(args, parameters):
     else:
         raise Exception("Optimizer not defined.")
     optimizer_name = optimizer_config["name"]
+    
+    # select weight decay
+    if isinstance(optimizer_config["weight_decay"], dict):
+        weight_decay = optimizer_config["weight_decay"][args.model]
+    else:
+        weight_decay = optimizer_config["weight_decay"]
 
     if optimizer_name == "Adam":
         optimizer = optim.Adam(
             parameters,
             lr=optimizer_config["start_lr"],
-            weight_decay=optimizer_config["weight_decay"],
+            weight_decay=weight_decay,
         )
     elif optimizer_name == "AdamW":
         optimizer = optim.AdamW(
             parameters,
             lr=optimizer_config["start_lr"],
-            weight_decay=optimizer_config["weight_decay"],
+            weight_decay=weight_decay,
         )
     elif optimizer_name == "SGD":
         optimizer = optim.SGD(
             parameters,
             lr=optimizer_config["start_lr"],
-            weight_decay=optimizer_config["weight_decay"],
+            weight_decay=weight_decay,
         )
     elif optimizer_name == "LARS":
         optimizer = LARS(
             parameters,
             lr=optimizer_config["start_lr"],
-            weight_decay=optimizer_config["weight_decay"],
+            weight_decay=weight_decay,
             exclude_from_weight_decay=["batch_normalization", "bias"],
         )
     else:
