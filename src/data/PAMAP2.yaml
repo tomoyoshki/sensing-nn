@@ -300,7 +300,7 @@ CMCV2:
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
-                weight_decay: 0.05
+                weight_decay: 0.5 # 0.05 for Transformer, 0.5 for DeepSense
         pretrain_lr_scheduler:
                 name: "cosine"
                 warmup_prefix: True
