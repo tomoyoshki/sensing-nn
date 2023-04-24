@@ -3,10 +3,10 @@ Store the finetune configs here for the consistency between test and finetune.
 """
 
 datasets = [
-    # "ACIDS",
+    "ACIDS",
     # "Parkland",
     # "RealWorld_HAR",
-    "PAMAP2",
+    # "PAMAP2",
 ]
 
 models = [
@@ -18,13 +18,13 @@ learn_frameworks = [
     # "SimCLR",
     # "MoCo",
     # "CMC",
-    "CMCV2",
+    # "CMCV2",
     # "MAE",
     # "Cosmo",
     # "Cocoa",
     # "MTSS",
     # "TS2Vec",
-    # "GMC",
+    "GMC",
     # "TNC",
     # "TSTCC",
 ]
@@ -50,4 +50,8 @@ label_ratios = [
     0.01,
 ]
 
-runs = 5
+runs = {
+    "finetune": 5,
+    "knn": 5,
+    "cluster": 1
+}

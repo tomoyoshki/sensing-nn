@@ -2,7 +2,7 @@ import json
 import csv
 from collections import defaultdict
 
-input_json_file = "./knn_result_mean.json"
+input_json_file = "/home/tkimura4/FoundationSense2/result/finetune_result_mean.json"
 
 
 def convert_result_to_csv(input_json_file):
@@ -14,11 +14,24 @@ def convert_result_to_csv(input_json_file):
     csv_data = defaultdict(lambda: defaultdict(list))
 
     # Extract the required information
+    first_row = True
     for key, values in data.items():
         dataset, model, framework, task, label_ratio = key.split("-")
-        mean_entry = [framework, values["acc"]["mean"], values["f1"]["mean"]]
-        std_entry = [framework, values["acc"]["std"], values["f1"]["std"]]
-        csv_data[(dataset, model, task)][label_ratio].append([mean_entry, std_entry])
+        if first_row == False:
+            mean_entry = [
+                framework,
+                f'{format(round(values["acc"]["mean"], 4), ".4f")} \u00B1 {format(round(values["acc"]["std"], 4), ".4f")}', 
+                f'{format(round(values["f1"]["mean"], 4), ".4f")} \u00B1 {format(round(values["f1"]["std"], 4), ".4f")}'
+            ]
+        else:
+             mean_entry = [
+                framework,
+                f'{format(round(values["acc"]["mean"], 4), ".4f")}', 
+                f'{format(round(values["f1"]["mean"], 4), ".4f")}'
+             ]
+             first_row = True
+        # std_entry = [framework, values["acc"]["std"], values["f1"]["std"]]
+        csv_data[(dataset, model, task)][label_ratio].append([mean_entry])
 
     # Write the information to CSV files
     for (dataset, model, task), label_ratios_data in csv_data.items():
@@ -35,9 +48,6 @@ def convert_result_to_csv(input_json_file):
             header = ["Framework"]
             for label_ratio in sorted_label_ratios:
                 header.extend([f"ACC_{label_ratio}_mean", f"F1_{label_ratio}_mean"])
-
-            for label_ratio in sorted_label_ratios:
-                header.extend([f"ACC_{label_ratio}_std", f"F1_{label_ratio}_std"])
             csvwriter.writerow(header)
 
             # Write data
@@ -51,9 +61,9 @@ def convert_result_to_csv(input_json_file):
                     else:
                         row.extend(entry[0][1:])
 
-                # write std row
-                for i, entry in enumerate(label_ratio_entries):
-                    row.extend(entry[1][1:])
+                # # write std row
+                # for i, entry in enumerate(label_ratio_entries):
+                #     row.extend(entry[1][1:])
                 csvwriter.writerow(row)
 
 
