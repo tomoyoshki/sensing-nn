@@ -25,7 +25,6 @@ from sklearn.metrics import silhouette_score, adjusted_rand_score, normalized_mu
 def eval_cluster(args):
     """The main function for KNN test."""
     # Init data loaders
-    train_dataloader = create_dataloader("train", args, batch_size=args.batch_size, workers=args.workers)
     test_dataloader = create_dataloader("test", args, batch_size=args.batch_size, workers=args.workers)
 
     # Only import augmenter after parse arguments so the device is correct
@@ -45,6 +44,7 @@ def eval_cluster(args):
 
     sil_score, davies, ari, nmi = eval_backbone_clusters(args, classifier, augmenter, test_dataloader)
     return sil_score, davies, ari, nmi
+
 
 def eval_backbone_clusters(args, classifier, augmenter, dataloader):
     """Evaluate the downstream task performance with KNN estimator."""
@@ -67,7 +67,7 @@ def eval_backbone_clusters(args, classifier, augmenter, dataloader):
     features = np.concatenate(sample_embeddings)
     labels = np.concatenate(labels)
 
-    n_clusters = len(set(labels)) # Number of unique classes
+    n_clusters = len(set(labels))  # Number of unique classes
     kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(features)
     cluster_labels = kmeans.labels_
 

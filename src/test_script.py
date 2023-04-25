@@ -62,31 +62,31 @@ def test_loop(result_file, status_log_file, test_mode):
                                     if test_mode == "finetune":
                                         classifier_loss, acc, f1 = test(args)
                                         tmp_result = {
-                                        f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
-                                            "loss": classifier_loss,
-                                            "acc": acc,
-                                            "f1": f1,
-                                        },
-                                    }
+                                            f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
+                                                "loss": classifier_loss,
+                                                "acc": acc,
+                                                "f1": f1,
+                                            },
+                                        }
                                     elif test_mode == "knn":
                                         classifier_loss, acc, f1 = eval_knn(args)
                                         tmp_result = {
-                                        f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
-                                            "loss": classifier_loss,
-                                            "acc": acc,
-                                            "f1": f1,
-                                        },
-                                    }
+                                            f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
+                                                "loss": classifier_loss,
+                                                "acc": acc,
+                                                "f1": f1,
+                                            },
+                                        }
                                     else:
                                         sil_score, davies_score, ari, nmi = eval_cluster(args)
                                         tmp_result = {
-                                        f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
-                                            "silhouette": sil_score,
-                                            "davies": davies_score,
-                                            "ARI": ari,
-                                            "NMI": nmi,
-                                        },
-                                    }
+                                            f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
+                                                "silhouette": sil_score,
+                                                "davies": davies_score,
+                                                "ARI": ari,
+                                                "NMI": nmi,
+                                            },
+                                        }
                                 except KeyboardInterrupt:
                                     print("Excution interrupted by user, terminating ...")
                                     return
@@ -128,7 +128,7 @@ def calc_mean_result(result_file, test_mode):
                             print(f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio} not in result.")
                             continue
 
-                        tmp_result = org_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"]                           
+                        tmp_result = org_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"]
 
                         if test_mode in {"finetune", "knn"}:
                             tmp_acc = np.array(tmp_result["acc"])
@@ -169,7 +169,7 @@ def calc_mean_result(result_file, test_mode):
                                 "NMI": {
                                     "mean": tmp_nmi.mean(),
                                     "std": tmp_nmi.std(),
-                                }
+                                },
                             }
 
     with open(out_file, "w") as f:
@@ -192,11 +192,14 @@ if __name__ == "__main__":
     result_file = f"/home/{username}/FoundationSense/result/{test_mode}_result.json"
 
     start = time.time()
+
     # Step 1: test the finetuned models
     test_loop(result_file, status_log_file, test_mode)
 
     # Step 2: calculate the mean result
-    calc_mean_result(result_file, test_mode)
+    if test_mode not in {"cluster"}:
+        calc_mean_result(result_file, test_mode)
+
     end = time.time()
     print("-" * 80)
     print(f"Total time: {end - start: .4f} seconds")

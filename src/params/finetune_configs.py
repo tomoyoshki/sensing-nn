@@ -60,8 +60,4 @@ label_ratios = {
     ],
 }
 
-runs = {
-    "finetune": 5,
-    "knn": 5,
-    "cluster": 1
-}
+runs = {"finetune": 5, "knn": 5, "cluster": 1}
