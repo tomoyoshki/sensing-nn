@@ -8,6 +8,7 @@ import numpy as np
 from test import test
 from eval_knn import eval_knn
 from eval_cluster import eval_cluster
+from eval_mod_cluster import eval_mod_cluster
 from params.base_params import parse_base_args
 from params.params_util import set_auto_params
 from params.finetune_configs import *
@@ -77,7 +78,10 @@ def test_loop(result_file, status_log_file, test_mode):
                                             },
                                         }
                                     else:
-                                        sil_score, davies_score, ari, nmi = eval_cluster(args)
+                                        if learn_framework in {"CMC", "CMCV2", "Cosmo", "Cocoa", "GMC"}:
+                                            sil_score, davies_score, ari, nmi = eval_mod_cluster(args)
+                                        else:
+                                            sil_score, davies_score, ari, nmi = eval_cluster(args)
                                         tmp_result = {
                                             f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
                                                 "silhouette": sil_score,
