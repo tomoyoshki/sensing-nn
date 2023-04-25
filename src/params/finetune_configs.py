@@ -44,11 +44,21 @@ tasks = {
     ],
 }
 
-label_ratios = [
-    1.0,
-    0.1,
-    0.01,
-]
+label_ratios = {
+    "fintune": [
+        1.0,
+        0.1,
+        0.01,
+    ],
+    "knn": [
+        1.0,
+        0.1,
+        0.01,
+    ],
+    "cluster": [
+        1.0,
+    ],
+}
 
 runs = {
     "finetune": 5,

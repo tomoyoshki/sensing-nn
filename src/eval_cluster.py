@@ -19,7 +19,7 @@ from train_utils.knn import compute_knn, extract_sample_features
 
 # Sklearn
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score, adjusted_rand_score, normalized_mutual_info_score
+from sklearn.metrics import silhouette_score, adjusted_rand_score, normalized_mutual_info_score, davies_bouldin_score
 
 
 def eval_cluster(args):
@@ -43,8 +43,8 @@ def eval_cluster(args):
     classifier = load_model_weight(classifier, pretrain_weight, load_class_layer=False)
     args.classifier = classifier
 
-    sil_score, ari, nmi = eval_backbone_clusters(args, classifier, augmenter, test_dataloader)
-    return sil_score, ari, nmi
+    sil_score, davies, ari, nmi = eval_backbone_clusters(args, classifier, augmenter, test_dataloader)
+    return sil_score, davies, ari, nmi
 
 def eval_backbone_clusters(args, classifier, augmenter, dataloader):
     """Evaluate the downstream task performance with KNN estimator."""
@@ -72,9 +72,10 @@ def eval_backbone_clusters(args, classifier, augmenter, dataloader):
     cluster_labels = kmeans.labels_
 
     sil_score = silhouette_score(features, cluster_labels)
+    davies_score = davies_bouldin_score(features, cluster_labels)
     ari = adjusted_rand_score(labels, cluster_labels)
     nmi = normalized_mutual_info_score(labels, cluster_labels)
-    return float(sil_score), float(ari), float(nmi)
+    return float(sil_score), float(davies_score), float(ari), float(nmi)
 
 
 def main_eval():

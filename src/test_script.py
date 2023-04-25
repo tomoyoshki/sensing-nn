@@ -21,7 +21,7 @@ def test_loop(result_file, status_log_file, test_mode):
         for model in models:
             for task in tasks[dataset]:
                 for learn_framework in learn_frameworks:
-                    for label_ratio in label_ratios:
+                    for label_ratio in label_ratios[test_mode]:
                         for run_id in range(runs[test_mode]):
                             # only once for label_ratio = 1.0
                             if label_ratio == 1.0 and run_id > 0:
@@ -77,10 +77,11 @@ def test_loop(result_file, status_log_file, test_mode):
                                         },
                                     }
                                     else:
-                                        sil_score, ari, nmi = eval_cluster(args)
+                                        sil_score, davies_score, ari, nmi = eval_cluster(args)
                                         tmp_result = {
                                         f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
                                             "silhouette": sil_score,
+                                            "davies": davies_score,
                                             "ARI": ari,
                                             "NMI": nmi,
                                         },
@@ -133,27 +134,52 @@ def calc_mean_result(result_file, test_mode):
                             metrics_3 = "loss"
                         else:
                             metrics_1 = "silhouette"
-                            metrics_2 = "ARI"
-                            metrics_3 = "NMI"
+                            metrics_2 = "davies"
+                            metrics_3 = "ARI"
+                            metrics_4 = "NMI"
                             
-                        tmp_acc = np.array(tmp_result[metrics_1])
-                        tmp_f1 = np.array(tmp_result[metrics_2])
-                        tmp_loss = np.array(tmp_result[metrics_3])
 
-                        out_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = {
-                            metrics_1: {
-                                "mean": tmp_acc.mean(),
-                                "std": tmp_acc.std(),
-                            },
-                            metrics_2: {
-                                "mean": tmp_f1.mean(),
-                                "std": tmp_f1.std(),
-                            },
-                            metrics_3: {
-                                "mean": tmp_loss.mean(),
-                                "std": tmp_loss.std(),
-                            },
-                        }
+                        if test_mode in {"finetune", "knn"}:
+                            tmp_acc = np.array(tmp_result["acc"])
+                            tmp_f1 = np.array(tmp_result["f1"])
+                            tmp_loss = np.array(tmp_result["loss"])
+                            out_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = {
+                                metrics_1: {
+                                    "mean": tmp_acc.mean(),
+                                    "std": tmp_acc.std(),
+                                },
+                                metrics_2: {
+                                    "mean": tmp_f1.mean(),
+                                    "std": tmp_f1.std(),
+                                },
+                                metrics_3: {
+                                    "mean": tmp_loss.mean(),
+                                    "std": tmp_loss.std(),
+                                },
+                            }
+                        else:
+                            tmp_silhouette = np.array(tmp_result["silhouette"])
+                            tmp_davies = np.array(tmp_result["davies"])
+                            tmp_ari = np.array(tmp_result["ARI"])
+                            tmp_nmi = np.array(tmp_result["NMI"])
+                            out_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = {
+                                "silhouette": {
+                                    "mean": tmp_silhouette.mean(),
+                                    "std": tmp_silhouette.std(),
+                                },
+                                "davies": {
+                                    "mean": tmp_davies.mean(),
+                                    "std": tmp_davies.std(),
+                                },
+                                "ARI": {
+                                    "mean": tmp_ari.mean(),
+                                    "std": tmp_ari.std(),
+                                },
+                                "NMI": {
+                                    "mean": tmp_nmi.mean(),
+                                    "std": tmp_nmi.std(),
+                                }
+                            }
 
     with open(out_file, "w") as f:
         json.dump(out_result, f, indent=4)
@@ -171,8 +197,8 @@ if __name__ == "__main__":
         raise Exception(f"Invalid evaluation mode {args.eval_mode}")
 
     username = getpass.getuser()
-    status_log_file = f"/home/{username}/FoundationSense2/result/finetune_status.json"
-    result_file = f"/home/{username}/FoundationSense2/result/{test_mode}_result.json"
+    status_log_file = f"/home/{username}/FoundationSense/result/finetune_status.json"
+    result_file = f"/home/{username}/FoundationSense/result/{test_mode}_result.json"
 
     start = time.time()
     # Step 1: test the finetuned models
