@@ -3,8 +3,13 @@ Store the finetune configs here for the consistency between test and finetune.
 """
 
 datasets = [
+<<<<<<< HEAD
     "ACIDS",
     # "Parkland",
+=======
+    # "ACIDS",
+    "Parkland",
+>>>>>>> 99bb66c3172973fd94c290f5e69e0c6bb47d1aee
     # "RealWorld_HAR",
     # "PAMAP2",
 ]
