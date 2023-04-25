@@ -9,30 +9,15 @@ warnings.simplefilter("ignore", UserWarning)
 import torch.nn as nn
 
 # utils
-from general_utils.time_utils import time_sync
 from general_utils.weight_utils import load_model_weight
 from params.test_params import parse_test_params
 from input_utils.multi_modal_dataloader import create_dataloader
-from train_utils.eval_functions import eval_task_metrics
 from train_utils.model_selection import init_backbone_model
-from train_utils.knn import compute_knn, extract_sample_features
 
 # Sklearn
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, adjusted_rand_score, normalized_mutual_info_score, davies_bouldin_score
 
-
-def extract_mod_features(args, classifier, aug_freq_loc_inputs):
-    """
-    Compute the sample features for the given input.
-    """
-    if args.learn_framework in {"CMC", "CMCV2", "GMC", "Cocoa", "Cosmo"}:
-        mod_features = classifier(aug_freq_loc_inputs, class_head=False)
-        # mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
-    elif args.learn_framework == "Cosmo":
-        mod_features = classifier(aug_freq_loc_inputs, class_head=False)
-
-    return mod_features
 
 def eval_mod_cluster(args):
     """The main function for KNN test."""
@@ -71,9 +56,8 @@ def eval_backbone_clusters(args, classifier, augmenter, dataloader):
             label = label.argmax(dim=1, keepdim=False) if label.dim() > 1 else label
             labels.append(label.cpu().numpy())
 
-            """Eval KNN estimator."""
             aug_freq_loc_inputs = augmenter.forward("no", time_loc_inputs)
-            mod_feat = extract_mod_features(args, classifier, aug_freq_loc_inputs)
+            mod_feat = classifier(aug_freq_loc_inputs, class_head=False)
             for mod in args.dataset_config["modality_names"]:
                 sample_embeddings[mod].append(mod_feat[mod].detach().cpu().numpy())
 

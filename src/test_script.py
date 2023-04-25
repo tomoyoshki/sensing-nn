@@ -78,7 +78,10 @@ def test_loop(result_file, status_log_file, test_mode):
                                             },
                                         }
                                     else:
-                                        sil_score, davies_score, ari, nmi = eval_cluster(args)
+                                        if learn_framework in {"CMC", "CMCV2", "Cosmo", "Cocoa", "GMC"}:
+                                            sil_score, davies_score, ari, nmi = eval_mod_cluster(args)
+                                        else:
+                                            sil_score, davies_score, ari, nmi = eval_cluster(args)
                                         tmp_result = {
                                             f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
                                                 "silhouette": sil_score,
