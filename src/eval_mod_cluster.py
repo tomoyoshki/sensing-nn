@@ -81,7 +81,11 @@ def eval_backbone_clusters(args, classifier, augmenter, dataloader):
         davies_scores.append(float(davies_score))
         aris.append(float(ari))
         nmis.append(float(nmi))
-    return float(np.mean(sil_scores)), float(np.mean(davies_scores)), float(np.mean(aris)), float(np.mean(nmis))
+    sil_res = f'{format(round(float(np.mean(sil_scores)), 4), ".4f")} \u00B1 {format(round(float(np.std(sil_scores)), 4), ".4f")}'
+    davies_res = f'{format(round(float(np.mean(davies_scores)), 4), ".4f")} \u00B1 {format(round(float(np.std(davies_scores)), 4), ".4f")}'
+    ari_res = f'{format(round(float(np.mean(aris)), 4), ".4f")} \u00B1 {format(round(float(np.std(aris)), 4), ".4f")}'
+    nmis_res = f'{format(round(float(np.mean(nmis)), 4), ".4f")} \u00B1 {format(round(float(np.std(nmis)), 4), ".4f")}'
+    return sil_res, davies_res, ari_res, nmis_res
 
 
 def main_eval():

@@ -85,7 +85,10 @@ def update_finetune_result(run_id, tmp_result, result_file):
 
         # add the result
         for metric in tmp_result[config]:
-            complete_result[config][metric].append(round(tmp_result[config][metric], 4))
+            if type(tmp_result[config][metric]) == str:
+                complete_result[config][metric].append(tmp_result[config][metric])
+            else:
+                complete_result[config][metric].append(round(tmp_result[config][metric], 4))
 
     # sort the result
     complete_result = dict(sorted(complete_result.items()))
