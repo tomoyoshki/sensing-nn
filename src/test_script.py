@@ -121,23 +121,13 @@ def calc_mean_result(result_file, test_mode):
         for model in models:
             for task in tasks[dataset]:
                 for learn_framework in learn_frameworks:
-                    for label_ratio in label_ratios:
+                    for label_ratio in label_ratios[test_mode]:
                         # check result
                         if f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}" not in org_result:
                             print(f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio} not in result.")
                             continue
 
-                        tmp_result = org_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"]
-                        if test_mode in {"finetune", "knn"}:
-                            metrics_1 = "acc"
-                            metrics_2 = "f1"
-                            metrics_3 = "loss"
-                        else:
-                            metrics_1 = "silhouette"
-                            metrics_2 = "davies"
-                            metrics_3 = "ARI"
-                            metrics_4 = "NMI"
-                            
+                        tmp_result = org_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"]                           
 
                         if test_mode in {"finetune", "knn"}:
                             tmp_acc = np.array(tmp_result["acc"])
