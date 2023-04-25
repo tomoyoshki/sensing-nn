@@ -8,6 +8,7 @@ import numpy as np
 from test import test
 from eval_knn import eval_knn
 from eval_cluster import eval_cluster
+from eval_mod_cluster import eval_mod_cluster
 from params.base_params import parse_base_args
 from params.params_util import set_auto_params
 from params.finetune_configs import *
