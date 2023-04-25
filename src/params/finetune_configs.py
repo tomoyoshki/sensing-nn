@@ -4,29 +4,29 @@ Store the finetune configs here for the consistency between test and finetune.
 
 datasets = [
     "ACIDS",
-    # "Parkland",
-    # "RealWorld_HAR",
-    # "PAMAP2",
+    "Parkland",
+    "RealWorld_HAR",
+    "PAMAP2",
 ]
 
 models = [
-    # "TransformerV4",
+    "TransformerV4",
     "DeepSense",
 ]
 
 learn_frameworks = [
-    # "SimCLR",
-    # "MoCo",
-    # "CMC",
-    # "CMCV2",
-    # "MAE",
-    # "Cosmo",
-    # "Cocoa",
-    # "MTSS",
-    # "TS2Vec",
+    "SimCLR",
+    "MoCo",
+    "CMC",
+    "CMCV2",
+    "MAE",
+    "Cosmo",
+    "Cocoa",
+    "MTSS",
+    "TS2Vec",
     "GMC",
-    # "TNC",
-    # "TSTCC",
+    "TNC",
+    "TSTCC",
 ]
 
 tasks = {

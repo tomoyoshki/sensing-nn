@@ -144,15 +144,15 @@ def calc_mean_result(result_file, test_mode):
                             tmp_f1 = np.array(tmp_result["f1"])
                             tmp_loss = np.array(tmp_result["loss"])
                             out_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = {
-                                metrics_1: {
+                                "acc": {
                                     "mean": tmp_acc.mean(),
                                     "std": tmp_acc.std(),
                                 },
-                                metrics_2: {
+                                "f1": {
                                     "mean": tmp_f1.mean(),
                                     "std": tmp_f1.std(),
                                 },
-                                metrics_3: {
+                                "loss": {
                                     "mean": tmp_loss.mean(),
                                     "std": tmp_loss.std(),
                                 },
