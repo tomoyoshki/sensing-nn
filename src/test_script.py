@@ -7,6 +7,7 @@ import numpy as np
 
 from test import test
 from eval_knn import eval_knn
+from eval_cluster import eval_cluster
 from params.base_params import parse_base_args
 from params.params_util import set_auto_params
 from params.finetune_configs import *
@@ -20,8 +21,8 @@ def test_loop(result_file, status_log_file, test_mode):
         for model in models:
             for task in tasks[dataset]:
                 for learn_framework in learn_frameworks:
-                    for label_ratio in label_ratios:
-                        for run_id in range(runs):
+                    for label_ratio in label_ratios[test_mode]:
+                        for run_id in range(runs[test_mode]):
                             # only once for label_ratio = 1.0
                             if label_ratio == 1.0 and run_id > 0:
                                 continue
@@ -29,7 +30,7 @@ def test_loop(result_file, status_log_file, test_mode):
                             # check if the model has been finetuned
                             finetuned_flag = (
                                 True
-                                if test_mode == "knn"
+                                if test_mode in {"knn", "cluster"}
                                 else check_execution_flag(
                                     status_log_file, dataset, model, task, learn_framework, label_ratio, run_id
                                 )
@@ -57,13 +58,32 @@ def test_loop(result_file, status_log_file, test_mode):
                                     args = set_auto_params(args)
 
                                     # eval the model
-                                    classifier_loss, acc, f1 = test(args) if test_mode == "finetune" else eval_knn(args)
-
-                                    tmp_result = {
+                                    if test_mode == "finetune":
+                                        classifier_loss, acc, f1 = test(args)
+                                        tmp_result = {
                                         f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
                                             "loss": classifier_loss,
                                             "acc": acc,
                                             "f1": f1,
+                                        },
+                                    }
+                                    elif test_mode == "knn":
+                                        classifier_loss, acc, f1 = eval_knn(args)
+                                        tmp_result = {
+                                        f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
+                                            "loss": classifier_loss,
+                                            "acc": acc,
+                                            "f1": f1,
+                                        },
+                                    }
+                                    else:
+                                        sil_score, davies_score, ari, nmi = eval_cluster(args)
+                                        tmp_result = {
+                                        f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}": {
+                                            "silhouette": sil_score,
+                                            "davies": davies_score,
+                                            "ARI": ari,
+                                            "NMI": nmi,
                                         },
                                     }
                                 except KeyboardInterrupt:
@@ -84,7 +104,7 @@ def test_loop(result_file, status_log_file, test_mode):
                             update_finetune_result(run_id, tmp_result, result_file)
 
 
-def calc_mean_result(result_file):
+def calc_mean_result(result_file, test_mode):
     """Calculate the mean result"""
     # load existing mean result
     out_file = result_file.replace(".json", "_mean.json")
@@ -101,31 +121,55 @@ def calc_mean_result(result_file):
         for model in models:
             for task in tasks[dataset]:
                 for learn_framework in learn_frameworks:
-                    for label_ratio in label_ratios:
+                    for label_ratio in label_ratios[test_mode]:
                         # check result
                         if f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}" not in org_result:
                             print(f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio} not in result.")
                             continue
 
-                        tmp_result = org_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"]
-                        tmp_acc = np.array(tmp_result["acc"])
-                        tmp_f1 = np.array(tmp_result["f1"])
-                        tmp_loss = np.array(tmp_result["loss"])
+                        tmp_result = org_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"]                           
 
-                        out_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = {
-                            "acc": {
-                                "mean": tmp_acc.mean(),
-                                "std": tmp_acc.std(),
-                            },
-                            "f1": {
-                                "mean": tmp_f1.mean(),
-                                "std": tmp_f1.std(),
-                            },
-                            "loss": {
-                                "mean": tmp_loss.mean(),
-                                "std": tmp_loss.std(),
-                            },
-                        }
+                        if test_mode in {"finetune", "knn"}:
+                            tmp_acc = np.array(tmp_result["acc"])
+                            tmp_f1 = np.array(tmp_result["f1"])
+                            tmp_loss = np.array(tmp_result["loss"])
+                            out_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = {
+                                "acc": {
+                                    "mean": tmp_acc.mean(),
+                                    "std": tmp_acc.std(),
+                                },
+                                "f1": {
+                                    "mean": tmp_f1.mean(),
+                                    "std": tmp_f1.std(),
+                                },
+                                "loss": {
+                                    "mean": tmp_loss.mean(),
+                                    "std": tmp_loss.std(),
+                                },
+                            }
+                        else:
+                            tmp_silhouette = np.array(tmp_result["silhouette"])
+                            tmp_davies = np.array(tmp_result["davies"])
+                            tmp_ari = np.array(tmp_result["ARI"])
+                            tmp_nmi = np.array(tmp_result["NMI"])
+                            out_result[f"{dataset}-{model}-{learn_framework}-{task}-{label_ratio}"] = {
+                                "silhouette": {
+                                    "mean": tmp_silhouette.mean(),
+                                    "std": tmp_silhouette.std(),
+                                },
+                                "davies": {
+                                    "mean": tmp_davies.mean(),
+                                    "std": tmp_davies.std(),
+                                },
+                                "ARI": {
+                                    "mean": tmp_ari.mean(),
+                                    "std": tmp_ari.std(),
+                                },
+                                "NMI": {
+                                    "mean": tmp_nmi.mean(),
+                                    "std": tmp_nmi.std(),
+                                }
+                            }
 
     with open(out_file, "w") as f:
         json.dump(out_result, f, indent=4)
@@ -137,6 +181,8 @@ if __name__ == "__main__":
         test_mode = "finetune"
     elif args.test_mode == "knn":
         test_mode = "knn"
+    elif args.test_mode == "cluster":
+        test_mode = "cluster"
     else:
         raise Exception(f"Invalid evaluation mode {args.eval_mode}")
 
@@ -149,7 +195,7 @@ if __name__ == "__main__":
     test_loop(result_file, status_log_file, test_mode)
 
     # Step 2: calculate the mean result
-    calc_mean_result(result_file)
+    calc_mean_result(result_file, test_mode)
     end = time.time()
     print("-" * 80)
     print(f"Total time: {end - start: .4f} seconds")
