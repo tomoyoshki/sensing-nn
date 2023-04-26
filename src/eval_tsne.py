@@ -40,7 +40,8 @@ def eval_tsne(args):
     classifier = load_model_weight(classifier, pretrain_weight, load_class_layer=False)
     args.classifier = classifier
 
-    eval_backbone_tsne(args, classifier, augmenter, test_dataloader)
+    # eval_backbone_tsne(args, classifier, augmenter, test_dataloader)
+    eval_backbone_tsne_mod(args, classifier, augmenter, test_dataloader)
 
 def eval_backbone_tsne(args, classifier, augmenter, dataloader):
     classifier.eval()
@@ -76,8 +77,8 @@ def eval_backbone_tsne(args, classifier, augmenter, dataloader):
     model = model.replace("TransformerV4", "SW-T")
     framework = args.learn_framework
     framework = framework.replace("CMCV2", "FOCAL")
-    
     res_dir = "../result/tsne_res"
+    
     scatter_plot = sns.scatterplot(x="comp-1", y="comp-2", hue=df.y.tolist(),
                 palette=sns.color_palette("hls", 10), legend=None,
                 data=df)
@@ -85,12 +86,75 @@ def eval_backbone_tsne(args, classifier, augmenter, dataloader):
         os.mkdir(res_dir)
     if os.path.exists(os.path.join(res_dir, dataset)) == False:
         os.mkdir(os.path.join(res_dir, dataset))
-    scatter_plot.set(title=f"{dataset} {model} {framework} data T-SNE projection")
+    # scatter_plot.set(title=f"{dataset} {model} {framework} data T-SNE projection")
+    scatter_plot.set(title="")
     scatter_plot.set(xticklabels=[])
     scatter_plot.set(xlabel=None)
     scatter_plot.set(yticklabels=[])
     scatter_plot.set(ylabel=None)
-    plt.savefig(os.path.join(os.path.join(res_dir, dataset), f"{model}_{framework}.png"))
+    # scatter_plot.margins(x=0)
+    plt.tight_layout() 
+    plt.savefig(os.path.join(os.path.join(res_dir, dataset), f"{model}_{framework}.pdf"))
+    
+    
+def eval_backbone_tsne_mod(args, classifier, augmenter, dataloader):
+    classifier.eval()
+
+    sample_embeddings = {mod: [] for mod in args.dataset_config["modality_names"]}
+    labels = []
+    with torch.no_grad():
+        for time_loc_inputs, label, index in tqdm(dataloader, total=len(dataloader)):
+            """Move idx to target device, save label"""
+            index = index.to(args.device)
+            label = label.argmax(dim=1, keepdim=False) if label.dim() > 1 else label
+            labels.append(label.cpu().numpy())
+
+            """Eval KNN estimator."""
+            aug_freq_loc_inputs = augmenter.forward("no", time_loc_inputs)
+            mod_feat = classifier(aug_freq_loc_inputs, class_head=False)
+            for mod in args.dataset_config["modality_names"]:
+                sample_embeddings[mod].append(mod_feat[mod].detach().cpu().numpy())
+
+    # knn predictions
+    labels = np.concatenate(labels)
+    markers_dict = ["x", "v", "*", "+", "D", "2", "o"]
+    
+    # df = pd.DataFrame({"y": [], "comp-1": [], "comp-2": [], "marker": [], "mod": []})
+    df = pd.DataFrame()
+    for i, mod in enumerate(args.dataset_config["modality_names"]):
+        features = np.concatenate(sample_embeddings[mod])
+        tsne = TSNE(n_components=2, verbose=0, random_state=123)
+        z = tsne.fit_transform(features)
+        mod_df = pd.DataFrame()
+        mod_df["y"] = labels
+        mod_df["comp-1"] = z[:,0]
+        mod_df["comp-2"] = z[:,1]
+        mod_df["marker"] = markers_dict[i]
+        mod_df["mod"] = mod
+        df = df.append(mod_df, ignore_index=True)
+    dataset = args.dataset
+    dataset = dataset.replace("Parkland", "MOD")
+    dataset = dataset.replace("RealWorld_HAR", "RealWorld-HAR")
+    model = args.model
+    model = model.replace("TransformerV4", "SW-T")
+    framework = args.learn_framework
+    framework = framework.replace("CMCV2", "FOCAL")
+    res_dir = "../result/tsne_res"
+    scatter_plot = sns.scatterplot(x="comp-1", y="comp-2", hue=df.y.tolist(),
+                palette=sns.color_palette("hls", 10), legend=None, style="marker", data=df)
+    if os.path.exists(res_dir) == False:
+        os.mkdir(res_dir)
+    if os.path.exists(os.path.join(res_dir, dataset)) == False:
+        os.mkdir(os.path.join(res_dir, dataset))
+    # scatter_plot.set(title=f"{dataset} {model} {framework} data T-SNE projection")
+    scatter_plot.set(title="")
+    scatter_plot.set(xticklabels=[])
+    scatter_plot.set(xlabel=None)
+    scatter_plot.set(yticklabels=[])
+    scatter_plot.set(ylabel=None)
+    # scatter_plot.margins(x=0)
+    plt.tight_layout() 
+    plt.savefig(os.path.join(os.path.join(res_dir, dataset), f"{model}_{framework}.pdf"))
 
 
 def main_eval():
