@@ -2,10 +2,7 @@ import json
 import csv
 from collections import defaultdict
 
-# input_json_file = "/home/tkimura4/FoundationSense2/result/finetune_result_mean.json"
-# input_json_file = "/home/sl29/FoundationSense/result/finetune_result_mean.json"
-# input_json_file = "../result/cluster_result_mean.json"
-input_json_file = "/home/tkimura4/FoundationSense2/result/cluster_result.json"
+input_json_file = "/home/tkimura4/FoundationSense2/result/finetune_result_mean.json"
 
 
 def convert_result_to_csv(input_json_file):
@@ -20,26 +17,17 @@ def convert_result_to_csv(input_json_file):
     # Extract the required information
     for key, values in data.items():
         dataset, model, framework, task, label_ratio = key.split("-")
-        # if not label_ratio == "1.0":
-        #     mean_entry = [
-        #         framework,
-        #         f'{format(round(values["acc"]["mean"], 4), ".4f")} \u00B1 {format(round(values["acc"]["std"], 4), ".4f")}',
-        #         f'{format(round(values["f1"]["mean"], 4), ".4f")} \u00B1 {format(round(values["f1"]["std"], 4), ".4f")}',
-        #     ]
-        # else:
-        #     mean_entry = [
-        #         framework,
-        #         f'{format(round(values["acc"]["mean"], 4), ".4f")}',
-        #         f'{format(round(values["f1"]["mean"], 4), ".4f")}',
-        #     ]
-        mean_entry = [
+        if not label_ratio == "1.0":
+            mean_entry = [
                 framework,
-                # f'{format(round(values["silhouette"]["mean"], 4), ".4f")}',
-                # f'{format(round(values["davies"]["mean"], 4), ".4f")}',
-                # f'{format(round(values["ARI"]["mean"], 4), ".4f")}',
-                # f'{format(round(values["NMI"]["mean"], 4), ".4f")}',
-                values["ARI"]["mean"],
-                values["NMI"]["mean"]
+                f'{format(round(values["acc"]["mean"], 4), ".4f")} \u00B1 {format(round(values["acc"]["std"], 4), ".4f")}',
+                f'{format(round(values["f1"]["mean"], 4), ".4f")} \u00B1 {format(round(values["f1"]["std"], 4), ".4f")}',
+            ]
+        else:
+            mean_entry = [
+                framework,
+                f'{format(round(values["acc"]["mean"], 4), ".4f")}',
+                f'{format(round(values["f1"]["mean"], 4), ".4f")}',
             ]
         # std_entry = [framework, values["acc"]["std"], values["f1"]["std"]]
         csv_data[(dataset, model, task)][framework][label_ratio] = mean_entry
@@ -113,10 +101,6 @@ def convert_cluster_result_to_csv(input_json_file):
         dataset, model, framework, task, label_ratio = key.split("-")
         mean_entry = [
                 framework,
-                # f'{format(round(values["silhouette"][0], 4), ".4f")}',
-                # f'{format(round(values["davies"][0], 4), ".4f")}',
-                # f'{format(round(values["ARI"][0], 4), ".4f")}',
-                # f'{format(round(values["NMI"][0], 4), ".4f")}',
                 values["ARI"][0],
                 values["NMI"][0]
             ]
