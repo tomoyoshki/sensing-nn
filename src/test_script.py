@@ -9,6 +9,7 @@ from test import test
 from eval_knn import eval_knn
 from eval_cluster import eval_cluster
 from eval_mod_cluster import eval_mod_cluster
+from eval_tsne import eval_tsne
 from params.base_params import parse_base_args
 from params.params_util import set_auto_params
 from params.finetune_configs import *
@@ -31,7 +32,7 @@ def test_loop(result_file, status_log_file, test_mode):
                             # check if the model has been finetuned
                             finetuned_flag = (
                                 True
-                                if test_mode in {"knn", "cluster"}
+                                if test_mode in {"knn", "cluster", "tsne"}
                                 else check_execution_flag(
                                     status_log_file, dataset, model, task, learn_framework, label_ratio, run_id
                                 )
@@ -77,7 +78,7 @@ def test_loop(result_file, status_log_file, test_mode):
                                                 "f1": f1,
                                             },
                                         }
-                                    else:
+                                    elif test_mode == "cluster":
                                         if learn_framework in {"CMC", "CMCV2", "Cosmo", "Cocoa", "GMC"}:
                                             sil_score, davies_score, ari, nmi = eval_mod_cluster(args)
                                         else:
@@ -90,6 +91,10 @@ def test_loop(result_file, status_log_file, test_mode):
                                                 "NMI": nmi,
                                             },
                                         }
+                                    elif test_mode == "tsne":
+                                        eval_tsne(args)
+                                        continue
+                                        
                                 except KeyboardInterrupt:
                                     print("Excution interrupted by user, terminating ...")
                                     return
@@ -187,6 +192,8 @@ if __name__ == "__main__":
         test_mode = "knn"
     elif args.test_mode == "cluster":
         test_mode = "cluster"
+    elif args.test_mode == "tsne":
+        test_mode = "tsne"
     else:
         raise Exception(f"Invalid evaluation mode {args.eval_mode}")
 
@@ -200,7 +207,7 @@ if __name__ == "__main__":
     test_loop(result_file, status_log_file, test_mode)
 
     # Step 2: calculate the mean result
-    if test_mode not in {"cluster"}:
+    if test_mode not in {"cluster", "tsne"}:
         calc_mean_result(result_file, test_mode)
 
     end = time.time()
