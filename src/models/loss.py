@@ -377,7 +377,7 @@ class CMCV3Loss(nn.Module):
 
         # decide the temperature
         if isinstance(self.config["temperature"], dict):
-            self.temperature = self.config[args.dataset]["temperature"]
+            self.temperature = self.config["temperature"][args.model]
         else:
             self.temperature = self.config["temperature"]
 
