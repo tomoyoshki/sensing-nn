@@ -26,9 +26,9 @@ def calc_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_in
         temp_contrast_features, temp_contrast_losses = default_model(aug_freq_loc_inputs1, aug_freq_loc_inputs2)
         loss = loss_func(temp_contrast_features, temp_contrast_losses)
     elif args.learn_framework == "CMCV2":
-        aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs, proj_head=True)
-        aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs, proj_head=True)
-        feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2)
+        aug_freq_loc_inputs_1 = augmenter.forward("random", time_loc_inputs)
+        aug_freq_loc_inputs_2 = augmenter.forward("random", time_loc_inputs)
+        feature1, feature2 = default_model(aug_freq_loc_inputs_1, aug_freq_loc_inputs_2, proj_head=True)
         loss = loss_func(feature1, feature2, idx)
     else:
         """SimCLR, MoCo, MTSS, ModPred, SimCLRFusion, MoCoFusion, CMCV2"""

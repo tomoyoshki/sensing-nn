@@ -4,16 +4,17 @@ from sklearn.metrics import accuracy_score
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 
 
-def extract_sample_features(args, classifier, aug_freq_loc_inputs):
+def extract_sample_features(args, classifier, aug_freq_loc_inputs, proj_head=False):
     """
     Compute the sample features for the given input.
+    proj_head: whether to extract features after the projection head.
     """
     if args.learn_framework in {"CMC", "GMC", "Cocoa"}:
         mod_features = classifier(aug_freq_loc_inputs, class_head=False)
         mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
         features = torch.cat(mod_features, dim=1)
     elif args.learn_framework == "CMCV2":
-        mod_features = classifier(aug_freq_loc_inputs, class_head=False, proj_head=False)
+        mod_features = classifier(aug_freq_loc_inputs, class_head=False, proj_head=proj_head)
         mod_features = [mod_features[mod] for mod in args.dataset_config["modality_names"]]
         features = torch.cat(mod_features, dim=1)
     elif args.learn_framework == "Cosmo":
