@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import math
 
 from general_utils.tensor_utils import extract_non_diagonal_matrix
+from models.CMCV2Modules import split_features
 
 
 class DINOLoss(nn.Module):
@@ -375,7 +376,7 @@ class CMCV3Loss(nn.Module):
         self.inter_ranking_loss_f = nn.MarginRankingLoss(margin=self.config["inter_rank_margin"], reduction="mean")
 
         # decide the temperature
-        if isinstance(self.config["CMCV2"]["temperature"], dict):
+        if isinstance(self.config["temperature"], dict):
             self.temperature = self.config[args.dataset]["temperature"]
         else:
             self.temperature = self.config["temperature"]
@@ -577,24 +578,14 @@ class CMCV3Loss(nn.Module):
         seq_len = self.args.dataset_config["seq_len"]
 
         # Step 0: Reshape features
-        for mod_features in [mod_features1, mod_features2]:
-            for mod in self.modalities:
-                mod_features[mod] = mod_features[mod].reshape(-1, seq_len, mod_features[mod].shape[-1])
+        reshaped_mod_features1, reshaped_mod_features2 = {}, {}
+        for mod in self.modalities:
+            reshaped_mod_features1[mod] = mod_features1[mod].reshape(-1, seq_len, mod_features1[mod].shape[-1])
+            reshaped_mod_features2[mod] = mod_features2[mod].reshape(-1, seq_len, mod_features2[mod].shape[-1])
 
         # Step 1: split features into "shared" space and "private" space of each (mod, subsequence), [b, seq, dim]
-        split_mod_features1, split_mod_features2 = {}, {}
-        for mod in self.modalities:
-            b, seq, dim = mod_features1[mod].shape
-            split_dim = dim // 2
-
-            split_mod_features1[mod] = {
-                "shared": mod_features1[mod][:, :, 0:split_dim],
-                "private": mod_features1[mod][:, :, split_dim : 2 * split_dim],
-            }
-            split_mod_features2[mod] = {
-                "shared": mod_features2[mod][:, :, 0:split_dim],
-                "private": mod_features2[mod][:, :, split_dim : 2 * split_dim],
-            }
+        split_mod_features1 = split_features(reshaped_mod_features1)
+        split_mod_features2 = split_features(reshaped_mod_features2)
 
         # Step 2: shared space contrastive loss
         shared_contrastive_loss = 0
@@ -616,7 +607,7 @@ class CMCV3Loss(nn.Module):
 
         # Step 4 version 1: Inter- and intra-sequence temporal consistency
         temporal_consistency_loss = 0
-        for mod_features in [mod_features1, mod_features2]:
+        for mod_features in [reshaped_mod_features1, reshaped_mod_features2]:
             for mod in self.modalities:
                 temporal_consistency_loss += self.forward_temporal_inter_ranking_loss(mod_features[mod])
                 # temporal_consistency_loss += self.forward_temporal_intra_ranking_loss(mod_features[mod])

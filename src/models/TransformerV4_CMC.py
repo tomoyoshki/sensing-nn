@@ -185,15 +185,32 @@ class TransformerV4_CMC(nn.Module):
                 )
 
         # mod fusion layer
-        if self.args.learn_framework in {"Cosmo", "CMCV2"}:
+        if self.args.learn_framework == "Cosmo":
             "Attention fusion for Cosmo"
-            self.cosmo_mod_fusion_layer = TransformerFusionBlock(
+            self.attn_mod_fusion_layer = TransformerFusionBlock(
                 self.config["loc_out_channels"],
                 self.config["loc_head_num"],
                 self.config["dropout_ratio"],
                 self.config["dropout_ratio"],
             )
             self.sample_dim = self.config["loc_out_channels"]
+        elif self.args.learn_framework == "CMCV2":
+            """Mod feature projection, and attention fusion."""
+            out_dim = self.args.dataset_config["CMCV2"]["emb_dim"]
+            self.mod_projectors = nn.ModuleDict()
+            for mod in self.modalities:
+                self.mod_projectors[mod] = nn.Sequential(
+                    nn.Linear(self.config["loc_out_channels"], out_dim),
+                    nn.ReLU(),
+                    nn.Linear(out_dim, out_dim),
+                )
+            self.attn_mod_fusion_layer = TransformerFusionBlock(
+                out_dim,
+                self.config["loc_head_num"],
+                self.config["dropout_ratio"],
+                self.config["dropout_ratio"],
+            )
+            self.sample_dim = out_dim
         elif self.args.learn_framework == "MAE":
             """Linear fusion for MAE"""
             self.mae_mod_fusion_layer = nn.Sequential(
@@ -408,6 +425,12 @@ class TransformerV4_CMC(nn.Module):
                 """Return the merged sample features"""
                 sample_features = self.forward_mae_fusion(mod_features)
                 return sample_features
+            elif self.args.learn_framework == "CMCV2":
+                """Perform mod feature projection here."""
+                sample_features = {}
+                for i, mod in enumerate(self.modalities):
+                    sample_features[mod] = self.mod_projectors[mod](mod_features[i])
+                return sample_features
             elif self.args.learn_framework == "GMC":
                 """Append a joint features that is the concated of all the mod views"""
                 latent_features = []
@@ -427,11 +450,18 @@ class TransformerV4_CMC(nn.Module):
                 """CMC, Cosmo, and Cocoa, return the dict of mod features"""
                 return dict(zip(self.modalities, mod_features))
         else:
-            if self.args.learn_framework in {"Cosmo", "CMCV2"}:
+            if self.args.learn_framework == "Cosmo":
                 """Attention-based fusion."""
                 mod_features = torch.stack(mod_features, dim=1)
                 mod_features = mod_features.unsqueeze(dim=1)
-                sample_features = self.cosmo_mod_fusion_layer(mod_features).flatten(start_dim=1)
+                sample_features = self.attn_mod_fusion_layer(mod_features).flatten(start_dim=1)
+            elif self.args.learn_framework == "CMCV2":
+                """Mod feature projection and attention-based fusion"""
+                proj_mod_features = []
+                for i, mod in enumerate(self.modalities):
+                    proj_mod_features.append(self.mod_projectors[mod](mod_features[i]))
+                proj_mod_features = torch.stack(proj_mod_features, dim=1).unsqueeze(dim=1)
+                sample_features = self.attn_mod_fusion_layer(proj_mod_features).flatten(start_dim=1)
             elif self.args.learn_framework == "MAE":
                 """FC fusion for MAE"""
                 sample_features = self.forward_mae_fusion(mod_features)

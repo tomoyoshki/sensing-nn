@@ -30,21 +30,6 @@ class CMCV2(nn.Module):
         # build encoders
         self.backbone = backbone
 
-        # define the projector
-        self.in_fc_dim = (
-            self.backbone_config["recurrent_dim"] * 2
-            if args.model == "DeepSense"
-            else self.backbone_config["loc_out_channels"]
-        )
-        self.out_dim = self.config["emb_dim"]
-        self.mod_projectors = nn.ModuleDict()
-        for mod in self.modalities:
-            self.mod_projectors[mod] = nn.Sequential(
-                nn.Linear(self.in_fc_dim, self.config["emb_dim"]),
-                nn.ReLU(),
-                nn.Linear(self.config["emb_dim"], self.config["emb_dim"]),
-            )
-
     def forward(self, aug_freq_input1, aug_freq_input2):
         """
         Input:
@@ -58,10 +43,29 @@ class CMCV2(nn.Module):
         mod_features1 = self.backbone(aug_freq_input1, class_head=False)
         mod_features2 = self.backbone(aug_freq_input2, class_head=False)
 
-        # project mod features
-        out_mod_features1, out_mod_features2 = {}, {}
-        for mod in self.modalities:
-            out_mod_features1[mod] = self.mod_projectors[mod](mod_features1[mod])
-            out_mod_features2[mod] = self.mod_projectors[mod](mod_features2[mod])
+        return mod_features1, mod_features2
 
-        return out_mod_features1, out_mod_features2
+
+def split_features(mod_features):
+    """
+    Split the feature into private space and shared space.
+    mod_feature: [b, seq, dim], where we use the sequence sampler
+    """
+    split_mod_features = {}
+
+    for mod in mod_features:
+        if mod_features[mod].ndim == 2:
+            split_dim = mod_features[mod].shape[1] // 2
+            split_mod_features[mod] = {
+                "shared": mod_features[mod][:, 0:split_dim],
+                "private": mod_features[mod][:, split_dim:],
+            }
+        else:
+            b, seq, dim = mod_features[mod].shape
+            split_dim = dim // 2
+            split_mod_features[mod] = {
+                "shared": mod_features[mod][:, :, 0:split_dim],
+                "private": mod_features[mod][:, :, split_dim : 2 * split_dim],
+            }
+
+    return split_mod_features
