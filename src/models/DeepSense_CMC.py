@@ -95,7 +95,7 @@ class DeepSense_CMC(nn.Module):
         # mod fusion layer, Cosmo --> attention fusion, MAE --> linear fusion
         if args.learn_framework == "Cosmo":
             "Attention fusion for Cosmo"
-            self.attn_mod_fusion_layer = TransformerFusionBlock(
+            self.cosmo_mod_fusion_layer = TransformerFusionBlock(
                 self.config["recurrent_dim"] * 2,
                 4,
                 self.config["dropout_ratio"],
@@ -111,13 +111,7 @@ class DeepSense_CMC(nn.Module):
                     nn.ReLU(),
                     nn.Linear(out_dim, out_dim),
                 )
-            self.attn_mod_fusion_layer = TransformerFusionBlock(
-                out_dim,
-                4,
-                self.config["dropout_ratio"],
-                self.config["dropout_ratio"],
-            )
-            self.sample_dim = out_dim
+            self.sample_dim = self.config["recurrent_dim"] * 2 * len(self.modalities)
         elif args.learn_framework == "MAE":
             """Linear fusion for MAE"""
             self.mae_mod_fusion_layer = nn.Sequential(
@@ -291,7 +285,7 @@ class DeepSense_CMC(nn.Module):
 
             return (masked_x, masks)
 
-    def forward_encoder(self, freq_x, class_head=True):
+    def forward_encoder(self, freq_x, class_head=True, proj_head=False):
         """The encoder function of DeepSense.
         Args:
             time_x (_type_): time_x is a dictionary consisting of the Tensor input of each input modality.
@@ -334,10 +328,13 @@ class DeepSense_CMC(nn.Module):
                 return sample_features, hidden_features
             elif self.args.learn_framework == "CMCV2":
                 """Perform mod feature projection here."""
-                sample_features = {}
-                for i, mod in enumerate(self.modalities):
-                    sample_features[mod] = self.mod_projectors[mod](mod_features[i])
-                return sample_features
+                if proj_head:
+                    sample_features = {}
+                    for i, mod in enumerate(self.modalities):
+                        sample_features[mod] = self.mod_projectors[mod](mod_features[i])
+                    return sample_features
+                else:
+                    return dict(zip(self.modalities, mod_features))
             elif self.args.learn_framework == "GMC":
                 """Append a joint features that is the concated of all the mod views"""
                 latent_features = []
@@ -362,19 +359,12 @@ class DeepSense_CMC(nn.Module):
                 """Attention-based Fusion for Cosmo"""
                 mod_features = torch.stack(mod_features, dim=1)
                 mod_features = mod_features.unsqueeze(dim=1)
-                sample_features = self.attn_mod_fusion_layer(mod_features).flatten(start_dim=1)
-            elif self.args.learn_framework == "CMCV2":
-                """Mod feature projection and attention-based fusion"""
-                proj_mod_features = []
-                for i, mod in enumerate(self.modalities):
-                    proj_mod_features.append(self.mod_projectors[mod](mod_features[i]))
-                proj_mod_features = torch.stack(proj_mod_features, dim=1).unsqueeze(dim=1)
-                sample_features = self.attn_mod_fusion_layer(proj_mod_features).flatten(start_dim=1)
+                sample_features = self.cosmo_mod_fusion_layer(mod_features).flatten(start_dim=1)
             elif self.args.learn_framework == "MAE":
                 """FC fusion for MAE"""
                 sample_features = self.forward_mae_fusion(mod_features)
             else:
-                """Concatenation-based Fusion for CMC, Cocoa frameworks"""
+                """Concatenation-based Fusion for CMC, CMCV2, Cocoa frameworks"""
                 sample_features = torch.cat(mod_features, dim=1)
 
             logits = self.class_layer(sample_features)
@@ -426,7 +416,7 @@ class DeepSense_CMC(nn.Module):
 
         return dec_loc_mod_input
 
-    def forward(self, freq_x, class_head=True, decoding=True):
+    def forward(self, freq_x, class_head=True, proj_head=False, decoding=True):
         processed_freq_x, masks = self.process_input(freq_x, class_head)
 
         if class_head:
@@ -437,7 +427,7 @@ class DeepSense_CMC(nn.Module):
             """Pretraining the framework"""
             if self.args.train_mode != "generative":
                 """CMC, Cosmo, Cocoa"""
-                enc_mod_features = self.forward_encoder(processed_freq_x, class_head)
+                enc_mod_features = self.forward_encoder(processed_freq_x, class_head, proj_head)
                 return enc_mod_features
             else:
                 """MAE"""

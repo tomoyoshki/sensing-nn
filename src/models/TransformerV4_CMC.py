@@ -187,7 +187,7 @@ class TransformerV4_CMC(nn.Module):
         # mod fusion layer
         if self.args.learn_framework == "Cosmo":
             "Attention fusion for Cosmo"
-            self.attn_mod_fusion_layer = TransformerFusionBlock(
+            self.cosmo_mod_fusion_layer = TransformerFusionBlock(
                 self.config["loc_out_channels"],
                 self.config["loc_head_num"],
                 self.config["dropout_ratio"],
@@ -204,13 +204,13 @@ class TransformerV4_CMC(nn.Module):
                     nn.ReLU(),
                     nn.Linear(out_dim, out_dim),
                 )
-            self.attn_mod_fusion_layer = TransformerFusionBlock(
-                out_dim,
+            self.cosmo_mod_fusion_layer = TransformerFusionBlock(
+                self.config["loc_out_channels"],
                 self.config["loc_head_num"],
                 self.config["dropout_ratio"],
                 self.config["dropout_ratio"],
             )
-            self.sample_dim = out_dim
+            self.sample_dim = self.config["loc_out_channels"]
         elif self.args.learn_framework == "MAE":
             """Linear fusion for MAE"""
             self.mae_mod_fusion_layer = nn.Sequential(
@@ -370,7 +370,7 @@ class TransformerV4_CMC(nn.Module):
 
         return freq_input, padded_img_size
 
-    def forward_encoder(self, patched_input, class_head=True):
+    def forward_encoder(self, patched_input, class_head=True, proj_head=False):
         """
         If class_head is False, we return the modality features; otherwise, we return the classification results.
         time-freq feature extraction --> loc fusion --> mod concatenation --> class layer
@@ -427,10 +427,13 @@ class TransformerV4_CMC(nn.Module):
                 return sample_features
             elif self.args.learn_framework == "CMCV2":
                 """Perform mod feature projection here."""
-                sample_features = {}
-                for i, mod in enumerate(self.modalities):
-                    sample_features[mod] = self.mod_projectors[mod](mod_features[i])
-                return sample_features
+                if proj_head:
+                    sample_features = {}
+                    for i, mod in enumerate(self.modalities):
+                        sample_features[mod] = self.mod_projectors[mod](mod_features[i])
+                    return sample_features
+                else:
+                    return dict(zip(self.modalities, mod_features))
             elif self.args.learn_framework == "GMC":
                 """Append a joint features that is the concated of all the mod views"""
                 latent_features = []
@@ -454,14 +457,12 @@ class TransformerV4_CMC(nn.Module):
                 """Attention-based fusion."""
                 mod_features = torch.stack(mod_features, dim=1)
                 mod_features = mod_features.unsqueeze(dim=1)
-                sample_features = self.attn_mod_fusion_layer(mod_features).flatten(start_dim=1)
+                sample_features = self.cosmo_mod_fusion_layer(mod_features).flatten(start_dim=1)
             elif self.args.learn_framework == "CMCV2":
                 """Mod feature projection and attention-based fusion"""
-                proj_mod_features = []
-                for i, mod in enumerate(self.modalities):
-                    proj_mod_features.append(self.mod_projectors[mod](mod_features[i]))
-                proj_mod_features = torch.stack(proj_mod_features, dim=1).unsqueeze(dim=1)
-                sample_features = self.attn_mod_fusion_layer(proj_mod_features).flatten(start_dim=1)
+                mod_features = torch.stack(mod_features, dim=1)
+                mod_features = mod_features.unsqueeze(dim=1)
+                sample_features = self.cosmo_mod_fusion_layer(mod_features).flatten(start_dim=1)
             elif self.args.learn_framework == "MAE":
                 """FC fusion for MAE"""
                 sample_features = self.forward_mae_fusion(mod_features)
@@ -562,7 +563,7 @@ class TransformerV4_CMC(nn.Module):
                 embeded_inputs[loc][mod] = embeded_input
         return embeded_inputs, padded_inputs, mod_loc_masks
 
-    def forward(self, freq_x, class_head=True, decoding=True):
+    def forward(self, freq_x, class_head=True, proj_head=False, decoding=True):
         # PatchEmbed the input, window mask if MAE
         patched_inputs, padded_inputs, masks = self.patch_forward(freq_x, class_head)
 
@@ -574,7 +575,7 @@ class TransformerV4_CMC(nn.Module):
             """Pretraining the framework"""
             if self.args.train_mode != "generative":
                 """CMC, Cosmo, Cocoa"""
-                enc_mod_features = self.forward_encoder(patched_inputs, class_head)
+                enc_mod_features = self.forward_encoder(patched_inputs, class_head, proj_head)
                 return enc_mod_features
             else:
                 enc_sample_features = self.forward_encoder(patched_inputs, class_head)

@@ -30,7 +30,7 @@ class CMCV2(nn.Module):
         # build encoders
         self.backbone = backbone
 
-    def forward(self, aug_freq_input1, aug_freq_input2):
+    def forward(self, aug_freq_input1, aug_freq_input2, proj_head=False):
         """
         Input:
             freq_input1: Input of the first augmentation.
@@ -40,8 +40,8 @@ class CMCV2(nn.Module):
             mod_features2: Projected mod features of the second augmentation.
         """
         # compute features
-        mod_features1 = self.backbone(aug_freq_input1, class_head=False)
-        mod_features2 = self.backbone(aug_freq_input2, class_head=False)
+        mod_features1 = self.backbone(aug_freq_input1, class_head=False, proj_head=proj_head)
+        mod_features2 = self.backbone(aug_freq_input2, class_head=False, proj_head=proj_head)
 
         return mod_features1, mod_features2
 
