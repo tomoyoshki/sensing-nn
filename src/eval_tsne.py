@@ -114,7 +114,7 @@ def eval_backbone_tsne_mod(args, classifier, augmenter, dataloader):
 
             """Eval KNN estimator."""
             aug_freq_loc_inputs = augmenter.forward("no", time_loc_inputs)
-            mod_feat = classifier(aug_freq_loc_inputs, class_head=False)
+            mod_feat = classifier(aug_freq_loc_inputs, class_head=False, proj_head=args.learn_framework == "CMCV2")
             for mod in args.dataset_config["modality_names"]:
                 sample_embeddings[mod].append(mod_feat[mod].detach().cpu().numpy())
 
