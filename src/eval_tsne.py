@@ -40,12 +40,15 @@ def eval_tsne(args):
     classifier = load_model_weight(classifier, pretrain_weight, load_class_layer=False)
     args.classifier = classifier
 
-    # eval_backbone_tsne(args, classifier, augmenter, test_dataloader)
-    eval_backbone_tsne_mod(args, classifier, augmenter, test_dataloader)
+    eval_backbone_tsne(args, classifier, augmenter, test_dataloader)
+    # eval_backbone_tsne_mod(args, classifier, augmenter, test_dataloader, "shared")
+    # eval_backbone_tsne_mod(args, classifier, augmenter, test_dataloader, "private")
+    # eval_backbone_tsne_mod(args, classifier, augmenter, test_dataloader, "all")
 
 
 def eval_backbone_tsne(args, classifier, augmenter, dataloader):
     classifier.eval()
+    plt.figure(figsize=(5, 5))
 
     sample_embeddings = []
     labels = []
@@ -64,10 +67,10 @@ def eval_backbone_tsne(args, classifier, augmenter, dataloader):
             sample_embeddings.append(feat.detach().cpu().numpy())
 
     # knn predictions
-    sample_embeddings = np.concatenate(sample_embeddings)
-    labels = np.concatenate(labels)
+    sample_embeddings = np.concatenate(sample_embeddings)[0::2]
+    labels = np.concatenate(labels)[0::2]
 
-    tsne = TSNE(n_components=2, verbose=0, random_state=123)
+    tsne = TSNE(n_components=2, verbose=0, perplexity=20, random_state=123, metric="euclidean", n_iter=5000)
     z = tsne.fit_transform(sample_embeddings)
     df = pd.DataFrame()
     df["y"] = labels
@@ -83,12 +86,17 @@ def eval_backbone_tsne(args, classifier, augmenter, dataloader):
     res_dir = "../result/tsne_res"
 
     scatter_plot = sns.scatterplot(
-        x="comp-1", y="comp-2", hue=df.y.tolist(), palette=sns.color_palette("hls", 10), legend=None, data=df
+        x="comp-1",
+        y="comp-2",
+        hue=df.y.tolist(),
+        palette=sns.color_palette("hls", 10),
+        legend=None,
+        data=df,
+        s=120,
     )
     if os.path.exists(res_dir) == False:
         os.mkdir(res_dir)
-    if os.path.exists(os.path.join(res_dir, dataset)) == False:
-        os.mkdir(os.path.join(res_dir, dataset))
+
     # scatter_plot.set(title=f"{dataset} {model} {framework} data T-SNE projection")
     scatter_plot.set(title="")
     scatter_plot.set(xticklabels=[])
@@ -96,11 +104,13 @@ def eval_backbone_tsne(args, classifier, augmenter, dataloader):
     scatter_plot.set(yticklabels=[])
     scatter_plot.set(ylabel=None)
     # scatter_plot.margins(x=0)
+
     plt.tight_layout()
-    plt.savefig(os.path.join(os.path.join(res_dir, dataset), f"{model}_{framework}.pdf"))
+    plt.savefig(os.path.join(res_dir, f"sample_{dataset}_{model}_{framework}.pdf"))
+    plt.clf()
 
 
-def eval_backbone_tsne_mod(args, classifier, augmenter, dataloader):
+def eval_backbone_tsne_mod(args, classifier, augmenter, dataloader, option="shared"):
     classifier.eval()
 
     sample_embeddings = {mod: [] for mod in args.dataset_config["modality_names"]}
@@ -112,22 +122,35 @@ def eval_backbone_tsne_mod(args, classifier, augmenter, dataloader):
             label = label.argmax(dim=1, keepdim=False) if label.dim() > 1 else label
             labels.append(label.cpu().numpy())
 
-            """Eval KNN estimator."""
             aug_freq_loc_inputs = augmenter.forward("no", time_loc_inputs)
-            mod_feat = classifier(aug_freq_loc_inputs, class_head=False, proj_head=args.learn_framework == "CMCV2")
+            if args.learn_framework == "CMCV2":
+                mod_feat = classifier(
+                    aug_freq_loc_inputs,
+                    class_head=False,
+                    proj_head=option in ["shared", "private"],
+                )
+            else:
+                mod_feat = classifier(aug_freq_loc_inputs, class_head=False)
             for mod in args.dataset_config["modality_names"]:
                 sample_embeddings[mod].append(mod_feat[mod].detach().cpu().numpy())
 
     # knn predictions
-    labels = np.concatenate(labels)
+    labels = np.concatenate(labels)[0::5]
     markers_dict = ["x", "v", "*", "+", "D", "2", "o"]
 
     # df = pd.DataFrame({"y": [], "comp-1": [], "comp-2": [], "marker": [], "mod": []})
     df = pd.DataFrame()
     for i, mod in enumerate(args.dataset_config["modality_names"]):
-        features = np.concatenate(sample_embeddings[mod])
-        tsne = TSNE(n_components=2, verbose=0, random_state=123)
+        # sample and take the private space
+        features = np.concatenate(sample_embeddings[mod])[0::5]
+        if option == "shared":
+            features = features[:, 0 : features.shape[1] // 2]
+        elif option == "private":
+            features = features[:, features.shape[1] // 2 :]
+
+        tsne = TSNE(n_components=2, verbose=0, perplexity=10, random_state=123, metric="euclidean", n_iter=1000)
         z = tsne.fit_transform(features)
+
         mod_df = pd.DataFrame()
         mod_df["y"] = labels
         mod_df["comp-1"] = z[:, 0]
@@ -135,6 +158,7 @@ def eval_backbone_tsne_mod(args, classifier, augmenter, dataloader):
         mod_df["marker"] = markers_dict[i]
         mod_df["mod"] = mod
         df = df.append(mod_df, ignore_index=True)
+
     dataset = args.dataset
     dataset = dataset.replace("Parkland", "MOD")
     dataset = dataset.replace("RealWorld_HAR", "RealWorld-HAR")
@@ -154,8 +178,7 @@ def eval_backbone_tsne_mod(args, classifier, augmenter, dataloader):
     )
     if os.path.exists(res_dir) == False:
         os.mkdir(res_dir)
-    if os.path.exists(os.path.join(res_dir, dataset)) == False:
-        os.mkdir(os.path.join(res_dir, dataset))
+
     # scatter_plot.set(title=f"{dataset} {model} {framework} data T-SNE projection")
     scatter_plot.set(title="")
     scatter_plot.set(xticklabels=[])
@@ -163,8 +186,10 @@ def eval_backbone_tsne_mod(args, classifier, augmenter, dataloader):
     scatter_plot.set(yticklabels=[])
     scatter_plot.set(ylabel=None)
     # scatter_plot.margins(x=0)
+
     plt.tight_layout()
-    plt.savefig(os.path.join(os.path.join(res_dir, dataset), f"{model}_{framework}.pdf"))
+    plt.savefig(os.path.join(res_dir, f"mod_{option}_{dataset}_{model}_{framework}.pdf"))
+    plt.clf()
 
 
 def main_eval():
