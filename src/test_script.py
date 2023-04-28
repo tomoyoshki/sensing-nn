@@ -56,7 +56,7 @@ def test_loop(result_file, status_log_file, test_mode):
                                     args.label_ratio = label_ratio
                                     args.finetune_run_id = run_id
                                     args.stage = "finetune"
-                                    args.debug = "false"
+                                    # args.debug = "false"
                                     args = set_auto_params(args)
 
                                     # eval the model
@@ -94,7 +94,7 @@ def test_loop(result_file, status_log_file, test_mode):
                                     elif test_mode == "tsne":
                                         eval_tsne(args)
                                         continue
-                                        
+
                                 except KeyboardInterrupt:
                                     print("Excution interrupted by user, terminating ...")
                                     return

@@ -15,18 +15,18 @@ models = [
 ]
 
 learn_frameworks = [
-    "SimCLR",
-    "MoCo",
-    "CMC",
+    # "SimCLR",
+    # "MoCo",
+    # "CMC",
     "CMCV2",
-    "MAE",
-    "Cosmo",
-    "Cocoa",
-    "MTSS",
-    "TS2Vec",
-    "GMC",
-    "TNC",
-    "TSTCC",
+    # "MAE",
+    # "Cosmo",
+    # "Cocoa",
+    # "MTSS",
+    # "TS2Vec",
+    # "GMC",
+    # "TNC",
+    # "TSTCC",
 ]
 
 tasks = {
@@ -59,8 +59,8 @@ label_ratios = {
         1.0,
     ],
     "tsne": [
-        1.0
-    ]
+        1.0,
+    ],
 }
 
 runs = {"finetune": 5, "knn": 5, "cluster": 1, "tsne": 1}
