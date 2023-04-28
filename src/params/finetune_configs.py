@@ -3,10 +3,10 @@ Store the finetune configs here for the consistency between test and finetune.
 """
 
 datasets = [
-    "ACIDS",
+    # "ACIDS",
     "Parkland",
-    "RealWorld_HAR",
-    "PAMAP2",
+    # "RealWorld_HAR",
+    # "PAMAP2",
 ]
 
 models = [
@@ -34,7 +34,8 @@ tasks = {
         "vehicle_classification",
     ],
     "Parkland": [
-        "vehicle_classification",
+        # "vehicle_classification",
+        "distance_classification",
     ],
     "RealWorld_HAR": [
         "activity_classification",
@@ -47,8 +48,8 @@ tasks = {
 label_ratios = {
     "finetune": [
         1.0,
-        0.1,
-        0.01,
+        # 0.1,
+        # 0.01,
     ],
     "knn": [
         1.0,
@@ -58,9 +59,7 @@ label_ratios = {
     "cluster": [
         1.0,
     ],
-    "tsne": [
-        1.0
-    ]
+    "tsne": [1.0],
 }
 
 runs = {"finetune": 5, "knn": 5, "cluster": 1, "tsne": 1}

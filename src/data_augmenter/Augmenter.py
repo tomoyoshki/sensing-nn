@@ -132,7 +132,7 @@ class Augmenter:
 
         for loc in time_loc_inputs:
             for mod in time_loc_inputs[loc]:
-                time_loc_inputs[loc][mod] = time_loc_inputs[loc][mod].to(target_device)
+                time_loc_inputs[loc][mod] = time_loc_inputs[loc][mod].float().to(target_device)
 
         if not (labels is None):
             labels = labels.to(target_device)

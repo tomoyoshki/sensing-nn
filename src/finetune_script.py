@@ -146,10 +146,12 @@ def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, la
 
 if __name__ == "__main__":
     # hardware
-    cuda_device_slots = {0: 2, 1: 2, 2: 2, 3: 2}
+    cuda_device_slots = {0: 1, 1: 0, 2: 0, 3: 1}
 
     # for logging
     status_log_file = "/home/sl29/FoundationSense/result/finetune_status.json"
 
     # scheduling loop
-    schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, label_ratios, runs)
+    schedule_loop(
+        status_log_file, datasets, models, tasks, learn_frameworks, label_ratios["finetune"], runs["finetune"]
+    )
