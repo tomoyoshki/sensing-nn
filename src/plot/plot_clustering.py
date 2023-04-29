@@ -79,7 +79,7 @@ def create_df(file, model):
 def create_plot(df, model, metric):
     plt.figure(figsize=(20, 10))
     # ax = sns.barplot(x='Param', y='Value', data=df, hue='Name', palette='CMRmap_r')
-    ax = sns.barplot(data=df, x="Dataset", y=metric, hue="Framework")
+    ax = sns.barplot(data=df, y=metric, hue="Framework")
     ax.grid(True, **{"linewidth": 0.1, "color": "gray", "linestyle": "-"})
     coords = [(p.get_x() + 0.5 * p.get_width(), p.get_height()) for p in ax.patches]
     coords = sorted(coords)
@@ -117,8 +117,7 @@ def create_plot(df, model, metric):
     legend.get_frame().set_alpha(0.4)
 
     plt.tight_layout()
-    plt.savefig(f"./res/{model.replace('Transformer', 'SW-T')}_{metric}.pdf")
-
+    plt.savefig(f"../../result/figures/{model.replace('Transformer', 'SW-T')}_{metric}.pdf")
 
 
 if __name__ == "__main__":
