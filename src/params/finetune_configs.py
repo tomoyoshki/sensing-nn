@@ -3,10 +3,10 @@ Store the finetune configs here for the consistency between test and finetune.
 """
 
 datasets = [
-    # "ACIDS",
+    "ACIDS",
     "Parkland",
-    # "RealWorld_HAR",
-    # "PAMAP2",
+    "RealWorld_HAR",
+    "PAMAP2",
 ]
 
 models = [
@@ -34,8 +34,9 @@ tasks = {
         "vehicle_classification",
     ],
     "Parkland": [
-        # "vehicle_classification",
-        "distance_classification",
+        "vehicle_classification",
+        # "distance_classification",
+        # "speed_classification",
     ],
     "RealWorld_HAR": [
         "activity_classification",
