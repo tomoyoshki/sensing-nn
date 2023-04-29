@@ -8,8 +8,8 @@ from matplotlib.colors import ListedColormap
 matplotlib.rcParams["pdf.fonttype"] = 42
 matplotlib.rcParams["ps.fonttype"] = 42
 
-RATIOS = ["100% Labels", "10% Labels", "1% Labels"]
-N_Tasks = len(RATIOS)
+Tasks = ["Distance Classification", "Speed Classification"]
+N_Tasks = len(Tasks)
 
 
 def plot_group_bar(
@@ -41,7 +41,7 @@ def plot_group_bar(
         # ax.set_xlabel()
         ax.set_ylabel(f"{metric}")
         ax.set_xticks(x)
-        ax.set_xticklabels(RATIOS)
+        ax.set_xticklabels(Tasks)
         ax.set_ylim(y_limit)
         for label_idx, label in enumerate(labels):
             data = np.squeeze(data_matrix[metric][label])
@@ -54,7 +54,7 @@ def plot_group_bar(
     fig.legend(
         handles, labels, bbox_to_anchor=(0.48, 0.88), loc="lower center", ncol=6, handlelength=0.7, columnspacing=0.7
     )
-    output_path = os.path.join(out_dir, f"./{dataset_name}_finetune_label_ratios.pdf")
+    output_path = os.path.join(out_dir, f"./{dataset_name}_additional_tasks.pdf")
     plt.savefig(output_path, bbox_inches="tight")
 
 
@@ -66,18 +66,32 @@ if __name__ == "__main__":
     # ------------------------ RealWorld_HAR ------------------------
     data_matrix = {
         "Accuracy": {
-            "SimCLR": [0.9250, 0.8891, 0.7523],
-            "MoCo": [0.9390, 0.9073, 0.7482],
-            "CMC": [0.9129, 0.8691, 0.6994],
-            "MAE": [0.7803, 0.6561, 0.3764],
-            "Cosmo": [0.3429, 0.2122, 0.1753],
-            "Cocoa": [0.7040, 0.6869, 0.6122],
-            "MTSS": [0.4206, 0.3799, 0.3113],
-            "TS2Vec": [0.7254, 0.6522, 0.4750],
-            "GMC": [0.8640, 0.7712, 0.5191],
-            "TNC": [0.8533, 0.8436, 0.7996],
-            "TS-TCC": [0.8734, 0.8564, 0.7473],
-            "FOCAL": [0.9772, 0.9593, 0.8840],
+            "SimCLR": [0.9090, 0.5511],
+            "MoCo": [0.9090, 0.6108],
+            "CMC": [0.8180, 0.5170],
+            "MAE": [0.7272, 0.4545],
+            "Cosmo": [0.6363, 0.2926],
+            "Cocoa": [0.8181, 0.4005],
+            "MTSS": [0.7272, 0.3522],
+            "TS2Vec": [0.6969, 0.4517],
+            "GMC": [0.8181, 0.4460],
+            "TNC": [0.8484, 0.4375],
+            "TS-TCC": [0.7878, 0.5284],
+            "FOCAL": [0.9697, 0.6960],
+        },
+        "F1 Score": {
+            "SimCLR": [0.5511],
+            "MoCo": [0.6108],
+            "CMC": [0.5170],
+            "MAE": [0.4545],
+            "Cosmo": [0.2926],
+            "Cocoa": [0.4005],
+            "MTSS": [0.3522],
+            "TS2Vec": [0.4517],
+            "GMC": [0.4460],
+            "TNC": [0.4375],
+            "TS-TCC": [0.5284],
+            "FOCAL": [0.6960],
         },
     }
     plot_group_bar(data_matrix, "Parkland", metrics, labels, out_dir, y_limit=(0.2, 1.0))
