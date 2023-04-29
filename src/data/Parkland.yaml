@@ -7,17 +7,16 @@ vehicle_classification:
         val_index_file: /home/sl29/data/Parkland/time_data_partition/val_index.txt  
         test_index_file: /home/sl29/data/Parkland/time_data_partition/test_index.txt 
 distance_classification:
-        num_classes: 3  # number of classes
-        class_names: ["close", "medium", "far"]
+        num_classes: 3 # number of classes
         train_index_file: /home/sl29/data/Parkland_Distance_Speed/mustang_distance_partition/train_index.txt 
         val_index_file: /home/sl29/data/Parkland_Distance_Speed/mustang_distance_partition/val_index.txt  
         test_index_file: /home/sl29/data/Parkland_Distance_Speed/mustang_distance_partition/test_index.txt 
 speed_classification:
-        num_classes: 3  # number of classes
-        class_names: ["low", "medium", "high"]
-        train_index_file: /home/sl29/data/Parkland_Distance_Speed/mustang_speed_partition/train_index.txt 
-        val_index_file: /home/sl29/data/Parkland_Distance_Speed/mustang_speed_partition/val_index.txt  
-        test_index_file: /home/sl29/data/Parkland_Distance_Speed/mustang_speed_partition/test_index.txt 
+        num_classes: 4  # number of classes
+        class_names: ["5", "10", "15", "20"]
+        train_index_file: /home/sl29/data/2023-03-27-State-Farm-Center-SW-Lot/time_data_partition/train_index.txt 
+        val_index_file: /home/sl29/data/2023-03-27-State-Farm-Center-SW-Lot/time_data_partition/val_index.txt  
+        test_index_file: /home/sl29/data/2023-03-27-State-Farm-Center-SW-Lot/time_data_partition/test_index.txt 
 
 repetition: 3
 
@@ -325,7 +324,7 @@ CMCV2:
                 min_lr: 0.000001
                 clip_grad: 5.0
                 weight_decay:  
-                        TransformerV4: 0.0005
+                        TransformerV4: 0.005
                         DeepSense: 0.005
                 decay_rate: 0.2
         finetune_lr_scheduler:

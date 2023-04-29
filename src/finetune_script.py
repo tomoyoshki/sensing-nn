@@ -92,7 +92,7 @@ def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, la
                                     )
                                     cuda_device, cuda_device_utils = claim_cuda_slot(cuda_device_utils)
 
-                                # run the command
+                                # NOTE: set the shared configs below
                                 cmd = [
                                     "python3",
                                     "train.py",
@@ -104,7 +104,8 @@ def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, la
                                     f"-label_ratio={label_ratio}",
                                     f"-finetune_run_id={run_id}",
                                     f"-gpu={cuda_device}",
-                                    f"-debug=false",
+                                    f"-debug=true",
+                                    f"-tag=wDistInd",
                                 ]
                                 print(cmd)
                                 p = subprocess.Popen(
@@ -146,7 +147,7 @@ def schedule_loop(status_log_file, datasets, models, tasks, learn_frameworks, la
 
 if __name__ == "__main__":
     # hardware
-    cuda_device_slots = {0: 1, 1: 0, 2: 0, 3: 1}
+    cuda_device_slots = {0: 2, 1: 2, 2: 2, 3: 2}
 
     # for logging
     status_log_file = "/home/sl29/FoundationSense/result/finetune_status.json"
