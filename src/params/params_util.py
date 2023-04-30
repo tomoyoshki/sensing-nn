@@ -135,6 +135,18 @@ def set_batch_size(args):
     return args
 
 
+def set_tag(args):
+    """
+    Automatically set the training configs according to the given tage. Mainly used in the ablation study.
+    """
+    if args.tag == "noTemp":
+        args.dataset_config["CMCV2"]["rank_loss_weight"] = 0
+    elif args.tag == "noOrth":
+        args.dataset_config["CMCV2"]["orthogonal_loss_weight"] = 0
+
+    return args
+
+
 def set_auto_params(args):
     """Automatically set the parameters for the experiment."""
     # gpu configuration
@@ -185,6 +197,9 @@ def set_auto_params(args):
 
     # set batch size
     args = set_batch_size(args)
+
+    # set tag
+    args = set_tag(args)
 
     # set output path
     args = set_model_weight_folder(args)

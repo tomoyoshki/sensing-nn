@@ -605,29 +605,16 @@ class CMCV3Loss(nn.Module):
                 split_mod_features2[mod]["private"],
             )
 
-        # Step 4 version 1: Inter- and intra-sequence temporal consistency
+        # Step 4: temporal consistency loss
         temporal_consistency_loss = 0
         for mod_features in [reshaped_mod_features1, reshaped_mod_features2]:
             for mod in self.modalities:
-                temporal_consistency_loss += self.forward_temporal_inter_ranking_loss(mod_features[mod])
-                # temporal_consistency_loss += self.forward_temporal_intra_ranking_loss(mod_features[mod])
-
-        # Step 4 version 2: Coarse-grained temporal contrastive consistency
-        # temporal_consistency_loss = 0
-        # for split_mod_features in [split_mod_features1, split_mod_features2]:
-        #     for mod in self.modalities:
-        #         temporal_consistency_loss += self.forward_coarse_temporal_contrastive_loss(
-        #             split_mod_features[mod]["temporal"]
-        #         )
-
-        # Step 4 version 3: Fine-grained temporal contrastive consistency
-        # temporal_consistency_loss = 0
-        # for mod in self.modalities:
-        #     temporal_consistency_loss += self.forward_contrastive_loss(
-        #         split_mod_features1[mod]["private"],
-        #         split_mod_features2[mod]["private"],
-        #         finegrain=True,
-        #     )
+                if self.args.tag == "wIntraRank":
+                    temporal_consistency_loss += self.forward_temporal_intra_ranking_loss(mod_features[mod])
+                elif self.args.tag == "wTempCon":
+                    temporal_consistency_loss += self.forward_coarse_temporal_contrastive_loss(mod_features[mod])
+                else:
+                    temporal_consistency_loss += self.forward_temporal_inter_ranking_loss(mod_features[mod])
 
         # Step 5: orthogonality loss
         orthogonality_loss = 0
