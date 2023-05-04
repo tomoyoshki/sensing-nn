@@ -143,6 +143,9 @@ def set_tag(args):
         args.dataset_config["CMCV2"]["rank_loss_weight"] = 0
     elif args.tag == "noOrth":
         args.dataset_config["CMCV2"]["orthogonal_loss_weight"] = 0
+    elif args.tag == "noPrivate":
+        args.dataset_config["CMCV2"]["private_contrastive_loss_weight"] = 0
+        args.dataset_config["CMCV2"]["orthogonal_loss_weight"] = 0
 
     return args
 
