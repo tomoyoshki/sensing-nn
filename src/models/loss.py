@@ -185,7 +185,7 @@ class CMCLoss(nn.Module):
         self.batch_size = args.batch_size
         self.temperature = args.dataset_config[args.learn_framework]["temperature"]
         self.modalities = args.dataset_config["modality_names"]
-        
+
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
         self.similarity_f = nn.CosineSimilarity(dim=2)
 
@@ -240,6 +240,7 @@ class CMCLoss(nn.Module):
         for i, mod1 in enumerate(self.modalities):
             for mod2 in self.modalities[i + 1 :]:
                 loss += self.forward_similiarity(mod_features[mod1], mod_features[mod2])
+        return loss
 
 
 class CMCV2Loss(nn.Module):
