@@ -184,7 +184,8 @@ class CMCLoss(nn.Module):
         self.config = args.dataset_config["CMC"]
         self.batch_size = args.batch_size
         self.temperature = args.dataset_config[args.learn_framework]["temperature"]
-
+        self.modalities = args.dataset_config["modality_names"]
+        
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
         self.similarity_f = nn.CosineSimilarity(dim=2)
 
