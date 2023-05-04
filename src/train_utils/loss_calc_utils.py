@@ -6,8 +6,8 @@ def calc_contrastive_loss(args, default_model, augmenter, loss_func, time_loc_in
     """Eval the contrastive loss for one batch."""
     if args.learn_framework == "CMC":
         aug_freq_loc_inputs = augmenter.forward("random", time_loc_inputs)
-        feature1, feature2 = default_model(aug_freq_loc_inputs)
-        loss = loss_func(feature1, feature2, idx)
+        mod_features = default_model(aug_freq_loc_inputs)
+        loss = loss_func(mod_features, idx)
     elif args.learn_framework == "Cosmo":
         aug_freq_loc_inputs = augmenter.forward("random", time_loc_inputs)
         rand_fused_features = default_model(aug_freq_loc_inputs)

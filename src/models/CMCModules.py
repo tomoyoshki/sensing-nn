@@ -38,4 +38,4 @@ class CMC(nn.Module):
         """
         # compute features
         mod_features = self.backbone(freq_input, class_head=False)
-        return mod_features["seismic"], mod_features["audio"]
+        return mod_features

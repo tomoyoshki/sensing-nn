@@ -230,10 +230,15 @@ class CMCLoss(nn.Module):
 
         return loss
 
-    def forward(self, seismic_features, audio_features, index):
-        loss = self.forward_similiarity(seismic_features, audio_features)
+    def forward(self, mod_features, index):
+        """
+        Iterate over pairs of modalities and calculate the loss.
+        """
+        loss = 0
 
-        return loss
+        for i, mod1 in enumerate(self.modalities):
+            for mod2 in self.modalities[i + 1 :]:
+                loss += self.forward_similiarity(mod_features[mod1], mod_features[mod2])
 
 
 class CMCV2Loss(nn.Module):
