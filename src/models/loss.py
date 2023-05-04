@@ -596,13 +596,22 @@ class CMCV3Loss(nn.Module):
 
         # Step 2: shared space contrastive loss
         shared_contrastive_loss = 0
-        for split_mod_features in [split_mod_features1, split_mod_features2]:
-            for i, mod1 in enumerate(self.modalities):
-                for mod2 in self.modalities[i + 1 :]:
-                    shared_contrastive_loss += self.forward_contrastive_loss(
-                        split_mod_features[mod1]["shared"],
-                        split_mod_features[mod2]["shared"],
-                    )
+        if self.args.tag == "noPrivate":
+            for mod_features in [reshaped_mod_features1, reshaped_mod_features2]:
+                for i, mod1 in enumerate(self.modalities):
+                    for mod2 in self.modalities[i + 1 :]:
+                        shared_contrastive_loss += self.forward_contrastive_loss(
+                            mod_features[mod1],
+                            mod_features[mod2],
+                        )
+        else:
+            for split_mod_features in [split_mod_features1, split_mod_features2]:
+                for i, mod1 in enumerate(self.modalities):
+                    for mod2 in self.modalities[i + 1 :]:
+                        shared_contrastive_loss += self.forward_contrastive_loss(
+                            split_mod_features[mod1]["shared"],
+                            split_mod_features[mod2]["shared"],
+                        )
 
         # Step 3: private space contrastive loss
         private_contrastive_loss = 0
