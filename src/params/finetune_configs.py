@@ -3,10 +3,10 @@ Store the finetune configs here for the consistency between test and finetune.
 """
 
 datasets = [
-    "ACIDS",
+    # "ACIDS",
     "Parkland",
-    "RealWorld_HAR",
-    "PAMAP2",
+    # "RealWorld_HAR",
+    # "PAMAP2",
 ]
 
 models = [
@@ -15,34 +15,34 @@ models = [
 ]
 
 learn_frameworks = [
-    # "SimCLR",
-    # "MoCo",
-    # "CMC",
+    "SimCLR",
+    "MoCo",
+    "CMC",
     "CMCV2",
-    # "MAE",
-    # "Cosmo",
-    # "Cocoa",
-    # "MTSS",
-    # "TS2Vec",
-    # "GMC",
-    # "TNC",
-    # "TSTCC",
+    "MAE",
+    "Cosmo",
+    "Cocoa",
+    "MTSS",
+    "TS2Vec",
+    "GMC",
+    "TNC",
+    "TSTCC",
 ]
 
 tasks = {
     "ACIDS": [
-        "vehicle_classification",
+        # "vehicle_classification",
     ],
     "Parkland": [
-        "vehicle_classification",
-        # "distance_classification",
-        # "speed_classification",
+        # "vehicle_classification",
+        "distance_classification",
+        "speed_classification",
     ],
     "RealWorld_HAR": [
-        "activity_classification",
+        # "activity_classification",
     ],
     "PAMAP2": [
-        "activity_classification",
+        # "activity_classification",
     ],
 }
 
@@ -53,12 +53,12 @@ label_ratios = {
         # 0.01,
     ],
     "knn": [
-        1.0,
-        0.1,
-        0.01,
+        # 1.0,
+        # 0.1,
+        # 0.01,
     ],
     "cluster": [
-        1.0,
+        # 1.0,
     ],
     "tsne": [
         1.0,

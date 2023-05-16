@@ -8,8 +8,7 @@ import torch.nn as nn
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix, mean_absolute_error
 from sklearn.neighbors import KNeighborsClassifier
 from train_utils.knn import extract_sample_features
-from train_utils.loss_calc_utils import calc_pretrain_loss
-
+from train_utils.loss_calc_utils import calc_pretrain_loss   
 
 def eval_task_metrics(args, labels, predictions, regression=False):
     """Evaluate the downstream task metrics."""
@@ -34,7 +33,13 @@ def eval_task_metrics(args, labels, predictions, regression=False):
                 mean_f1 = np.mean(f1_scores)
                 conf_matrix = []
         else:
-            mean_acc = accuracy_score(labels, predictions)
+            if args.task in {"distance_classification", "speed_classification"}:
+                num_classes = args.dataset_config[args.task]["num_classes"]
+                mean_acc = 1 - (np.abs(labels-predictions) / np.maximum(labels, (num_classes - 1) - labels))
+                mean_acc = np.nan_to_num(mean_acc, nan=1.0)
+                mean_acc = mean_acc.mean()
+            else:    
+                mean_acc = accuracy_score(labels, predictions)
             mean_f1 = f1_score(labels, predictions, average="macro", zero_division=1)
             try:
                 conf_matrix = confusion_matrix(labels, predictions)

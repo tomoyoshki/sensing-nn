@@ -134,3 +134,5 @@ result/
 weights/
 weights*
 .vscode/
+scripts/*.csv
+*.sh

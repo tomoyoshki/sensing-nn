@@ -59,25 +59,26 @@ def plot_group_bar(
 
 
 if __name__ == "__main__":
-    out_dir = "/home/sl29/FoundationSense/result/figures"
+    out_dir = "/home/tkimura4/FoundationSense2/result/figures"
     metrics = ["Accuracy"]
     labels = ["SimCLR", "MoCo", "CMC", "MAE", "Cosmo", "Cocoa", "MTSS", "TS2Vec", "GMC", "TNC", "TS-TCC", "FOCAL"]
 
     # ------------------------ RealWorld_HAR ------------------------
     data_matrix = {
         "Accuracy": {
-            "SimCLR": [0.9090, 0.5511],
-            "MoCo": [0.9090, 0.6108],
-            "CMC": [0.8180, 0.5170],
-            "MAE": [0.7272, 0.4545],
-            "Cosmo": [0.6363, 0.2926],
-            "Cocoa": [0.8181, 0.4005],
-            "MTSS": [0.7272, 0.3522],
-            "TS2Vec": [0.6969, 0.4517],
-            "GMC": [0.8181, 0.4460],
-            "TNC": [0.8484, 0.4375],
-            "TS-TCC": [0.7878, 0.5284],
-            "FOCAL": [0.9697, 0.6960],
+            "SimCLR": [0.8787, 0.5596],
+            "MoCo": [0.8484, 0.5767],
+            "CMC": [0.9393, 0.6022],
+            "MAE": [0.7272, 0.4034],
+            "Cosmo": [0.9393, 0.5681],
+            "Cocoa": [0.8181, 0.5625],
+            "MTSS": [0.8787, 0.4005],
+            "TS2Vec": [0.9090, 0.5198],
+            "GMC": [0.8484, 0.6250],
+            "TNC": [0.8787, 0.6108],
+            "TS-TCC": [0.8484, 0.5255],
+            "FOCAL": [0.9393, 0.6647],
+
         },
         "F1 Score": {
             "SimCLR": [0.5511],

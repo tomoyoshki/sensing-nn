@@ -145,7 +145,7 @@ class MultiModalSequenceDataset(Dataset):
             elif self.args.task == "distance_classification":
                 label = sample["label"]["distance"]
             elif self.args.task == "speed_classification":
-                label = sample["label"]["speed"]
+                label = sample["label"]["speed"] // 5 - 1
             elif self.args.task == "terrain_classification":
                 label = sample["label"]["terrain"]
             else:
