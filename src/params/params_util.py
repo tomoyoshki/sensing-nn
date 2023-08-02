@@ -150,7 +150,7 @@ def set_tag(args):
     return args
 
 
-def set_auto_params(args, lambda_type=None, lambda_weight=None):
+def set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=None):
     """Automatically set the parameters for the experiment."""
     # gpu configuration
     if args.gpu is None:

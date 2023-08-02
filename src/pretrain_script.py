@@ -33,7 +33,7 @@ def train_loop():
                             args.learn_framework = "CMCV2"
                             args.stage = "pretrain"
                             args.tag = f"{dataset}_{model}_{lambda_type}_{lambda_weight}"
-                            args = set_auto_params(args, lambda_type, lambda_weight)
+                            args = set_auto_params(args, lambda_type=lambda_type, lambda_weight=lambda_weight, margin_value=None)
                             train(args)
 
                         except KeyboardInterrupt:
@@ -42,6 +42,26 @@ def train_loop():
                     except Exception as e:
                         print("Error: ", e)
                         continue
+            
+            for margin in margin_weights:
+                try:
+                    try:
+                        # set args
+                        args = parse_base_args("train")
+                        args.dataset = dataset
+                        args.model = model
+                        args.learn_framework = "CMCV2"
+                        args.stage = "pretrain"
+                        args.tag = f"{dataset}_{model}_margin_{margin}"
+                        args = set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=margin)
+                        train(args)
+
+                    except KeyboardInterrupt:
+                        print("Excution interrupted by user, terminating ...")
+                        return
+                except Exception as e:
+                    print("Error: ", e)
+                    continue
 
 
 if __name__ == "__main__":

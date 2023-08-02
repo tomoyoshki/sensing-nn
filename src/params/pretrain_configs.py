@@ -10,27 +10,31 @@ datasets = [
 ]
 
 models = [
-    # "TransformerV4",
-    "DeepSense",
+    "TransformerV4",
+    # "DeepSense",
 ]
 
 lambda_types = {
-    "private_contrastive_loss_weight": [
-        0.1, 
-        3,
-        10
-    ],
-    "orthogonal_loss_weight": [
-        # 0.1,
-        # 1,
-        # 10
-    ],
-    "lambda_trank_loss_weightemporal": [
-        # 0.1,
-        # 1,
-        # 3,
-        # 10
-    ]
+    # "private_contrastive_loss_weight": [
+    #     0.1, 
+    #     3,
+    #     10
+    # ],
+    # "orthogonal_loss_weight": [
+    #     0.1,
+    #     1,
+    #     10
+    # ],
+    # "rank_loss_weight": [
+    #     0.1,
+    #     1,
+    #     3,
+    #     10
+    # ]
 }
+
+margin_weights = [
+    
+]
 
 
