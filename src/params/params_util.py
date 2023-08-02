@@ -150,7 +150,7 @@ def set_tag(args):
     return args
 
 
-def set_auto_params(args):
+def set_auto_params(args, lambda_type=None, lambda_weight=None):
     """Automatically set the parameters for the experiment."""
     # gpu configuration
     if args.gpu is None:
@@ -167,6 +167,9 @@ def set_auto_params(args):
     # parse the model yaml file
     dataset_yaml = f"./data/{args.dataset}.yaml"
     args.dataset_config = load_yaml(dataset_yaml)
+    
+    if lambda_type is not None and lambda_weight is not None:
+        args.dataset_config[args.learn_framework][lambda_type] = lambda_weight
 
     # verbose
     args.verbose = str_to_bool(args.verbose)
