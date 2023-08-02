@@ -170,6 +170,9 @@ def set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=Non
     
     if lambda_type is not None and lambda_weight is not None:
         args.dataset_config[args.learn_framework][lambda_type] = lambda_weight
+    
+    if margin_value is not None:
+        args.dataset_config[args.learn_framework]["inter_rank_margin"] = margin_value
 
     # verbose
     args.verbose = str_to_bool(args.verbose)

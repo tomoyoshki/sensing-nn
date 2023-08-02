@@ -34,7 +34,9 @@ lambda_types = {
 }
 
 margin_weights = [
-    
+    0.05,
+    0.5,
+    5
 ]
 
 
