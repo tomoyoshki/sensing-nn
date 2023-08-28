@@ -29,7 +29,7 @@ def finetune(
     """Fine tune the backbone network with only the class layer."""
     # Load the pretrained feature extractor
     pretrain_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_pretrain_latest.pt")
-    classifier = load_model_weight(classifier, pretrain_weight, load_class_layer=False)
+    classifier = load_model_weight(args, classifier, pretrain_weight, load_class_layer=False)
     learnable_parameters = set_learnable_params_finetune(args, classifier)
 
     # Init the optimizer, scheduler, and weight files
