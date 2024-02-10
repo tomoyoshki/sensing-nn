@@ -65,6 +65,14 @@ def parse_base_args(option="train"):
         default=1.0,
         help="Only used in supervised training or finetune stage, specify the ratio of labeled data.",
     )
+    
+    parser.add_argument(
+        "-alignment_label_ratio",
+        type=float,
+        default=1.0,
+        help="Only used in alignment stage, specify the ratio of multimodal data.",
+    )
+
     parser.add_argument(
         "-finetune_run_id",
         type=int,
@@ -136,6 +144,49 @@ def parse_base_args(option="train"):
         type=str,
         default="true",
         help="Whether to perform balanced sampling on classes.",
+    )
+    
+    parser.add_argument(
+        "-comments",
+        type=str,
+        default=None,
+        help="Comments for this experiment.",
+    )
+    
+    # add finetune tag
+    parser.add_argument(
+        "-finetune_tag",
+        type=str,
+        default=None,
+        help="Specify the finetune tag.",
+    )
+    
+    parser.add_argument(
+        "-alignment_tag",
+        type=str,
+        default=None,
+        help="Specify the alignment tag.",
+    )
+    
+    parser.add_argument(
+        "-alignment_run_id",
+        type=int,
+        default=None,
+        help="Specify the alignment id.",
+    )
+    
+    parser.add_argument(
+        "-use_gcq_data",
+        type=str,
+        default="false",
+        help="Whether to use gcq data.",
+    )
+    
+    parser.add_argument(
+        "-use_gcq_align",
+        type=str,
+        default="false",
+        help="Whether to use gcq alignment.",
     )
 
     args = parser.parse_args()

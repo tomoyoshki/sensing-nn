@@ -58,7 +58,6 @@ def set_model_weight_suffix(
 
     return suffix
 
-
 def find_most_recent_weight(
     debug,
     dataset,
@@ -125,7 +124,7 @@ def set_model_weight_folder(args):
     )
 
     # set the weight path to avoid redundancy
-    if args.option == "test" or args.stage == "finetune":
+    if args.option == "test" or args.stage in {"finetune", "alignment"}:
         if args.model_weight is not None:
             weight_folder = args.model_weight
         else:
@@ -139,6 +138,17 @@ def set_model_weight_folder(args):
         weight_folder = os.path.join(dataset_model_path, f"exp{newest_id + 1}") + f"_{suffix}"
         check_paths([weight_folder])
         model_config = args.dataset_config[args.model]
+        
+        
+        with open(os.path.join(weight_folder, "experiment_args.json"), "w") as f:
+            args_var = vars(args)
+            args_record = {}
+            for k in args_var:
+                if isinstance(args_var[k], str):
+                    args_record[k] = args_var[k]
+
+            f.write(json.dumps(args_record, indent=4))
+
         with open(os.path.join(weight_folder, "model_config.json"), "w") as f:
             f.write(json.dumps(model_config, indent=4))
 
@@ -147,22 +157,27 @@ def set_model_weight_folder(args):
             with open(framework_config_log, "w") as f:
                 f.write(json.dumps(args.dataset_config[args.learn_framework], indent=4))
 
+    tag_suffix = ""
+    tag_suffix = tag_suffix if args.tag is None else f"{args.tag}"
+
+    
     # set log files
     if args.option == "train":
         if args.train_mode == "supervised":
-            args.train_log_file = os.path.join(weight_folder, f"train_log.txt")
-            args.tensorboard_log = os.path.join(weight_folder, f"train_events")
+            args.train_log_file = os.path.join(weight_folder, f"{tag_suffix}_train_log.txt")
+            args.tensorboard_log = os.path.join(weight_folder, f"{tag_suffix}_train_events")
         else:
             if args.stage == "pretrain":
-                args.train_log_file = os.path.join(weight_folder, f"pretrain_log.txt")
+                args.train_log_file = os.path.join(weight_folder, f"{tag_suffix}_pretrain_log.txt")
                 args.tensorboard_log = os.path.join(weight_folder, f"pretrain_events")
+            elif args.stage == "finetune":
+                args.train_log_file = os.path.join(weight_folder, f"{args.task}_{args.tag_suffix}_log.txt")
+                args.tensorboard_log = os.path.join(weight_folder, f"{args.task}_{args.tag_suffix}_events")
+            elif args.stage == "alignment":
+                args.train_log_file = os.path.join(weight_folder, f"{args.tag_suffix}_log.txt")
+                args.tensorboard_log = os.path.join(weight_folder, f"{args.tag_suffix}_events")
             else:
-                args.train_log_file = os.path.join(
-                    weight_folder, f"{args.task}_{args.label_ratio}_{args.stage}_log.txt"
-                )
-                args.tensorboard_log = os.path.join(
-                    weight_folder, f"{args.task}_{args.label_ratio}_{args.stage}_events"
-                )
+                raise Exception(f"Invalid stage provided: {args.stage}")
 
         # delete old log file
         remove_files([args.train_log_file])
@@ -174,6 +189,14 @@ def set_model_weight_folder(args):
 
         logging.info(f"=\t[Model weights path]: {weight_folder}")
 
+    if args.comments is not None:
+        tag = "" if args.tag is None else f"_{args.tag}"
+        tag = f"{tag}_{args.stage}"
+        tag = f"{tag}_{args.finetune_tag}" if args.finetune_tag is not None else tag
+        with open(os.path.join(weight_folder, f"{tag}_comments.txt"), "a") as f:
+            f.write(args.comments)
+        logging.info(f"=\t[Comments]: {args.comments}")
+
     args.weight_folder = weight_folder
 
     return args
@@ -181,10 +204,12 @@ def set_model_weight_folder(args):
 
 def set_model_weight_file(args):
     """Automatically select the classifier weight during the testing"""
+
     if args.train_mode == "supervised":
+        # finetune_suffix = f"_{args.label_ratio}_finetune" if args.stage == "finetune" else ""
         args.classifier_weight = os.path.join(
             args.weight_folder,
-            f"{args.dataset}_{args.model}_{args.task}_best.pt",
+            f"{args.dataset}_{args.model}_{args.task}{args.tag_suffix}_best.pt",
         )
     elif args.train_mode in {"contrastive", "predictive", "generative"}:
         if args.stage == "pretrain":
@@ -193,16 +218,10 @@ def set_model_weight_file(args):
                 f"{args.dataset}_{args.model}_pretrain_best.pt",
             )
         else:
-            if args.finetune_run_id is not None:
-                args.classifier_weight = os.path.join(
-                    args.weight_folder,
-                    f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_exp{args.finetune_run_id}_best.pt",
-                )
-            else:
-                args.classifier_weight = os.path.join(
-                    args.weight_folder,
-                    f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_best.pt",
-                )
+            args.classifier_weight = os.path.join(
+                args.weight_folder,
+                f"{args.dataset}_{args.model}_{args.task}{args.tag_suffix}_best.pt",
+            )
     else:
         raise Exception(f"Invalid training mode provided: {args.stage}")
 
@@ -210,27 +229,30 @@ def set_model_weight_file(args):
 
     return args
 
-
-def set_finetune_weights(args):
+def set_finetune_weights(args):   
     """Automatically select the finetune weight during the testing"""
-    if args.finetune_run_id is not None:
-        best_weight = os.path.join(
-            args.weight_folder,
-            f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_exp{args.finetune_run_id}_best.pt",
-        )
-        latest_weight = os.path.join(
-            args.weight_folder,
-            f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_exp{args.finetune_run_id}_latest.pt",
-        )
-    else:
-        best_weight = os.path.join(
-            args.weight_folder,
-            f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_best.pt",
-        )
-        latest_weight = os.path.join(
-            args.weight_folder,
-            f"{args.dataset}_{args.model}_{args.task}_{args.label_ratio}_finetune_latest.pt",
-        )
+    best_weight = os.path.join(
+        args.weight_folder,
+        f"{args.dataset}_{args.model}_{args.task}{args.tag_suffix}_best.pt",
+    )
+    latest_weight = os.path.join(
+        args.weight_folder,
+        f"{args.dataset}_{args.model}_{args.task}{args.tag_suffix}_latest.pt",
+    )
+
+    return best_weight, latest_weight
+
+
+def set_alignment_weights(args):    
+    """Automatically select the alignment weight during the testing"""
+    best_weight = os.path.join(
+        args.weight_folder,
+        f"{args.dataset}_{args.model}_{args.learn_framework}{args.alignment_tag_suffix}_best.pt",
+    )
+    latest_weight = os.path.join(
+        args.weight_folder,
+        f"{args.dataset}_{args.model}_{args.learn_framework}{args.alignment_tag_suffix}_latest.pt",
+    )
 
     return best_weight, latest_weight
 

@@ -149,6 +149,27 @@ def set_tag(args):
 
     return args
 
+def set_model_weight_file_suffix(args, get_alignment_weight=False):
+    alignment_tag_suffix = ""
+    alignment_tag_suffix = alignment_tag_suffix if args.alignment_run_id is None else f"_exp{args.alignment_run_id}{alignment_tag_suffix}"
+    alignment_tag_suffix = alignment_tag_suffix if not args.use_gcq_align else f"_align_gcq_data{alignment_tag_suffix}"
+    alignment_tag_suffix = alignment_tag_suffix if args.alignment_tag is None else f"_{args.alignment_tag}{alignment_tag_suffix}"
+    alignment_tag_suffix = alignment_tag_suffix if args.alignment_label_ratio == 1.0 else f"_align{args.alignment_label_ratio}{alignment_tag_suffix}"
+    alignment_tag_suffix = f"_alignment{alignment_tag_suffix}"
+    
+    finetune_tag_suffix = ""
+    finetune_tag_suffix = finetune_tag_suffix if args.finetune_run_id is None else f"_exp{args.finetune_run_id}{finetune_tag_suffix}"
+    finetune_tag_suffix = finetune_tag_suffix if args.finetune_tag is None else f"_{args.finetune_tag}{finetune_tag_suffix}"
+    finetune_tag_suffix = f"_{args.label_ratio}{finetune_tag_suffix}"
+    finetune_tag_suffix = f"_finetune{finetune_tag_suffix}"
+    
+    tag_suffix = f"{alignment_tag_suffix}"
+    tag_suffix = f"{tag_suffix}{finetune_tag_suffix}" if args.stage in {"finetune"} else tag_suffix
+    
+    args.tag_suffix = tag_suffix
+    args.alignment_tag_suffix = alignment_tag_suffix
+    args.finetune_tag_suffix = finetune_tag_suffix
+    return args
 
 def set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=None):
     """Automatically set the parameters for the experiment."""
@@ -175,10 +196,12 @@ def set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=Non
         args.dataset_config[args.learn_framework]["inter_rank_margin"] = margin_value
 
     # verbose
+    args.use_gcq_data = str_to_bool(args.use_gcq_data)
+    args.use_gcq_align = str_to_bool(args.use_gcq_align)
     args.verbose = str_to_bool(args.verbose)
     args.count_range = str_to_bool(args.count_range)
     args.balanced_sample = str_to_bool(args.balanced_sample) and args.dataset in {"ACIDS", "Parkland_Miata"}
-    args.sequence_sampler = True if args.learn_framework in {"CMCV2", "TS2Vec", "TS2Vec", "TNC", "TSTCC"} else False
+    args.sequence_sampler = True if args.learn_framework in {"CMCV2", "TS2Vec", "TS2Vec", "TNC", "TSTCC", "InfoMAE", "MultMod"} else False
     args.debug = str_to_bool(args.debug)
 
     # threshold
@@ -211,8 +234,18 @@ def set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=Non
     args = set_tag(args)
 
     # set output path
+    args = set_model_weight_file_suffix(args)
     args = set_model_weight_folder(args)
     args = set_model_weight_file(args)
     args = set_output_paths(args)
+    
+    if args.option in {"train"}:
+        logging.info(f"=\t[Alignment Tag Suffix]: {args.alignment_tag_suffix}")
+        logging.info(f"=\t[Finetune Tag Suffix]: {args.finetune_tag_suffix}")
+        logging.info(f"=\t[Tag suffix]: {args.tag_suffix}")
+    else:
+        print(f"=\t[Alignment Tag Suffix]: {args.alignment_tag_suffix}")
+        print(f"=\t[Finetune Tag Suffix]: {args.finetune_tag_suffix}")
+        print(f"=\t[Tag suffix]: {args.tag_suffix}")
 
     return args
