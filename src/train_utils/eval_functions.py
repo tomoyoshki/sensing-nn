@@ -80,6 +80,7 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
                     predictions = (logits > 0.5).float()
                 else:
                     predictions = logits.argmax(dim=1, keepdim=False)
+                    predictions[predictions > 3] = 3
                     labels = labels.argmax(dim=1, keepdim=False) if labels.dim() > 1 else labels
 
             # for future computation of acc or F1 score

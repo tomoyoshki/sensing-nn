@@ -55,6 +55,11 @@ class Augmenter:
         Add noise to the input_dict depending on the noise position.
         We only add noise to the time domeain, but not the feature level.
         """
+        for loc in time_loc_inputs:
+            for mod in time_loc_inputs[loc]:
+                if time_loc_inputs[loc][mod].dim() < 4:
+                    time_loc_inputs[loc][mod] = time_loc_inputs[loc][mod].reshape(time_loc_inputs[loc][mod].shape[0], 1, self.args.dataset_config["num_segments"], -1)
+
         # time-domain augmentation
         augmented_time_loc_inputs, augmented_labels = time_loc_inputs, labels
         for augmenter in self.time_augmenters:
@@ -149,6 +154,8 @@ class Augmenter:
         for loc in time_loc_inputs:
             freq_loc_inputs[loc] = dict()
             for mod in time_loc_inputs[loc]:
+                if time_loc_inputs[loc][mod].dim() < 4:
+                    time_loc_inputs[loc][mod] = time_loc_inputs[loc][mod].reshape(time_loc_inputs[loc][mod].shape[0], 1, self.args.dataset_config["num_segments"], -1)
                 loc_mod_freq_output = torch.fft.fft(time_loc_inputs[loc][mod], dim=-1)
                 loc_mod_freq_output = torch.view_as_real(loc_mod_freq_output)
                 loc_mod_freq_output = loc_mod_freq_output.permute(0, 1, 4, 2, 3)

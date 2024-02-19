@@ -164,8 +164,8 @@ def set_model_weight_folder(args):
     # set log files
     if args.option == "train":
         if args.train_mode == "supervised":
-            args.train_log_file = os.path.join(weight_folder, f"{tag_suffix}_train_log.txt")
-            args.tensorboard_log = os.path.join(weight_folder, f"{tag_suffix}_train_events")
+            args.train_log_file = os.path.join(weight_folder, f"{args.tag_suffix}_train_log.txt")
+            args.tensorboard_log = os.path.join(weight_folder, f"{args.tag_suffix}_train_events")
         else:
             if args.stage == "pretrain":
                 args.train_log_file = os.path.join(weight_folder, f"{tag_suffix}_pretrain_log.txt")

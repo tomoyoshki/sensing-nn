@@ -3,6 +3,7 @@ import torch
 import logging
 import numpy as np
 from tqdm import tqdm
+import time
 
 # train utils
 from train_utils.eval_functions import val_and_logging
@@ -28,7 +29,12 @@ def finetune(
 ):
     """Fine tune the backbone network with only the class layer."""
     # Load the pretrained feature extractor
-    pretrain_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_pretrain_latest.pt")
+    if args.train_mode == "supervised":
+        pretrain_weight = os.path.join(
+            args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_latest.pt"
+        )
+    else:
+        pretrain_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_pretrain_latest.pt")
     classifier = load_model_weight(args, classifier, pretrain_weight, load_class_layer=False)
     learnable_parameters = set_learnable_params_finetune(args, classifier)
 
@@ -46,7 +52,14 @@ def finetune(
         best_val_acc = 0
 
     val_epochs = 5 if args.dataset == "Parkland" else 3
-    for epoch in range(args.dataset_config[args.learn_framework]["finetune_lr_scheduler"]["train_epochs"]):
+    if args.train_mode == "supervised":
+        epochs = args.dataset_config[args.model]["lr_scheduler"]["train_epochs"]
+    else:
+        epochs = args.dataset_config[args.learn_framework]["finetune_lr_scheduler"]["train_epochs"]
+    
+    time_taken = []
+    for epoch in range(epochs):
+        epoch_beign_time = time.time()
         if epoch > 0:
             logging.info("-" * 40 + f"Epoch {epoch}" + "-" * 40)
 
@@ -55,7 +68,14 @@ def finetune(
 
         # training loop
         train_loss_list = []
+        
+        # choose one random sample idx:
+        random_idx = np.random.randint(0, len(train_dataloader))
         for i, (time_loc_inputs, labels, _) in tqdm(enumerate(train_dataloader), total=num_batches):
+            
+            if i != random_idx:
+                continue
+
             # move to target device, FFT, and augmentations
             aug_freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
 
@@ -77,6 +97,11 @@ def finetune(
                 tb_writer.add_scalar("Train/Train loss", loss.item(), epoch * num_batches + i)
 
         # validation and logging
+        epoch_end_time = time.time()
+        
+        time_taken.append(epoch_end_time - epoch_beign_time)
+        
+        logging.info(f"Epoch {epoch} took {epoch_end_time - epoch_beign_time} s")
         if epoch % val_epochs == 0:
             train_loss = np.mean(train_loss_list)
             val_metric, val_loss = val_and_logging(
@@ -107,6 +132,7 @@ def finetune(
         # Update the learning rate scheduler
         lr_scheduler.step(epoch)
 
+    logging.info(f"Average time taken: {np.mean(time_taken)}")
     # flush and close the TB writer
     tb_writer.flush()
     tb_writer.close()

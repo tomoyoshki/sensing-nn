@@ -160,17 +160,18 @@ def set_model_weight_file_suffix(args, get_alignment_weight=False):
     finetune_tag_suffix = ""
     finetune_tag_suffix = finetune_tag_suffix if args.finetune_run_id is None else f"_exp{args.finetune_run_id}{finetune_tag_suffix}"
     finetune_tag_suffix = finetune_tag_suffix if args.finetune_tag is None else f"_{args.finetune_tag}{finetune_tag_suffix}"
-    finetune_tag_suffix = f"_{args.label_ratio}{finetune_tag_suffix}"
     finetune_tag_suffix = f"_finetune{finetune_tag_suffix}"
+    finetune_tag_suffix = f"_{args.label_ratio}{finetune_tag_suffix}"
     
-    tag_suffix = f"{alignment_tag_suffix}"
+    tag_suffix = f""
     tag_suffix = f"{tag_suffix}{finetune_tag_suffix}" if args.stage in {"finetune"} else tag_suffix
     
     args.tag_suffix = tag_suffix
     args.alignment_tag_suffix = alignment_tag_suffix
     args.finetune_tag_suffix = finetune_tag_suffix
     return args
-
+# Parkland_TransformerV4_vehicle_classification_finetune_1.0_best.pt
+# Parkland_TransformerV4_vehicle_classification_1.0_finetune_best
 def set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=None):
     """Automatically set the parameters for the experiment."""
     # gpu configuration

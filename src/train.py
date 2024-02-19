@@ -67,7 +67,8 @@ def train(args):
     loss_func = init_loss_func(args)
     logging.info("=\tLoss function defined")
 
-    if args.train_mode == "supervised":
+    print(args.train_mode, args.stage)
+    if args.train_mode == "supervised" and args.stage == "train":
         supervised_train(
             args,
             classifier,

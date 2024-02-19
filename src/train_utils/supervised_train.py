@@ -3,6 +3,7 @@ import torch
 import logging
 import torch.optim as optim
 import numpy as np
+import time
 
 from tqdm import tqdm
 
@@ -56,6 +57,7 @@ def supervised_train(
     latest_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_latest.pt")
     val_epochs = 5 if args.dataset == "Parkland" else 3
     for epoch in range(classifier_config["lr_scheduler"]["train_epochs"]):
+        begin_time = time.time()
         if epoch > 0:
             logging.info("-" * 40 + f"Epoch {epoch}" + "-" * 40)
 
@@ -88,6 +90,8 @@ def supervised_train(
             if i % 200 == 0:
                 tb_writer.add_scalar("Train/Train loss", loss.item(), epoch * num_batches + i)
 
+        end_time = time.time()
+        logging.info(f"Epoch {epoch} takes {end_time - begin_time:.3f} s")
         # validation and logging
         if epoch % val_epochs == 0:
             train_loss = np.mean(train_loss_list)
