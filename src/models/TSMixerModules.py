@@ -23,7 +23,8 @@ class PatchTSMixerGatedAttention(nn.Module):
         self.attn_softmax = nn.Softmax(dim=-1)
 
     def forward(self, inputs):
-        attn_weight = self.attn_softmax(self.attn_layer(inputs))
+        atten_inputs = self.attn_layer(inputs)
+        attn_weight = self.attn_softmax(atten_inputs)
         inputs = inputs * attn_weight
         return inputs
 
@@ -84,9 +85,9 @@ class PatchTSMixerPositionalEncoding(nn.Module):
 
     def _init_pe(self, args) -> nn.Parameter:
         # Positional encoding
-        if self.config["use_positional_encoding"]== "random":
+        if self.config["positional_encoding_type"]== "random":
             position_enc = nn.Parameter(torch.randn(self.num_pathces, self.dim), requires_grad=True)
-        elif self.config["use_positional_encoding"] == "sincos":
+        elif self.config["positional_encoding_type"] == "sincos":
             position_enc = torch.zeros(self.num_patches, self.dim)
             position = torch.arange(0, self.num_patches).unsqueeze(1)
             div_term = torch.exp(torch.arange(0, self.dim, 2) * -(math.log(10000.0) / self.dim))

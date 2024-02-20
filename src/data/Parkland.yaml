@@ -184,35 +184,34 @@ TransformerV4:
                 freq_augmenters: ["phase_shift"]
 
 TSMixer:
-        dim: 256
+        dim: 8
         norm_eps: 0.01
         patch_length: 
-                audio: 40
-                seismic: 1
-        patch_stride:
-                audio: 500
                 seismic: 10
-        use_positional_encoding: "random"
-        num_layers: 5
+                audio: 20
+        patch_stride:
+                seismic: 10
+                audio: 20
+        use_positional_encoding: True
+        positional_encoding_type: "sincos"
+        num_layers: 3
         self_attn: True
         gated_attn: True
         expansion_factor: 4
         dropout: 0.2
-        self_attn_heads: 8
+        self_attn_heads: 1
         scaling_dim: 2
         minimum_scale: 0.000001
         default_scale: 1
         keepdim: True
         scaling: "no"
         post_init: True
-        mode: "mix_channel" # only mode supported
+        mode: "common_channel" # mix_channel or common_channel
         norm_mlp: "batch" # anything does not include batch
 
         head_aggregation: None
         output_range: None
         head_dropout: 0.2
-
-        context_length: 10
 
         # Optimizer config
         optimizer:
