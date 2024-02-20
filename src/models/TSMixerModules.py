@@ -681,7 +681,7 @@ class PatchTSMixerLinearHead(nn.Module):
         self.head_dropout = self.config["head_dropout"]
         
         # self.num_input_channels = sum([self.args.dataset_config["loc_mod_in_time_channels"][loc][mod]] for loc in args.dataset_config["location_names"] for mod in args.dataset_config["modality_names"])
-        self.num_input_channels = 1
+        self.num_input_channels = args.dataset_config["loc_mod_in_time_channels"][loc][mod]
         
         self.num_targets = self.args.dataset_config[args.task]["num_classes"]
 
@@ -1191,10 +1191,11 @@ class TSMixer(nn.Module):
                 else:
                     self.inject_scale[loc][mod] = None
         
-        total_patch_size = 0
-        for mod in self.modalities:
-            total_patch_size += get_num_patches(args, loc, mod)
-        self.class_layer = nn.Linear(total_patch_size, self.args.dataset_config[self.args.task]["num_classes"])
+        fc_dim = 0
+        for loc in self.locations:
+            for mod in self.modalities:
+                fc_dim += self.config["dim"] * self.args.dataset_config["loc_mod_in_time_channels"][loc][mod]
+        self.class_layer = nn.Linear(fc_dim, self.args.dataset_config[self.args.task]["num_classes"])
 
     def forward(self, loc_mod_input, output_hidden_states=False):
         
@@ -1220,8 +1221,10 @@ class TSMixer(nn.Module):
                         loc=model_output.loc,
                         scale=model_output.scale,
                     )
-                
+
+                last_hidden_state = last_hidden_state.transpose(-1, -2)
                 last_hidden_state = last_hidden_state.mean(-1)
+
                 mod_embeddings.append(last_hidden_state.flatten(start_dim=1))
         
         mod_embeddings = torch.cat(mod_embeddings, dim=1)

@@ -29,9 +29,9 @@ loc_mod_in_freq_channels:
                 Mag: 6
 loc_mod_in_time_channels:
         hand:
-                Acc: 6
-                Gyro: 6
-                Mag: 6
+                Acc: 3
+                Gyro: 3
+                Mag: 3
 loc_mod_spectrum_len:
         hand:
                 Acc: 40
@@ -152,6 +152,59 @@ TransformerV4:
         random_augmenters:
                 time_augmenters: ["no"]
                 freq_augmenters: ["no"]
+        fixed_augmenters:
+                time_augmenters: ["mixup"]
+                freq_augmenters: ["phase_shift"]
+
+TSMixer:
+        dim: 128
+        norm_eps: 0.01
+        patch_length: 
+                Acc: 4
+                Gyro: 4
+                Mag: 4
+        patch_stride:
+                Acc: 4
+                Gyro: 4
+                Mag: 4
+        use_positional_encoding: "random"
+        num_layers: 2
+        self_attn: True
+        gated_attn: True
+        expansion_factor: 4
+        dropout: 0.2
+        self_attn_heads: 8
+        scaling_dim: 2
+        minimum_scale: 0.000001
+        default_scale: 1
+        keepdim: True
+        scaling: "no"
+        post_init: True
+        mode: "mix_channel" # only mode supported
+        norm_mlp: "batch" # anything does not include batch
+
+        head_aggregation: None
+        output_range: None
+        head_dropout: 0.2
+
+        # Optimizer config
+        optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        # LR scheduler
+        lr_scheduler:
+                name: "step"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 500
+                start_epoch: 0
+                decay_epochs: 300
+                decay_rate: 0.2
+
         fixed_augmenters:
                 time_augmenters: ["mixup"]
                 freq_augmenters: ["phase_shift"]
