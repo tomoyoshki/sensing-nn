@@ -7,17 +7,17 @@ vehicle_classification:
         val_index_file: /home/sl29/data/Parkland/time_data_partition/val_index.txt  
         test_index_file: /home/sl29/data/Parkland/time_data_partition/test_index.txt 
 
-        train_index_file: /home/tkimura4/data/datasets/MOD/FOCAL_domain_shift_experiment/indices/GQ/train_index.txt 
-        val_index_file: /home/tkimura4/data/datasets/MOD/FOCAL_domain_shift_experiment/indices/GQ/val_index.txt  
-        test_index_file: /home/tkimura4/data/datasets/MOD/FOCAL_domain_shift_experiment/indices/GQ/test_index.txt
+        # train_index_file: /home/tkimura4/data/datasets/MOD/FOCAL_domain_shift_experiment/indices/GQ/train_index.txt 
+        # val_index_file: /home/tkimura4/data/datasets/MOD/FOCAL_domain_shift_experiment/indices/GQ/val_index.txt  
+        # test_index_file: /home/tkimura4/data/datasets/MOD/FOCAL_domain_shift_experiment/indices/GQ/test_index.txt
 
         # train_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day1/train_index.txt
         # val_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day1/val_index.txt
         # test_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day1/test_index.txt
 
-        train_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day2/train_index.txt
-        val_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day2/val_index.txt
-        test_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day2/test_index.txt
+        # train_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day2/train_index.txt
+        # val_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day2/val_index.txt
+        # test_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day2/test_index.txt
         # test_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day1/all_index.txt
         # test_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day2/all_index.txt
 
@@ -183,6 +183,58 @@ TransformerV4:
                 time_augmenters: ["mixup"]
                 freq_augmenters: ["phase_shift"]
 
+TSMixer:
+        dim: 256
+        norm_eps: 0.01
+        patch_length: 
+                audio: 40
+                seismic: 1
+        patch_stride:
+                audio: 500
+                seismic: 10
+        use_positional_encoding: "random"
+        num_layers: 5
+        self_attn: True
+        gated_attn: True
+        expansion_factor: 4
+        dropout: 0.2
+        self_attn_heads: 8
+        scaling_dim: 2
+        minimum_scale: 0.000001
+        default_scale: 1
+        keepdim: True
+        scaling: "no"
+        post_init: True
+        mode: "mix_channel" # only mode supported
+        norm_mlp: "batch" # anything does not include batch
+
+        head_aggregation: None
+        output_range: None
+        head_dropout: 0.2
+
+        context_length: 10
+
+        # Optimizer config
+        optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        # LR scheduler
+        lr_scheduler:
+                name: "step"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 500
+                start_epoch: 0
+                decay_epochs: 300
+                decay_rate: 0.2
+
+        fixed_augmenters:
+                time_augmenters: ["mixup"]
+                freq_augmenters: ["phase_shift"]
 SimCLR:
         emb_dim: 256
         temperature: 0.07

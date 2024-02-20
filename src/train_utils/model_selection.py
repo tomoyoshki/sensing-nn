@@ -8,6 +8,7 @@ from models.TransformerV3 import TransformerV3
 from models.TransformerV4 import TransformerV4
 from models.TransformerV4_CMC import TransformerV4_CMC
 from models.DeepSense_CMC import DeepSense_CMC
+from models.TSMixerModules import TSMixer
 
 # Contrastive Learning utils
 from models.DINOModules import DINO
@@ -63,6 +64,9 @@ def init_backbone_model(args):
             classifier = TransformerV4(args)
     elif args.model == "ResNet":
         classifier = ResNet(args)
+    
+    elif args.model == "TSMixer":
+        classifier = TSMixer(args)
     else:
         raise Exception(f"Invalid model provided: {args.model}")
 

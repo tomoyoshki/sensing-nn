@@ -38,6 +38,11 @@ class Augmenter:
 
     def forward(self, option, time_loc_inputs, labels=None, return_aug_id=False, return_aug_mods=False):
         """General interface for the forward function."""
+        for loc in time_loc_inputs:
+            for mod in time_loc_inputs[loc]:
+                if time_loc_inputs[loc][mod].dim() < 4:
+                    time_loc_inputs[loc][mod] = time_loc_inputs[loc][mod].reshape(time_loc_inputs[loc][mod].shape[0], 1, self.args.dataset_config["num_segments"], -1)
+
         # move to target device
         time_loc_inputs, labels = self.move_to_target_device(time_loc_inputs, labels)
 
@@ -55,10 +60,8 @@ class Augmenter:
         Add noise to the input_dict depending on the noise position.
         We only add noise to the time domeain, but not the feature level.
         """
-        for loc in time_loc_inputs:
-            for mod in time_loc_inputs[loc]:
-                if time_loc_inputs[loc][mod].dim() < 4:
-                    time_loc_inputs[loc][mod] = time_loc_inputs[loc][mod].reshape(time_loc_inputs[loc][mod].shape[0], 1, self.args.dataset_config["num_segments"], -1)
+        if self.args.model in {"TSMixer"}:
+            return time_loc_inputs, labels
 
         # time-domain augmentation
         augmented_time_loc_inputs, augmented_labels = time_loc_inputs, labels
@@ -123,6 +126,9 @@ class Augmenter:
         Add noise to the input_dict depending on the noise position.
         We only add noise to the time domeain, but not the feature level.
         """
+        if self.args.model in {"TSMixer"}:
+            return time_loc_inputs if labels is None else time_loc_inputs, labels
+
         # time --> freq domain with FFT
         freq_loc_inputs = self.fft_preprocess(time_loc_inputs)
 
