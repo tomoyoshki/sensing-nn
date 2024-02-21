@@ -70,12 +70,7 @@ def finetune(
         train_loss_list = []
         
         # choose one random sample idx:
-        random_idx = np.random.randint(0, len(train_dataloader))
         for i, (time_loc_inputs, labels, _) in tqdm(enumerate(train_dataloader), total=num_batches):
-            
-            if i != random_idx:
-                continue
-
             # move to target device, FFT, and augmentations
             aug_freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
 

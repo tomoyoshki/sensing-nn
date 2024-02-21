@@ -72,7 +72,6 @@ def supervised_train(
         for i, (time_loc_inputs, labels, _) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
             aug_freq_loc_inputs, labels = augmenter.forward("fixed", time_loc_inputs, labels)
-
             # forward pass
             logits = classifier(aug_freq_loc_inputs)
             loss = loss_func(logits, labels)

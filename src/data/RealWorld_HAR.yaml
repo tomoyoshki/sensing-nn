@@ -164,6 +164,104 @@ TransformerV4:
                 time_augmenters: ["mixup"]
                 freq_augmenters: ["phase_shift"]
 
+TSMixer:
+        dim: 64
+        norm_eps: 0.01
+        patch_length: 
+                acc: 8
+                gyr: 8
+                mag: 8
+                lig: 8
+        patch_stride:
+                acc: 4
+                gyr: 4
+                mag: 4
+                lig: 4 
+        use_positional_encoding: True
+        positional_encoding_type: "sincos"
+        num_layers: 3
+        self_attn: True
+        gated_attn: True
+        expansion_factor: 4
+        dropout: 0.2
+        self_attn_heads: 2
+        scaling_dim: 2
+        minimum_scale: 0.000001
+        default_scale: 1
+        keepdim: True
+        scaling: "no"
+        post_init: True
+        mode: "mix_channel" # mix_channel or common_channel
+        norm_mlp: "batch" # anything does not include batch
+
+        head_aggregation: None
+        output_range: None
+        head_dropout: 0.2
+
+        # Optimizer config
+        optimizer:
+                name: "AdamW"
+                start_lr: 0.00005
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        # LR scheduler
+        lr_scheduler:
+                name: "cosine"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 500
+                start_epoch: 0
+                decay_epochs: 100
+                decay_rate: 0.2
+
+        fixed_augmenters:
+                time_augmenters: ["mixup"]
+                freq_augmenters: ["phase_shift"]
+
+MLPMixer:
+        dim: 128
+        patch_size:
+                freq:
+                        acc: [1, 2]
+                        gyr: [1, 2]
+                        mag: [1, 2]
+                        lig: [1, 2]
+        in_stride:
+                acc: 1
+                gyr: 1
+                mag: 1
+                lig: 1 
+        
+        depth: 8
+        time_freq_out_channels: 64
+        token_dim: 256
+        channel_dim: 1024
+        dim: 512
+        fc_dim: 512
+        # Optimizer config
+        optimizer:
+                name: "AdamW"
+                start_lr: 0.00005
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        # LR scheduler
+        lr_scheduler:
+                name: "cosine"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 500
+                start_epoch: 0
+                decay_epochs: 100
+                decay_rate: 0.2
+
+        fixed_augmenters:
+                time_augmenters: ["mixup"]
+                freq_augmenters: ["phase_shift"]
+
 SimCLR:
         emb_dim: 256
         temperature: 0.07

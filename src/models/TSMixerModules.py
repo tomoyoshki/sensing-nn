@@ -1002,7 +1002,7 @@ class PatchTSMixerMeanScaler(nn.Module):
         self.scaling_dim = self.config["scaling_dim"]
         self.keepdim = self.config["keepdim"]
         self.minimum_scale = self.config["minimum_scale"]
-        self.default_scale = self.config["default_scale"]
+        self.default_scale = None
         
 
     def forward(self, data, observed_indicator):
@@ -1112,17 +1112,16 @@ class PatchTSMixerEncoder(nn.Module):
         return (last_hidden_state, hidden_states)
 
 class PatchTSMixerModel(nn.Module):
-    def __init__(self, args, loc, mod, mask_input=False):
+    def __init__(self, args, loc, mod):
         super().__init__()
 
+        self.args = args
         self.config = args.dataset_config["TSMixer"]
         self.patching = PatchTSMixerPatchify(args, loc, mod)
         self.encoder = PatchTSMixerEncoder(args, loc, mod)
 
-        if mask_input is True:
+        if self.args.learn_framework in {"MAE"}:
             self.masking = PatchTSMixerMasking(args, loc, mod)
-        else:
-            self.masking = None
 
         logging.info(f"=\t[PatchTSMixerModel] Initializing {self.config['scaling']} Scaler for {loc} {mod} PatchTSMixerModel")
         if self.config["scaling"] == "mean":
@@ -1145,8 +1144,6 @@ class PatchTSMixerModel(nn.Module):
         Returns:
 
         """
-
-        mask = None
         if observed_mask is None:
             observed_mask = torch.ones_like(x_input)
         scaled_past_values, loc, scale = self.scaler(x_input, observed_mask)
@@ -1154,14 +1151,14 @@ class PatchTSMixerModel(nn.Module):
         patched_x = self.patching(scaled_past_values)  # [batch_size x num_input_channels x num_patch x patch_length
 
         enc_input = patched_x
-        if self.masking is not None:
+        if self.args.learn_framework in {"MAE"}:
             enc_input, mask = self.masking(patched_x)
             # enc_input: [batch_size x num_input_channels x num_patch x patch_length]
             # mask: [batch_size x num_input_channels x num_patch]
 
-        encoder_output = self.encoder(enc_input)
+        last_hidden_state, hidden_states = self.encoder(enc_input)
         
-        return encoder_output
+        return last_hidden_state, hidden_states, loc, scale
 
 class TSMixer(nn.Module):
     def __init__(self, args):
@@ -1177,10 +1174,7 @@ class TSMixer(nn.Module):
         self.loc_mod_extractor = nn.ModuleDict()
         self.inject_scale = nn.ModuleDict()
         
-        
-        
-        # args.dataset_config["TSMixer"]["num_patches"] = (max(self.config["context_length"], self.config["patch_length"]) - self.config["patch_length"]) // self.config["patch_stride"] + 1
-        
+        self.dropout = nn.Dropout(self.config["head_dropout"])
         
         for loc in self.locations:
             self.loc_mod_extractor[loc] = nn.ModuleDict()
@@ -1208,23 +1202,23 @@ class TSMixer(nn.Module):
                 # Preprocess input to match the TSMixer input
                 loc_mod_input[loc][mod] = loc_mod_input[loc][mod] # [b, c, i, s]
                 loc_mod_input[loc][mod] = loc_mod_input[loc][mod].flatten(start_dim=2) # [b, c, i*s]
-                loc_mod_input[loc][mod] = torch.permute(loc_mod_input[loc][mod], (0, 2, 1)) # [b, i*s, c]
-
+                loc_mod_input[loc][mod] = torch.permute(loc_mod_input[loc][mod], (0, 2, 1)) # [b, i*s, c]                
                 model_output = self.loc_mod_extractor[loc][mod](
                     loc_mod_input[loc][mod]
                 )
                 
-                last_hidden_state, hidden_states = model_output
+                last_hidden_state, hidden_states, scale_loc, scale_scale = model_output
                 
-                if self.inject_scale[loc][mod] is not None:
+                if self.config["scaling"] in ["std", "mean", True]:
                     last_hidden_state = self.inject_scale[loc][mod](
                         last_hidden_state,
-                        loc=model_output.loc,
-                        scale=model_output.scale,
+                        loc=scale_loc,
+                        scale=scale_scale,
                     )
 
                 last_hidden_state = last_hidden_state.transpose(-1, -2)
                 last_hidden_state = last_hidden_state.mean(-1)
+                last_hidden_state = self.dropout(last_hidden_state)
 
                 mod_embeddings.append(last_hidden_state.flatten(start_dim=1))
         
