@@ -60,8 +60,8 @@ class Augmenter:
         Add noise to the input_dict depending on the noise position.
         We only add noise to the time domeain, but not the feature level.
         """
-        if self.args.model in {"TSMixer"}:
-            return time_loc_inputs, labels
+        # if self.args.model in {"TSMixer"}:
+            # return time_loc_inputs, labels
 
         # time-domain augmentation
         augmented_time_loc_inputs, augmented_labels = time_loc_inputs, labels
@@ -126,8 +126,8 @@ class Augmenter:
         Add noise to the input_dict depending on the noise position.
         We only add noise to the time domeain, but not the feature level.
         """
-        if self.args.model in {"TSMixer"}:
-            return time_loc_inputs if labels is None else time_loc_inputs, labels
+        # if self.args.model in {"TSMixer"}:
+            # return time_loc_inputs if labels is None else time_loc_inputs, labels
 
         # time --> freq domain with FFT
         freq_loc_inputs = self.fft_preprocess(time_loc_inputs)

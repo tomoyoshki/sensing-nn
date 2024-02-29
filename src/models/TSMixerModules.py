@@ -7,6 +7,8 @@ import torch.nn as nn
 
 import logging
 
+from models.FusionModules import MeanFusionBlock
+
 
 class PatchTSMixerGatedAttention(nn.Module):
     """
@@ -199,7 +201,7 @@ class PatchTSMixerChannelFeatureMixerBlock(nn.Module):
         self.norm = PatchTSMixerNormLayer(args)
         self.gated_attn = self.config["gated_attn"]
         
-        self.num_input_channels = self.args.dataset_config["loc_mod_in_time_channels"][loc][mod] #TODO: Change to num_input_channels
+        self.num_input_channels = self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod] #TODO: Change to num_input_channels
 
         self.mlp = PatchTSMixerMLP(self.num_input_channels, self.num_input_channels, args)
 
@@ -681,8 +683,8 @@ class PatchTSMixerLinearHead(nn.Module):
         self.dim = self.config["dim"]
         self.head_dropout = self.config["head_dropout"]
         
-        # self.num_input_channels = sum([self.args.dataset_config["loc_mod_in_time_channels"][loc][mod]] for loc in args.dataset_config["location_names"] for mod in args.dataset_config["modality_names"])
-        self.num_input_channels = args.dataset_config["loc_mod_in_time_channels"][loc][mod]
+        # self.num_input_channels = sum([self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]] for loc in args.dataset_config["location_names"] for mod in args.dataset_config["modality_names"])
+        self.num_input_channels = args.dataset_config["loc_mod_in_freq_channels"][loc][mod]
         
         self.num_targets = self.args.dataset_config[args.task]["num_classes"]
 
@@ -1176,27 +1178,39 @@ class TSMixer(nn.Module):
         
         self.dropout = nn.Dropout(self.config["head_dropout"])
         
+        self.mod_fusion_layers = nn.ModuleDict()
+        
         for loc in self.locations:
             self.loc_mod_extractor[loc] = nn.ModuleDict()
             self.inject_scale[loc] = nn.ModuleDict()
+            self.mod_fusion_layers[loc] = MeanFusionBlock()
             for mod in self.modalities:
                 self.loc_mod_extractor[loc][mod] = PatchTSMixerModel(args, loc, mod)
                 if self.config["scaling"] in ["std", "mean", True]:
                     self.inject_scale[loc][mod] = InjectScalerStatistics4D(args, loc, mod)
                 else:
                     self.inject_scale[loc][mod] = None
+                    
         
         fc_dim = 0
         for loc in self.locations:
             for mod in self.modalities:
-                fc_dim += self.config["dim"] * self.args.dataset_config["loc_mod_in_time_channels"][loc][mod]
-        self.class_layer = nn.Linear(fc_dim, self.args.dataset_config[self.args.task]["num_classes"])
+                fc_dim = self.config["dim"] * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]
+        
+        self.mod_layer_norm = nn.LayerNorm(fc_dim)
+        self.sample_embd_layer = nn.Sequential(
+            nn.Linear(fc_dim, self.config["fc_dim"]),
+            nn.GELU(),
+        )
+        self.class_layer = nn.Linear(self.config["fc_dim"], self.args.dataset_config[self.args.task]["num_classes"])
 
-    def forward(self, loc_mod_input, output_hidden_states=False):
+    def forward(self, loc_mod_input):
         
         
-        mod_embeddings = []
+        # mod_embeddings = []
+        loc_mod_features = {}
         for loc in self.locations:
+            loc_mod_features[loc] = []
             for mod in self.modalities:
                 
                 # Preprocess input to match the TSMixer input
@@ -1220,10 +1234,23 @@ class TSMixer(nn.Module):
                 last_hidden_state = last_hidden_state.mean(-1)
                 last_hidden_state = self.dropout(last_hidden_state)
 
-                mod_embeddings.append(last_hidden_state.flatten(start_dim=1))
+                # mod_embeddings.append(last_hidden_state.flatten(start_dim=1))
+                loc_mod_features[loc].append(last_hidden_state.flatten(start_dim=1))
+            loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=-1)
         
-        mod_embeddings = torch.cat(mod_embeddings, dim=1)
-        logits = self.class_layer(mod_embeddings)        
+        loc_embeddings = []
+        for loc in self.locations:
+            
+            loc_mod_features[loc] = loc_mod_features[loc].unsqueeze(-2) # [b, c, 1, sensors]
+            fused_embedding = self.mod_fusion_layers[loc](loc_mod_features[loc]).flatten(start_dim=1)
+            loc_embeddings.append(fused_embedding)
+        
+        loc_embeddings = torch.stack(loc_embeddings, dim=-1).flatten(start_dim=1) # ignore multi-loc
+        
+        # mod_embeddings = torch.cat(mod_embeddings, dim=1)
+        loc_embeddings = self.mod_layer_norm(loc_embeddings)
+        logits = self.sample_embd_layer(loc_embeddings)
+        logits = self.class_layer(logits)
         return logits
 
 

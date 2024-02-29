@@ -198,6 +198,7 @@ TSMixer:
         head_aggregation: None
         output_range: None
         head_dropout: 0.2
+        fc_dim: 512
 
         # Optimizer config
         optimizer:

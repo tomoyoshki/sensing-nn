@@ -129,7 +129,9 @@ class DeepSense(nn.Module):
         # Step 2: Feature fusion for different mods in the same location
         fused_loc_features = dict()
         for loc in self.locations:
+            print(f"loc_mod_features[loc].shape: {loc_mod_features[loc].shape}")
             fused_loc_features[loc] = self.mod_fusion_layers[loc](loc_mod_features[loc])
+            print(f"fused_loc_features[loc].shape: {fused_loc_features[loc].shape}")
 
         # Step 3: Feature extraction for each location
         extracted_loc_features = dict()

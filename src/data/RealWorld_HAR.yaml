@@ -165,7 +165,7 @@ TransformerV4:
                 freq_augmenters: ["phase_shift"]
 
 TSMixer:
-        dim: 64
+        dim: 32
         norm_eps: 0.01
         patch_length: 
                 acc: 8
@@ -173,10 +173,10 @@ TSMixer:
                 mag: 8
                 lig: 8
         patch_stride:
-                acc: 4
-                gyr: 4
-                mag: 4
-                lig: 4 
+                acc: 8 # same as patch_length for non-overlapping patches
+                gyr: 8
+                mag: 8
+                lig: 8
         use_positional_encoding: True
         positional_encoding_type: "sincos"
         num_layers: 3
@@ -197,6 +197,8 @@ TSMixer:
         head_aggregation: None
         output_range: None
         head_dropout: 0.2
+
+        fc_dim: 512
 
         # Optimizer config
         optimizer:

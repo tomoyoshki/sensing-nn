@@ -164,9 +164,9 @@ TSMixer:
                 Gyro: 8
                 Mag: 8
         patch_stride:
-                Acc: 4
-                Gyro: 4
-                Mag: 4
+                Acc: 8
+                Gyro: 8
+                Mag: 8
         use_positional_encoding: True
         positional_encoding_type: "sincos"
         num_layers: 3
@@ -187,7 +187,9 @@ TSMixer:
         head_aggregation: None
         output_range: None
         head_dropout: 0.2
-
+        
+        fc_dim: 512
+        
         # Optimizer config
         optimizer:
                 name: "AdamW"
