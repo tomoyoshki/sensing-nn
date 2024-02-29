@@ -1202,13 +1202,27 @@ class TSMixer(nn.Module):
             nn.Linear(fc_dim, self.config["fc_dim"]),
             nn.GELU(),
         )
-        self.class_layer = nn.Linear(self.config["fc_dim"], self.args.dataset_config[self.args.task]["num_classes"])
+        
+        if self.args.learn_framework in {"CMCV2"}:
+            out_dim = self.args.dataset_config["CMCV2"]["emb_dim"]
+            self.mod_projectors = nn.ModuleDict()
+            for mod in self.modalities:
+                mod_dim = self.config["dim"] * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]
+                self.mod_projectors[mod] = nn.Sequential(
+                    nn.Linear(mod_dim, out_dim),
+                    nn.ReLU(),
+                    nn.Linear(out_dim, out_dim),
+                )
+        
+        if self.args.train_mode == "supervised":
+            self.class_layer = nn.Linear(self.config["fc_dim"], self.args.dataset_config[self.args.task]["num_classes"])
 
-    def forward(self, loc_mod_input):
+    def forward(self, loc_mod_input, class_head=True, proj_head=False):
         
         
         # mod_embeddings = []
         loc_mod_features = {}
+        mod_loc_features = {mod: [] for mod in self.modalities}
         for loc in self.locations:
             loc_mod_features[loc] = []
             for mod in self.modalities:
@@ -1236,19 +1250,40 @@ class TSMixer(nn.Module):
 
                 # mod_embeddings.append(last_hidden_state.flatten(start_dim=1))
                 loc_mod_features[loc].append(last_hidden_state.flatten(start_dim=1))
+                mod_loc_features[mod].append(last_hidden_state.flatten(start_dim=1))
+
             loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=-1)
         
-        loc_embeddings = []
-        for loc in self.locations:
-            
-            loc_mod_features[loc] = loc_mod_features[loc].unsqueeze(-2) # [b, c, 1, sensors]
-            fused_embedding = self.mod_fusion_layers[loc](loc_mod_features[loc]).flatten(start_dim=1)
-            loc_embeddings.append(fused_embedding)
+
+        for mod in self.modalities:
+            mod_loc_features[mod] = torch.stack(mod_loc_features[mod], dim=-1).flatten(start_dim=1)
+        mod_features = []
+        for mod in self.modalities:
+            mod_features.append(mod_loc_features[mod])
         
-        loc_embeddings = torch.stack(loc_embeddings, dim=-1).flatten(start_dim=1) # ignore multi-loc
+        if not class_head:
+            """Pretrainin"""
+            if self.args.learn_framework not in {"CMCV2"}:
+                raise ValueError(f"Invalid learn_framework {self.args.learn_framework}")
+            if proj_head:
+                sample_features = {}
+                for i, mod in enumerate(self.modalities):
+                    sample_features[mod] = self.mod_projectors[mod](mod_features[i])
+                return sample_features
+            return dict(zip(self.modalities, mod_features))
+        
+        
+
+            
+        #     loc_mod_features[loc] = loc_mod_features[loc].unsqueeze(-2) # [b, c, 1, sensors]
+        #     fused_embedding = self.mod_fusion_layers[loc](loc_mod_features[loc]).flatten(start_dim=1)
+        #     loc_embeddings.append(fused_embedding)
+        
+        # loc_embeddings = torch.stack(loc_embeddings, dim=-1).flatten(start_dim=1) # ignore multi-loc
         
         # mod_embeddings = torch.cat(mod_embeddings, dim=1)
         loc_embeddings = self.mod_layer_norm(loc_embeddings)
+        
         logits = self.sample_embd_layer(loc_embeddings)
         logits = self.class_layer(logits)
         return logits

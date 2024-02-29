@@ -7,9 +7,9 @@ vehicle_classification:
         val_index_file: /home/sl29/data/Parkland/time_data_partition/val_index.txt  
         test_index_file: /home/sl29/data/Parkland/time_data_partition/test_index.txt 
 
-        train_index_file: /home/tkimura4/data/datasets/MOD/FOCAL_domain_shift_experiment/indices/GQ/train_index.txt 
-        val_index_file: /home/tkimura4/data/datasets/MOD/FOCAL_domain_shift_experiment/indices/GQ/val_index.txt  
-        test_index_file: /home/tkimura4/data/dawwwwtasets/MOD/FOCAL_domain_shift_experiment/indices/GQ/test_index.txt
+        # train_index_file: /home/tkimura4/data/datasets/MOD/FOCAL_domain_shift_experiment/indices/GQ/train_index.txt 
+        # val_index_file: /home/tkimura4/data/datasets/MOD/FOCAL_domain_shift_experiment/indices/GQ/val_index.txt  
+        # test_index_file: /home/tkimura4/data/datasets/MOD/FOCAL_domain_shift_experiment/indices/GQ/test_index.txt
 
         gq1_train_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day1/train_index.txt
         gq1_val_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day1/val_index.txt
@@ -255,11 +255,11 @@ TSMixer:
         dim: 128
         norm_eps: 0.01
         patch_length: 
-                seismic: 1
-                audio: 80
+                seismic: 20
+                audio: 160
         patch_stride:
-                seismic: 1
-                audio: 80
+                seismic: 20
+                audio: 160
         use_positional_encoding: True
         positional_encoding_type: "sincos"
         num_layers: 3
@@ -470,6 +470,7 @@ CMCV2:
         temperature: 
                 TransformerV4: 0.07
                 DeepSense: 0.5
+                TSMixer: 0.07
         ranking_margin: 0.0
         inter_rank_margin: 1
         intra_rank_margin: 0.05
@@ -503,6 +504,7 @@ CMCV2:
                 weight_decay:  
                         TransformerV4: 0.005
                         DeepSense: 0.005
+                        TSMixer: 0.005
                 decay_rate: 0.2
         finetune_lr_scheduler:
                 name: "cosine"

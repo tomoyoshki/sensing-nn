@@ -18,6 +18,20 @@ def create_dataloader(dataloader_option, args, batch_size=64, workers=5):
         data_path (_type_): _description_
         workers (_type_): _description_
     """
+    # get the training file prefix
+    index_prefix = None
+    if args.train_mode in {"supervised"} and args.tag is not None and args.tag != "":
+        index_prefix = args.tag.split("_")[0]
+    elif args.train_mode in {"contrastive", "generative"} and args.stage == "finetune" and args.option != "test" and args.finetune_tag is not None and args.finetune_tag != "":
+        index_prefix = args.finetune_tag.split("_")[0]
+    elif args.option == "test" and args.test_tag is not None and args.test_tag != "":
+        index_prefix = args.test_tag.split("_")[0]
+    
+    if index_prefix is not None:
+        index_prefix = f"{index_prefix}_"
+    else:
+        index_prefix = ""
+
     # select the index file
     label_ratio = 1
     if dataloader_option == "train":
@@ -26,13 +40,14 @@ def create_dataloader(dataloader_option, args, batch_size=64, workers=5):
             index_file = args.dataset_config["pretrain_index_file"]
         else:
             """supervised training"""
-            index_file = args.dataset_config[args.task]["train_index_file"]
+            index_file = args.dataset_config[args.task][f"{index_prefix}train_index_file"]
             label_ratio = args.label_ratio
     elif dataloader_option == "val":
-        index_file = args.dataset_config[args.task]["val_index_file"]
+        index_file = args.dataset_config[args.task][f"{index_prefix}val_index_file"]
     else:
-        index_file = args.dataset_config[args.task]["test_index_file"]
+        index_file = args.dataset_config[args.task][f"{index_prefix}test_index_file"]
 
+    logging.info(f"=\tLoading {dataloader_option} dataloader index file from: {index_file}")
     # init the flags
     balanced_sample_flag = (
         args.balanced_sample
