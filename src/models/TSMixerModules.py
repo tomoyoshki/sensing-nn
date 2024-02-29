@@ -1178,12 +1178,11 @@ class TSMixer(nn.Module):
         
         self.dropout = nn.Dropout(self.config["head_dropout"])
         
-        self.mod_fusion_layers = nn.ModuleDict()
+        self.mod_fusion_layers = MeanFusionBlock()
         
         for loc in self.locations:
             self.loc_mod_extractor[loc] = nn.ModuleDict()
             self.inject_scale[loc] = nn.ModuleDict()
-            self.mod_fusion_layers[loc] = MeanFusionBlock()
             for mod in self.modalities:
                 self.loc_mod_extractor[loc][mod] = PatchTSMixerModel(args, loc, mod)
                 if self.config["scaling"] in ["std", "mean", True]:
@@ -1214,17 +1213,17 @@ class TSMixer(nn.Module):
                     nn.Linear(out_dim, out_dim),
                 )
         
-        if self.args.train_mode == "supervised":
-            self.class_layer = nn.Linear(self.config["fc_dim"], self.args.dataset_config[self.args.task]["num_classes"])
+        # if self.args.train_mode == "supervised":
+        self.class_layer = nn.Linear(self.config["fc_dim"], self.args.dataset_config[self.args.task]["num_classes"])
 
     def forward(self, loc_mod_input, class_head=True, proj_head=False):
         
         
         # mod_embeddings = []
-        loc_mod_features = {}
+        # loc_mod_features = {}
         mod_loc_features = {mod: [] for mod in self.modalities}
         for loc in self.locations:
-            loc_mod_features[loc] = []
+            # loc_mod_features[loc] = []
             for mod in self.modalities:
                 
                 # Preprocess input to match the TSMixer input
@@ -1249,10 +1248,10 @@ class TSMixer(nn.Module):
                 last_hidden_state = self.dropout(last_hidden_state)
 
                 # mod_embeddings.append(last_hidden_state.flatten(start_dim=1))
-                loc_mod_features[loc].append(last_hidden_state.flatten(start_dim=1))
+                # loc_mod_features[loc].append(last_hidden_state.flatten(start_dim=1))
                 mod_loc_features[mod].append(last_hidden_state.flatten(start_dim=1))
 
-            loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=-1)
+            # loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=-1)
         
 
         for mod in self.modalities:
@@ -1275,14 +1274,11 @@ class TSMixer(nn.Module):
         
 
             
-        #     loc_mod_features[loc] = loc_mod_features[loc].unsqueeze(-2) # [b, c, 1, sensors]
-        #     fused_embedding = self.mod_fusion_layers[loc](loc_mod_features[loc]).flatten(start_dim=1)
-        #     loc_embeddings.append(fused_embedding)
+        mod_features = torch.stack(mod_features, dim=-1) # [b, c] -> [b, c, sensors]
+        mod_features = mod_features.unsqueeze(-2) # [b, c, 1, sensors]
+        fused_features = self.mod_fusion_layers(mod_features).flatten(start_dim=1) # [b, c, 1, sensors] -> [b, c]
         
-        # loc_embeddings = torch.stack(loc_embeddings, dim=-1).flatten(start_dim=1) # ignore multi-loc
-        
-        # mod_embeddings = torch.cat(mod_embeddings, dim=1)
-        loc_embeddings = self.mod_layer_norm(loc_embeddings)
+        loc_embeddings = self.mod_layer_norm(fused_features)
         
         logits = self.sample_embd_layer(loc_embeddings)
         logits = self.class_layer(logits)
