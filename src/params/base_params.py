@@ -188,6 +188,20 @@ def parse_base_args(option="train"):
         default="false",
         help="Whether to use gcq alignment.",
     )
+    
+    parser.add_argument(
+        "-test_tag",
+        type=str,
+        default=None,
+        help="Specify the test tag.",
+    )
+    
+    parser.add_argument(
+        "-output_conf",
+        type=str,
+        default="false",
+        help="Whether to output the confusion matrix",
+    )
 
     args = parser.parse_args()
 

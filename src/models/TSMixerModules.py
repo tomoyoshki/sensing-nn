@@ -191,7 +191,6 @@ class PatchTSMixerChannelFeatureMixerBlock(nn.Module):
         config (`PatchTSMixerConfig`, *required*):
             Configuration.
     """
-
     def __init__(self, args, loc, mod):
         super().__init__()
         
@@ -435,13 +434,6 @@ class PatchMixerBlock(nn.Module):
             self.norm_attn = PatchTSMixerNormLayer(args)
 
     def forward(self, hidden_state):
-        """
-        Args:
-            hidden_state (`torch.Tensor`): Input tensor.
-
-        Returns:
-            `torch.Tensor`: Transformed tensor.
-        """
         residual = hidden_state
 
         hidden_state = self.norm(hidden_state)
@@ -600,69 +592,6 @@ class PatchTSMixerBlock(nn.Module):
             return embedding, None
 
 
-class PatchTSMixerForPredictionHead(nn.Module):
-    """Prediction Head for Forecasting
-
-    Args:
-        config (`PatchTSMixerConfig`, *required*): Configuration.
-    """
-
-    def __init__(self, args, loc, mod, distribution_output=None):
-        super().__init__()
-
-        self.args = args
-        self.config = args.dataset_config["TSMixer"]
-        
-        
-        self.prediction_channel_indices = self.config["prediction_channel_indices"]
-
-        if self.prediction_channel_indices is not None:
-            self.prediction_channel_indices.sort()
-
-
-        self.dropout_layer = nn.Dropout(self.config["head_dropout"])
-        self.num_patches = get_num_patches(args, loc, mod)
-        self.dim = self.config["dim"]
-        self.prediction_length = self.config["prediction_length"]
-        if distribution_output is None:
-            self.base_forecast_block = nn.Linear((self.num_patches * self.dim), self.prediction_length)
-        else:
-            self.base_forecast_block = distribution_output.get_parameter_projection(
-                self.num_patches * self.dim
-            )
-
-        self.flatten = nn.Flatten(start_dim=-2)
-
-    def forward(self, hidden_features):
-        """
-
-        Args:
-            hidden_features (`torch.Tensor` of shape `(batch_size, num_patch, d_model)` in `flatten` mode
-                or `(batch_size, n_vars, num_patch, d_model)` in `common_channel`/`mix_channel` mode.): Input hidden
-                features.
-
-        Returns:
-            `torch.Tensor` of shape `(batch_size, prediction_length, nvars)`.
-
-        """
-
-        hidden_features = self.flatten(hidden_features)  # [batch_size x n_vars x num_patch * d_model]
-        hidden_features = self.dropout_layer(hidden_features)  # [batch_size x n_vars x num_patch * d_model]
-        forecast = self.base_forecast_block(hidden_features)  # [batch_size x n_vars x prediction_length]
-        if isinstance(forecast, tuple):
-            forecast = tuple(z.transpose(-1, -2) for z in forecast)
-        else:
-            forecast = forecast.transpose(-1, -2)  # [batch_size x prediction_length x n_vars]
-
-        if self.prediction_channel_indices is not None:
-            if isinstance(forecast, tuple):
-                forecast = tuple(z[..., self.prediction_channel_indices] for z in forecast)
-            else:
-                forecast = forecast[..., self.prediction_channel_indices]  # [batch_size x prediction_length x n_vars]
-
-        return forecast
-
-
 class PatchTSMixerLinearHead(nn.Module):
     """Linear head for Classification and Regression.
 
@@ -746,13 +675,6 @@ class PatchTSMixerLinearHead(nn.Module):
 
 
 class PatchTSMixerPretrainHead(nn.Module):
-    """Pretraining head.
-
-    Args:
-        config (`PatchTSMixerConfig`, *required*):
-            Configuration.
-    """
-
     def __init__(self, args, loc, mod):
         super().__init__()
         
@@ -870,7 +792,7 @@ class PatchTSMixerPatchify(nn.Module):
     def forward(self, x_input):
         """
         Parameters:
-            past_values (`torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`, *required*):
+            x_input (`torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`, *required*):
                 Input for patchification
 
         Returns:
@@ -1136,16 +1058,6 @@ class PatchTSMixerModel(nn.Module):
         logging.info(f"=\t[PatchTSMixerModel] Initialized PatchTSMixerModel")
 
     def forward(self, x_input, observed_mask=None):
-        r"""
-        observed_mask (`torch.FloatTensor` of shape `(batch_size, sequence_length, num_input_channels)`, *optional*):
-            Boolean mask to indicate which `past_values` were observed and which were missing. Mask values selected
-            in `[0, 1]`:
-                - 1 for values that are **observed**,
-                - 0 for values that are **missing** (i.e. NaNs that were replaced by zeros).
-
-        Returns:
-
-        """
         if observed_mask is None:
             observed_mask = torch.ones_like(x_input)
         scaled_past_values, loc, scale = self.scaler(x_input, observed_mask)
@@ -1243,8 +1155,11 @@ class TSMixer(nn.Module):
                         scale=scale_scale,
                     )
 
+                # [b, c, n, dim] -> [b, c, dim, n]
                 last_hidden_state = last_hidden_state.transpose(-1, -2)
+                # [b, c, dim, n] -> [b, c, dim]
                 last_hidden_state = last_hidden_state.mean(-1)
+                
                 last_hidden_state = self.dropout(last_hidden_state)
 
                 # mod_embeddings.append(last_hidden_state.flatten(start_dim=1))
@@ -1273,15 +1188,19 @@ class TSMixer(nn.Module):
         
         
 
-            
-        mod_features = torch.stack(mod_features, dim=-1) # [b, c] -> [b, c, sensors]
-        mod_features = mod_features.unsqueeze(-2) # [b, c, 1, sensors]
-        fused_features = self.mod_fusion_layers(mod_features).flatten(start_dim=1) # [b, c, 1, sensors] -> [b, c]
         
-        loc_embeddings = self.mod_layer_norm(fused_features)
+        if self.args.train_mode == "supervised":
+            """Supervised Learning"""
+            mod_features = torch.stack(mod_features, dim=-1) # [b, c] -> [b, c, sensors]
+            mod_features = mod_features.unsqueeze(-2) # [b, c, 1, sensors]
+            fused_features = self.mod_fusion_layers(mod_features).flatten(start_dim=1) # [b, c, 1, sensors] -> [b, c]
+            loc_embeddings = self.mod_layer_norm(fused_features)
+            mod_features = self.sample_embd_layer(loc_embeddings)
+        elif self.args.train_mode in {"contrastive", "generative"}:
+            mod_features = torch.cat(mod_features, dim=-1)
         
-        logits = self.sample_embd_layer(loc_embeddings)
-        logits = self.class_layer(logits)
+        # mod_features = torch.cat(mod_features, dim=-1)
+        logits = self.class_layer(mod_features)
         return logits
 
 

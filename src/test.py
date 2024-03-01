@@ -1,6 +1,7 @@
 import os
 import warnings
 
+
 warnings.simplefilter("ignore", UserWarning)
 
 import torch.nn as nn
@@ -12,6 +13,7 @@ from params.test_params import parse_test_params
 from input_utils.multi_modal_dataloader import create_dataloader
 from train_utils.eval_functions import eval_supervised_model
 from train_utils.model_selection import init_backbone_model
+from output_utils.plot_confusion_matrix import plot_confusion_matrix
 
 
 def test(args):
@@ -58,6 +60,9 @@ def test(args):
         print(f"Test classifier loss: {test_classifier_loss: .5f}")
         print(f"Test acc: {test_metrics[0]: .5f}, test f1: {test_metrics[1]: .5f}")
         print(f"Test confusion matrix:\n {test_metrics[2]}")
+        
+        if args.output_conf:
+            plot_confusion_matrix(args, test_metrics[2])
 
         return test_classifier_loss, test_metrics[0], test_metrics[1]
 

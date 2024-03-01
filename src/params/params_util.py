@@ -204,6 +204,7 @@ def set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=Non
     args.balanced_sample = str_to_bool(args.balanced_sample) and args.dataset in {"ACIDS", "Parkland_Miata"}
     args.sequence_sampler = True if args.learn_framework in {"CMCV2", "TS2Vec", "TS2Vec", "TNC", "TSTCC", "InfoMAE", "MultMod"} else False
     args.debug = str_to_bool(args.debug)
+    args.output_conf = str_to_bool(args.output_conf)
 
     # threshold
     args.threshold = 0.5

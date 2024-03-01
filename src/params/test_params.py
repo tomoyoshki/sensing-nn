@@ -6,5 +6,7 @@ def parse_test_params():
     """Parse the testing params."""
     args = parse_base_args("test")
     args = set_auto_params(args)
+    if args.test_tag is None:
+        args.test_tag = ""
 
     return args
