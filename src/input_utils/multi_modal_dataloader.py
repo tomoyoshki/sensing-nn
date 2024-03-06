@@ -20,10 +20,13 @@ def create_dataloader(dataloader_option, args, batch_size=64, workers=5):
     """
     # get the training file prefix
     index_prefix = None
-    if args.train_mode in {"supervised"} and args.tag is not None and args.tag != "":
+    if args.train_mode in {"supervised"} and args.tag is not None and args.tag != "" and args.option != "test" and args.stage == "train":
         index_prefix = args.tag.split("_")[0]
-    elif args.train_mode in {"contrastive", "generative"} and args.stage == "finetune" and args.option != "test" and args.finetune_tag is not None and args.finetune_tag != "":
+    elif args.stage == "finetune" and args.option != "test" and args.finetune_tag is not None and args.finetune_tag != "":
         index_prefix = args.finetune_tag.split("_")[0]
+        if "gq" in index_prefix:
+            logging.info(f"=\tUsing GQ dataset for finetuning")
+            args.dataset_config["num_classes"] = 4
     elif args.option == "test" and args.test_tag is not None and args.test_tag != "":
         index_prefix = args.test_tag.split("_")[0]
     
