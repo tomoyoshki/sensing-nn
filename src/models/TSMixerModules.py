@@ -1191,6 +1191,7 @@ class TSMixer(nn.Module):
         
         if self.args.train_mode == "supervised":
             """Supervised Learning"""
+            # mod_features = torch.cat(mod_features, dim=-1) # [b, c] -> [b, c, sensors]
             mod_features = torch.stack(mod_features, dim=-1) # [b, c] -> [b, c, sensors]
             mod_features = mod_features.unsqueeze(-2) # [b, c, 1, sensors]
             fused_features = self.mod_fusion_layers(mod_features).flatten(start_dim=1) # [b, c, 1, sensors] -> [b, c]

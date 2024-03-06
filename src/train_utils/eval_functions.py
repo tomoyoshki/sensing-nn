@@ -111,7 +111,7 @@ def eval_pretrained_model(args, default_model, estimator, augmenter, dataloader,
         for time_loc_inputs, label, index in tqdm(dataloader, total=len(dataloader)):
             """Move idx to target device, save label"""
             index = index.to(args.device)
-            label = label.argmax(dim=1, keepdim=False) if label.dim() > 1 else label
+            label = label.argmax(dim=1, keepdim=False) if label.dim() > 1 and label.shape[1] > 1 else label.reshape(-1)
             labels.append(label.cpu().numpy())
 
             """Eval pretrain loss."""

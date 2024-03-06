@@ -14,6 +14,7 @@ from input_utils.multi_modal_dataloader import create_dataloader
 from train_utils.eval_functions import eval_supervised_model
 from train_utils.model_selection import init_backbone_model
 from output_utils.plot_confusion_matrix import plot_confusion_matrix
+from general_utils.size_utils import get_model_memory_size, get_model_parameter_count, get_model_size
 
 
 def test(args):
@@ -50,6 +51,9 @@ def test(args):
             if param.requires_grad:
                 print(name)
 
+    print(f"{args.model} + {args.learn_framework} size")
+    get_model_size(classifier)
+    
     test_classifier_loss, test_metrics = eval_supervised_model(
         args, classifier, augmenter, test_dataloader, classifier_loss_func
     )

@@ -61,7 +61,7 @@ DeepSense:
         loc_mod_conv_inter_layers: 4
         # single interval + location
         loc_conv_lens: [[1, 4], [1, 4], [1, 4]]
-        loc_out_channels: 128
+        loc_out_channels: 256
         loc_conv_inter_layers: 3
         # recurrent layer
         recurrent_dim: 256
@@ -173,10 +173,10 @@ TSMixer:
                 mag: 8
                 lig: 8
         patch_stride:
-                acc: 8 # same as patch_length for non-overlapping patches
-                gyr: 8
-                mag: 8
-                lig: 8
+                acc: 4 # same as patch_length for non-overlapping patches
+                gyr: 4
+                mag: 4
+                lig: 4
         use_positional_encoding: True
         positional_encoding_type: "sincos"
         num_layers: 3

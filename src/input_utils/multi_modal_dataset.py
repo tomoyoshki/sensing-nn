@@ -50,6 +50,14 @@ class MultiModalDataset(Dataset):
         self.epoch_len = int(np.max(label_count) * len(label_count))
         for sample_label in sample_labels:
             self.sample_weights.append(1 / label_count[sample_label])
+        
+        
+        self.label_dict = {
+            "gle350": 7,
+            "miata": 8,
+            "cx30": 9,
+            "mustang": 5,
+        }
 
     def __len__(self):
         return len(self.sample_files)
@@ -72,7 +80,16 @@ class MultiModalDataset(Dataset):
                 raise ValueError(f"Unknown task: {self.args.task}")
         else:
             label = sample["label"]
+        
+        if isinstance(label, str):
+            if label not in self.label_dict:
+                print(f"Label not in the dictionary: {label}")
+            label = self.label_dict[label]
 
+        for loc in data:
+            for mod in data[loc]:
+                if data[loc][mod].ndim == 2:
+                    data[loc][mod] = data[loc][mod].unsqueeze(0)  
         return data, label, idx
 
 
@@ -152,7 +169,29 @@ class MultiModalSequenceDataset(Dataset):
                 raise ValueError(f"Unknown task: {self.args.task}")
         else:
             label = sample["label"]
+        
+        self.label_dict = {
+            "gle350": 7,
+            "miata": 8,
+            "cx30": 9,
+            "mustang": 5,
+        }
+        
+        if isinstance(label, str):
+            if label not in self.label_dict:
+                print(f"Label not in the dictionary: {label}")
+            label = self.label_dict[label]
+            label = torch.LongTensor([label]).long()
 
+        label = label.float()
+        label = label.unsqueeze(0).reshape(1)
+        # print(label.shape)
+        # print(type(label))
+        for loc in data:
+            for mod in data[loc]:
+                if data[loc][mod].ndim == 2:
+                    data[loc][mod] = torch.from_numpy(data[loc][mod]).unsqueeze(0).float()
+                    
         return data, label, sample_idx
 
 

@@ -1,11 +1,16 @@
 # data paths  
-pretrain_index_file: /home/sl29/data/Parkland/time_data_partition/pretrain_index.txt 
+# pretrain_index_file: /home/sl29/data/Parkland/time_data_partition/pretrain_index.txt 
+pretrain_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/pretrain_index.txt
 vehicle_classification:
         num_classes: 7  # number of classes
-        class_names: ["Polaris", "Warhog", "Truck", "motor", "tesla", "mustang", "walk"]
+        class_names: ["Polaris", "Warhog", "Truck", "motor", "tesla", "mustang", "walk", "gle350", "miata", "cs30"]
+        # train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
+        # val_index_file: /home/sl29/data/Parkland/time_data_partition/val_index.txt  
+        # test_index_file: /home/sl29/data/Parkland/time_data_partition/test_index.txt 
+
         train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
-        val_index_file: /home/sl29/data/Parkland/time_data_partition/val_index.txt  
-        test_index_file: /home/sl29/data/Parkland/time_data_partition/test_index.txt 
+        val_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/val_index.txt
+        test_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/test_index.txt
 
         parkland_train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
         parkland_val_index_file: /home/sl29/data/Parkland/time_data_partition/val_index.txt  
