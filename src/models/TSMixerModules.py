@@ -1106,7 +1106,7 @@ class TSMixer(nn.Module):
         fc_dim = 0
         for loc in self.locations:
             for mod in self.modalities:
-                fc_dim = self.config["dim"] * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]
+                fc_dim += self.config["dim"] * self.args.dataset_config["loc_mod_in_freq_channels"][loc][mod]
         
         self.mod_layer_norm = nn.LayerNorm(fc_dim)
         self.sample_embd_layer = nn.Sequential(
@@ -1124,9 +1124,9 @@ class TSMixer(nn.Module):
                     nn.ReLU(),
                     nn.Linear(out_dim, out_dim),
                 )
-        
-        # if self.args.train_mode == "supervised":
-        self.class_layer = nn.Linear(self.config["fc_dim"], self.args.dataset_config[self.args.task]["num_classes"])
+            self.class_layer = nn.Linear(fc_dim, self.args.dataset_config[self.args.task]["num_classes"])
+        else:
+            self.class_layer = nn.Linear(self.config["fc_dim"], self.args.dataset_config[self.args.task]["num_classes"])
 
     def forward(self, loc_mod_input, class_head=True, proj_head=False):
         

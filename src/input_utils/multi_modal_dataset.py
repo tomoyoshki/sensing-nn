@@ -29,12 +29,21 @@ class MultiModalDataset(Dataset):
         self.args = args
         self.sample_files = list(np.loadtxt(index_file, dtype=str))
 
+
+        self.label_dict = {
+            "gle350": 7,
+            "miata": 8,
+            "cx30": 9,
+            "mustang": 5,
+        }
+        
         if label_ratio < 1:
             shuffle(self.sample_files)
             self.sample_files = self.sample_files[: round(len(self.sample_files) * label_ratio)]
 
         if balanced_sample:
             self.load_sample_labels()
+            
 
     def load_sample_labels(self):
         sample_labels = []
@@ -52,12 +61,7 @@ class MultiModalDataset(Dataset):
             self.sample_weights.append(1 / label_count[sample_label])
         
         
-        self.label_dict = {
-            "gle350": 7,
-            "miata": 8,
-            "cx30": 9,
-            "mustang": 5,
-        }
+        
 
     def __len__(self):
         return len(self.sample_files)
@@ -89,7 +93,7 @@ class MultiModalDataset(Dataset):
         for loc in data:
             for mod in data[loc]:
                 if data[loc][mod].ndim == 2:
-                    data[loc][mod] = data[loc][mod].unsqueeze(0)  
+                    data[loc][mod] = torch.from_numpy(data[loc][mod]).unsqueeze(0)  
         return data, label, idx
 
 

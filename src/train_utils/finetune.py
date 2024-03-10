@@ -31,7 +31,7 @@ def finetune(
     # Load the pretrained feature extractor
     if args.train_mode == "supervised":
         pretrain_weight = os.path.join(
-            args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_latest.pt"
+            args.weight_folder, f"{args.dataset}_{args.model}_{args.task}_best.pt"
         )
     else:
         pretrain_weight = os.path.join(args.weight_folder, f"{args.dataset}_{args.model}_pretrain_latest.pt")

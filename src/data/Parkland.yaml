@@ -1,16 +1,16 @@
 # data paths  
-# pretrain_index_file: /home/sl29/data/Parkland/time_data_partition/pretrain_index.txt 
-pretrain_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/pretrain_index.txt
+pretrain_index_file: /home/sl29/data/Parkland/time_data_partition/pretrain_index.txt 
+# pretrain_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/pretrain_index.txt
 vehicle_classification:
         num_classes: 7  # number of classes
         class_names: ["Polaris", "Warhog", "Truck", "motor", "tesla", "mustang", "walk", "gle350", "miata", "cs30"]
-        # train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
-        # val_index_file: /home/sl29/data/Parkland/time_data_partition/val_index.txt  
-        # test_index_file: /home/sl29/data/Parkland/time_data_partition/test_index.txt 
-
         train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
-        val_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/val_index.txt
-        test_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/test_index.txt
+        val_index_file: /home/sl29/data/Parkland/time_data_partition/val_index.txt  
+        test_index_file: /home/sl29/data/Parkland/time_data_partition/test_index.txt 
+
+        # train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
+        # val_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/val_index.txt
+        # test_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/test_index.txt
 
         parkland_train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
         parkland_val_index_file: /home/sl29/data/Parkland/time_data_partition/val_index.txt  
@@ -193,7 +193,7 @@ TransformerV4:
                 freq_augmenters: ["phase_shift"]
 
 TSMixer:
-        dim: 128
+        dim: 256
         norm_eps: 0.01
         patch_length: 
                 seismic: 20
@@ -203,7 +203,7 @@ TSMixer:
                 audio: 160
         use_positional_encoding: True
         positional_encoding_type: "sincos"
-        num_layers: 4
+        num_layers: 2
         
         gated_attn: False
         expansion_factor: 4
@@ -227,7 +227,7 @@ TSMixer:
         # Optimizer config
         optimizer:
                 name: "AdamW"
-                start_lr: 0.001
+                start_lr: 0.01
                 warmup_lr: 0.000001
                 min_lr: 0.0000001
                 clip_grad: 5.0
