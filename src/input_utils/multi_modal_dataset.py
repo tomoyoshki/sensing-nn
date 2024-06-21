@@ -64,7 +64,7 @@ class MultiModalDataset(Dataset):
     def __len__(self):
         return len(self.sample_files)
 
-    def __get_yizhuo__(self, data):
+    def get_ict(self, data):
         label = data["vehicle_id"]
         seismic_data = data["seismic"]
         acousitc_data = data["acoustic"]
@@ -86,8 +86,9 @@ class MultiModalDataset(Dataset):
         pt_file = self.sample_files[idx]
         sample = torch.load(pt_file)
 
-        if "yizhuo" in self.args.finetune_set or "exclusive" in self.args.finetune_set:
-            return self.__get_yizhuo__(sample)
+        for tag in ["ictfiltered", "ictexclusive"]:
+            if tag in self.args.finetune_set:
+                return self.get_ict(sample)
 
         data = sample["data"]
         # ACIDS and Parkland
