@@ -4,6 +4,7 @@ import warnings
 
 warnings.simplefilter("ignore", UserWarning)
 
+from models.loss import MultiObjLoss
 import torch.nn as nn
 
 # utils
@@ -40,7 +41,9 @@ def test(args):
     if "regression" in args.task:
         classifier_loss_func = nn.MSELoss()
     else:
-        if args.multi_class:
+        if "dual" in args.finetune_tag:
+            classifier_loss_func = MultiObjLoss(args)
+        elif args.multi_class:
             classifier_loss_func = nn.BCELoss()
         else:
             classifier_loss_func = nn.CrossEntropyLoss()

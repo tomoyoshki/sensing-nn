@@ -1,16 +1,80 @@
 # data paths  
-pretrain_index_file: /home/sl29/data/Parkland/time_data_partition/pretrain_index.txt 
-# pretrain_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/pretrain_index.txt
+# pretrain_index_file: /home/sl29/data/Parkland/time_data_partition/pretrain_index.txt 
+pretrain_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/pretrain_index.txt
 vehicle_classification:
-        num_classes: 7  # number of classes
+        # num_classes: 7  # number of classes
         class_names: ["Polaris", "Warhog", "Truck", "motor", "tesla", "mustang", "walk", "gle350", "miata", "cs30"]
-        train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
-        val_index_file: /home/sl29/data/Parkland/time_data_partition/val_index.txt  
-        test_index_file: /home/sl29/data/Parkland/time_data_partition/test_index.txt 
+        # train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
+        # val_index_file: /home/sl29/data/Parkland/time_data_partition/val_index.txt  
+        # test_index_file: /home/sl29/data/Parkland/time_data_partition/test_index.txt 
 
         # train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
         # val_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/val_index.txt
         # test_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/test_index.txt
+
+        default:
+                num_classes: 7
+                train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
+                val_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/val_index.txt
+                test_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/test_index.txt
+
+        parkland:
+                num_classes: 7
+                train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
+                val_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/val_index.txt
+                test_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/test_index.txt
+
+        ict:
+                num_classes: 4
+                train_index_file: /home/tkimura4/data/indices/single/ICT_train_dis_100000/train_index.txt 
+                val_index_file: /home/tkimura4/data/indices/single/ICT_train_dis_100000/val_index.txt
+                test_index_file: /home/tkimura4/data/indices/single/ICT_train_dis_100000/test_index.txt
+        
+        ict70:
+                num_classes: 4
+                train_index_file: /home/tkimura4/data/indices/single/ICT_train_dis_70/train_index.txt 
+                val_index_file: /home/tkimura4/data/indices/single/ICT_train_dis_70/val_index.txt
+                test_index_file: /home/tkimura4/data/indices/single/ICT_train_dis_70/test_index.txt
+
+        ictyizhuo:
+                num_classes: 4
+                train_index_file: /home/jinyang7/data/index/pt_index_train0329_valid0329_2s_acoustic_seismic_15_None_None/train_index.txt 
+                val_index_file: /home/jinyang7/data/index/pt_index_train0329_valid0329_2s_acoustic_seismic_15_None_None/valid_index.txt
+                test_index_file: /home/jinyang7/data/index/pt_index_train0329_valid0329_2s_acoustic_seismic_None_None_None/valid_index.txt
+
+        ictexclusive:
+                num_classes: 4
+                train_index_file: /home/jinyang7/data/index/pt_index_train0329_valid0329_2s_acoustic_seismic_exclusive1570_None_None/train_index.txt 
+                val_index_file: /home/jinyang7/data/index/pt_index_train0329_valid0329_2s_acoustic_seismic_exclusive1570_None_None/valid_index.txt
+                test_index_file: /home/jinyang7/data/index/pt_index_train0329_valid0329_2s_acoustic_seismic_None_None_None/valid_index.txt
+
+        icttest:
+                num_classes: 4
+                test_index_file: /home/tkimura4/data/indices/single/ICT_val_dis_100000/test_index.txt
+        
+        icttest70:
+                num_classes: 4
+                test_index_file: /home/tkimura4/data/indices/single/ICT_val_dis_70/test_index.txt
+        
+        gcq:
+                train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
+                val_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/val_index.txt
+                test_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/test_index.txt
+        
+        gcq1:
+                train_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day1/train_index.txt 
+                val_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day1/val_index.txt
+                test_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day1/test_index.txt
+        
+        gcq2:
+                train_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day2/train_index.txt 
+                val_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day2/val_index.txt
+                test_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day2/test_index.txt
+        
+        twins:
+                train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
+                val_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/val_index.txt
+                test_index_file: /home/tkimura4/data/datasets/MOD/VibroFM/indices/test_index.txt
 
         parkland_train_index_file: /home/sl29/data/Parkland/time_data_partition/train_index.txt 
         parkland_val_index_file: /home/sl29/data/Parkland/time_data_partition/val_index.txt  
@@ -27,6 +91,7 @@ vehicle_classification:
         gq2_train_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day2/train_index.txt
         gq2_val_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day2/val_index.txt
         gq2_test_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day2/test_index.txt
+
         # test_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day1/all_index.txt
         # test_index_file: /home/tkimura4/data/datasets/MOD/GracesQuarter/indices/GQ_day2/all_index.txt
 

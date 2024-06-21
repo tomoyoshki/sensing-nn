@@ -32,6 +32,7 @@ from models.ModPredModules import ModPred
 # loss functions
 from models.loss import (
     DINOLoss,
+    MultiObjLoss,
     SimCLRLoss,
     MoCoLoss,
     CMCLoss,
@@ -158,7 +159,9 @@ def init_loss_func(args):
         if "regression" in args.task:
             loss_func = nn.MSELoss()
         else:
-            if args.multi_class:
+            if "dual" in args.finetune_tag:
+                loss_func = MultiObjLoss(args)
+            elif args.multi_class or "multiclass" in args.finetune_tag:
                 loss_func = nn.BCELoss()
             else:
                 loss_func = nn.CrossEntropyLoss()

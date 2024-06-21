@@ -7,6 +7,39 @@ import math
 from general_utils.tensor_utils import extract_non_diagonal_matrix
 from models.CMCV2Modules import split_features
 
+class MultiObjLoss(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        self.args = args
+
+        self.class_objective = nn.BCELoss() if args.multi_class == True else nn.CrossEntropyLoss() 
+        self.detection_objective = nn.CrossEntropyLoss()
+        self.dual = "dual" in args.finetune_tag
+
+        print(f"Initializing MultiObjecive Loss")
+    
+    def forward(self, logits, labels):
+
+        # Classifications
+        class_logits = logits[:, :self.args.num_class]
+
+        if self.dual:            
+            class_labels = labels[:, :-1]
+            detection_labels = labels[:, -1]
+            detection_logits = logits[:, -2:] # last two class
+
+            has_car_mask = (detection_labels == 1)
+            class_logits = class_logits[has_car_mask]
+            class_labels = class_labels[has_car_mask]
+        
+        # Only calculate classification loss on those with cars, ignores those without cars
+        
+        
+        detection_loss = self.detection_objective(detection_logits, detection_labels.long())
+        class_loss = self.class_objective(class_logits, class_labels)
+        
+        return class_loss + detection_loss
+
 
 class DINOLoss(nn.Module):
     """The loss function.

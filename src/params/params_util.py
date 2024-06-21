@@ -149,29 +149,39 @@ def set_tag(args):
 
     return args
 
-def set_model_weight_file_suffix(args, get_alignment_weight=False):
-    alignment_tag_suffix = ""
-    alignment_tag_suffix = alignment_tag_suffix if args.alignment_run_id is None else f"_exp{args.alignment_run_id}{alignment_tag_suffix}"
-    alignment_tag_suffix = alignment_tag_suffix if not args.use_gcq_align else f"_align_gcq_data{alignment_tag_suffix}"
-    alignment_tag_suffix = alignment_tag_suffix if args.alignment_tag is None else f"_{args.alignment_tag}{alignment_tag_suffix}"
-    alignment_tag_suffix = alignment_tag_suffix if args.alignment_label_ratio == 1.0 else f"_align{args.alignment_label_ratio}{alignment_tag_suffix}"
-    alignment_tag_suffix = f"_alignment{alignment_tag_suffix}"
+def set_model_weight_file_suffix(args):
     
     finetune_tag_suffix = ""
     finetune_tag_suffix = finetune_tag_suffix if args.finetune_run_id is None else f"_exp{args.finetune_run_id}{finetune_tag_suffix}"
     finetune_tag_suffix = finetune_tag_suffix if args.finetune_tag is None else f"_{args.finetune_tag}{finetune_tag_suffix}"
-    finetune_tag_suffix = f"_finetune{finetune_tag_suffix}"
     finetune_tag_suffix = f"_{args.label_ratio}{finetune_tag_suffix}"
+    finetune_tag_suffix = finetune_tag_suffix if args.finetune_set is None else f"_{args.finetune_set}{finetune_tag_suffix}"
+    finetune_tag_suffix = f"_finetune{finetune_tag_suffix}"
     
     tag_suffix = f""
     tag_suffix = f"{tag_suffix}{finetune_tag_suffix}" if args.stage in {"finetune"} else tag_suffix
     
     args.tag_suffix = tag_suffix
-    args.alignment_tag_suffix = alignment_tag_suffix
     args.finetune_tag_suffix = finetune_tag_suffix
     return args
+
+
+def set_data_config(args):
+    if args.stage in {"finetune"}:
+        args.num_class = args.dataset_config[args.task][args.finetune_set]["num_classes"]
+
+
+    if "distbackground" in args.finetune_tag:
+        args.num_class += 1
+    elif "detection" in args.finetune_tag:
+        args.num_class = 2
+
+    return args
+
 # Parkland_TransformerV4_vehicle_classification_finetune_1.0_best.pt
 # Parkland_TransformerV4_vehicle_classification_1.0_finetune_best
+
+
 def set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=None):
     """Automatically set the parameters for the experiment."""
     # gpu configuration
@@ -201,7 +211,7 @@ def set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=Non
     args.use_gcq_align = str_to_bool(args.use_gcq_align)
     args.verbose = str_to_bool(args.verbose)
     args.count_range = str_to_bool(args.count_range)
-    args.balanced_sample = str_to_bool(args.balanced_sample) and args.dataset in {"ACIDS", "Parkland_Miata"}
+    args.balanced_sample = str_to_bool(args.balanced_sample)
     args.sequence_sampler = True if args.learn_framework in {"CMCV2", "TS2Vec", "TS2Vec", "TNC", "TSTCC", "InfoMAE", "MultMod"} else False
     args.debug = str_to_bool(args.debug)
     args.output_conf = str_to_bool(args.output_conf)
@@ -213,9 +223,11 @@ def set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=Non
     args.workers = 10
 
     # Sing-class problem or multi-class problem
-    if args.dataset in {}:
+    if args.dataset in {} or "multiclass" in args.finetune_tag:
+        print(f"=\tEnabled Multi-class")
         args.multi_class = True
     else:
+        print(f"=\tSingle Class only")
         args.multi_class = False
 
     # process the missing modalities,
@@ -240,13 +252,15 @@ def set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=Non
     args = set_model_weight_folder(args)
     args = set_model_weight_file(args)
     args = set_output_paths(args)
+
+
+    # additional config
+    args = set_data_config(args)
     
     if args.option in {"train"}:
-        logging.info(f"=\t[Alignment Tag Suffix]: {args.alignment_tag_suffix}")
         logging.info(f"=\t[Finetune Tag Suffix]: {args.finetune_tag_suffix}")
         logging.info(f"=\t[Tag suffix]: {args.tag_suffix}")
     else:
-        print(f"=\t[Alignment Tag Suffix]: {args.alignment_tag_suffix}")
         print(f"=\t[Finetune Tag Suffix]: {args.finetune_tag_suffix}")
         print(f"=\t[Tag suffix]: {args.tag_suffix}")
 

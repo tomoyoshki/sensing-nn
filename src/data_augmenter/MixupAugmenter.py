@@ -10,7 +10,7 @@ class MixupAugmenter(nn.Module):
         super().__init__()
         self.args = args
         self.config = args.dataset_config["mixup"]
-        self.config["num_classes"] = args.dataset_config[args.task]["num_classes"]
+        self.config["num_classes"] = args.num_class
         self.mixup_func = Mixup(**args.dataset_config["mixup"])
 
         if "regression" in args.task:

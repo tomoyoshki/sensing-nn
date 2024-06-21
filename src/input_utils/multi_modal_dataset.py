@@ -1,5 +1,6 @@
 import os
 import torch
+import logging
 import numpy as np
 
 from torch.utils.data import Dataset
@@ -31,10 +32,10 @@ class MultiModalDataset(Dataset):
 
 
         self.label_dict = {
-            "gle350": 7,
-            "miata": 8,
-            "cx30": 9,
-            "mustang": 5,
+            "gle350": 0,
+            "miata": 1,
+            "cx30": 2,
+            "mustang": 3,
         }
         
         if label_ratio < 1:
@@ -46,12 +47,12 @@ class MultiModalDataset(Dataset):
             
 
     def load_sample_labels(self):
+        logging.info(f"=\tBalancing samples")
         sample_labels = []
-        label_count = [0 for i in range(self.args.dataset_config[self.args.task]["num_classes"])]
+        label_count = [0 for i in range(self.args.num_class)]
 
         for idx in range(len(self.sample_files)):
-            _, label, _ = self.__getitem__(idx)
-            label = torch.argmax(label).item() if label.numel() > 1 else label.item()
+            _, label, detection_label, _ = self.__getitem__(idx)
             sample_labels.append(label)
             label_count[label] += 1
 
@@ -59,17 +60,36 @@ class MultiModalDataset(Dataset):
         self.epoch_len = int(np.max(label_count) * len(label_count))
         for sample_label in sample_labels:
             self.sample_weights.append(1 / label_count[sample_label])
-        
-        
-        
 
     def __len__(self):
         return len(self.sample_files)
 
-    def __getitem__(self, idx):
-        sample = torch.load(self.sample_files[idx])
-        data = sample["data"]
+    def __get_yizhuo__(self, data):
+        label = data["vehicle_id"]
+        seismic_data = data["seismic"]
+        acousitc_data = data["acoustic"]
 
+        dict_data = {
+            "shake": {
+                "seismic": seismic_data[::2].reshape(1, 10, 20),
+                "audio": acousitc_data[::2].reshape(1, 10, 1600)
+            }
+        }
+
+        detection_label = torch.tensor(0)
+        if data["meta/distance_mean"] is not None and data["meta/distance_mean"] <= 15:
+            detection_label = torch.tensor(1) # has car
+
+        return dict_data, label, detection_label, 0
+
+    def __getitem__(self, idx):
+        pt_file = self.sample_files[idx]
+        sample = torch.load(pt_file)
+
+        if "yizhuo" in self.args.finetune_set or "exclusive" in self.args.finetune_set:
+            return self.__get_yizhuo__(sample)
+
+        data = sample["data"]
         # ACIDS and Parkland
         if isinstance(sample["label"], dict):
             if self.args.task == "vehicle_classification":
@@ -89,12 +109,29 @@ class MultiModalDataset(Dataset):
             if label not in self.label_dict:
                 print(f"Label not in the dictionary: {label}")
             label = self.label_dict[label]
+        
+        dist = int(pt_file.split(".")[0].split("_")[-1])
+
+        dist_threshold = 15
+        
+        if ("multiclass" in self.args.finetune_tag or "dist" in self.args.finetune_tag) and dist > dist_threshold:
+            label = 4 # background
+
+        # if "detection" in self.args.finetune_tag:
+
+        detection_label = -1
+
+        if dist > dist_threshold:
+            detection_label = 0 # no car
+        else:
+            detection_label = 1 # has car
 
         for loc in data:
             for mod in data[loc]:
                 if data[loc][mod].ndim == 2:
                     data[loc][mod] = torch.from_numpy(data[loc][mod]).unsqueeze(0)  
-        return data, label, idx
+
+        return data, label, detection_label, idx
 
 
 class MultiModalSequenceDataset(Dataset):

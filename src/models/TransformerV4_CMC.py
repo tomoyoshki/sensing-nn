@@ -210,7 +210,8 @@ class TransformerV4_CMC(nn.Module):
                 self.config["dropout_ratio"],
                 self.config["dropout_ratio"],
             )
-            self.sample_dim = self.config["loc_out_channels"]
+            # self.sample_dim = self.config["loc_out_channels"]
+            self.sample_dim = self.config["loc_out_channels"] * len(self.modalities)
         elif self.args.learn_framework == "MAE":
             """Linear fusion for MAE"""
             self.mae_mod_fusion_layer = nn.Sequential(
@@ -236,18 +237,36 @@ class TransformerV4_CMC(nn.Module):
             self.sample_dim = self.config["loc_out_channels"] * len(self.modalities)
 
         # Classification layer
-        if self.args.train_mode == "supervised" or self.config["pretrained_head"] == "linear":
+        if (self.args.train_mode == "supervised" or self.config["pretrained_head"] == "linear") and "mlp" not in self.args.finetune_tag:
             """Linear classification layers for supervised learning or finetuning."""
             self.class_layer = nn.Sequential(
-                nn.Linear(self.sample_dim, self.args.dataset_config[self.args.task]["num_classes"]),
+                nn.Linear(self.sample_dim, self.args.num_class),
+                nn.Sigmoid() if self.args.multi_class or "multiclass" in self.args.finetune_tag else nn.Softmax()
             )
+
+            self.detection_class_layer = nn.Sequential(
+                nn.Linear(self.sample_dim, 2),
+                nn.Softmax()
+            )
+
         else:
             """Non-linear classification layers for self-supervised learning."""
             self.class_layer = nn.Sequential(
                 nn.Linear(self.sample_dim, self.config["fc_dim"]),
                 nn.GELU(),
-                nn.Linear(self.config["fc_dim"], self.args.dataset_config[self.args.task]["num_classes"]),
+                nn.Linear(self.config["fc_dim"], self.args.num_class),
+                nn.Sigmoid() if self.args.multi_class or "multiclass" in self.args.finetune_tag else nn.Softmax()
             )
+
+            self.detection_class_layer = nn.Sequential(
+                nn.Linear(self.sample_dim, self.config["fc_dim"]),
+                nn.GELU(),
+                nn.Linear(self.config["fc_dim"], 2),
+                nn.Softmax()
+            )
+        
+        if self.args.multi_class or "multiclass" in self.args.finetune_tag:
+            print(f"=\tUsing multiclass")
 
     def init_decoder(self) -> None:
         """
@@ -460,9 +479,10 @@ class TransformerV4_CMC(nn.Module):
                 sample_features = self.cosmo_mod_fusion_layer(mod_features).flatten(start_dim=1)
             elif self.args.learn_framework == "CMCV2":
                 """Mod feature projection and attention-based fusion"""
-                mod_features = torch.stack(mod_features, dim=1)
-                mod_features = mod_features.unsqueeze(dim=1)
-                sample_features = self.cosmo_mod_fusion_layer(mod_features).flatten(start_dim=1)
+                # mod_features = torch.stack(mod_features, dim=1)
+                # mod_features = mod_features.unsqueeze(dim=1)
+                # sample_features = self.cosmo_mod_fusion_layer(mod_features).flatten(start_dim=1)
+                sample_features = torch.cat(mod_features, dim=1)
             elif self.args.learn_framework == "MAE":
                 """FC fusion for MAE"""
                 sample_features = self.forward_mae_fusion(mod_features)
@@ -471,6 +491,10 @@ class TransformerV4_CMC(nn.Module):
                 sample_features = torch.cat(mod_features, dim=1)
 
             logits = self.class_layer(sample_features)
+            detection_logits = self.detection_class_layer(sample_features)
+            
+            if "dual" in self.args.finetune_tag:
+                logits = torch.cat((logits, detection_logits), dim=1)
             return logits
 
     def forward_mae_fusion(self, mod_features):

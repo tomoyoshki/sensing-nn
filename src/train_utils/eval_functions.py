@@ -20,8 +20,8 @@ def eval_task_metrics(args, labels, predictions, regression=False):
         acc_scores = []
         f1_scores = []
 
-        if args.multi_class:
-            for i, class_name in enumerate(args.dataset_config["class_names"]):
+        if args.multi_class and False:
+            for i in range(args.num_class):
                 acc = accuracy_score(labels[:, i], predictions[:, i])
                 f1 = f1_score(labels[:, i], predictions[:, i], zero_division=1)
 
@@ -64,22 +64,77 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
     classifier_loss_list = []
     all_predictions = []
     all_labels = []
+
+    all_detections_predictions = []
+    all_detections_labels = []
+
+    total = 0
+    reduced = 0
     with torch.no_grad():
-        for i, (time_loc_inputs, labels, index) in tqdm(enumerate(dataloader), total=num_batches):
+        for i, (time_loc_inputs, labels, detection_labels, index) in tqdm(enumerate(dataloader), total=num_batches):
+
+            total += labels.shape[0]
+
+            if "dual" in args.finetune_tag:
+                labels = torch.stack((labels, detection_labels), dim=1) # [128, 2]
+
             # move to target device, FFT, and augmentations
             freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
 
             # forward pass
             logits = classifier(freq_loc_inputs)
+
+            if args.multi_class or "multiclass" in args.finetune_tag:
+                labels = labels.reshape(labels.shape[0], -1)
+                detection_labels = labels[:, -1].reshape(labels.shape[0], -1).long()
+                labels = torch.nn.functional.one_hot(labels[:, 0], num_classes=args.num_class).float()
+                if "dual" in args.finetune_tag:
+                    labels = torch.cat((labels, detection_labels), dim=1)
+
             classifier_loss_list.append(loss_func(logits, labels).item())
 
             if "regression" in args.task:
                 predictions = logits.squeeze()
+            elif "dual" in args.finetune_tag:
+                # First make prediction on if the car is present < 15 vs > 70
+                detection_labels = labels[:, -1]
+                detection_logits = logits[:, -2:] # last two class
+                class_labels = labels[:, :-1] # class labels
+                class_logits = logits[:, :-2]
+
+                detection_prediction = detection_logits.argmax(dim=1, keepdim=False)
+                detection_labels = detection_labels
+
+
+                all_detections_labels.append(detection_labels.cpu().numpy())
+                all_detections_predictions.append(detection_prediction.cpu().numpy())
+
+                prediction_mask = (detection_prediction > 0)
+
+                reduced += prediction_mask.shape[0] - prediction_mask.sum()
+                class_logits = class_logits[prediction_mask]
+                class_labels = class_labels[prediction_mask]
+
+                max_logits = class_logits.max(dim=1)[0]
+                # prediction_mask = (max_logits > 0.7)
+                # reduced += prediction_mask.shape[0] - prediction_mask.sum()
+                # class_logits = class_logits[prediction_mask]
+                # class_labels = class_labels[prediction_mask]
+
+                # predictions = (logits > 0.5).float()
+                predictions = class_logits.argmax(dim=1, keepdim=False)
+                labels = class_labels.argmax(dim=1, keepdim=False)
             else:
                 if args.multi_class:
-                    predictions = (logits > 0.5).float()
-                else:
+                    predictions = (logits > 0.85).float()
                     predictions = logits.argmax(dim=1, keepdim=False)
+                    labels = labels.argmax(dim=1, keepdim=False) if labels.dim() > 1 else labels
+                else:
+                    # logits[logits < 0.7] = 0
+                    # logits_sum = logits.sum(dim=1)
+                    # logits_mask = (logits_sum == 0).int() # only keep the highest predictions
+                    # logits[logits_mask, -1] = 1.0
+                    predictions = logits.argmax(dim=1, keepdim=False) # predict whether each sample has car or not
                     # predictions[predictions > 3] = 3
                     labels = labels.argmax(dim=1, keepdim=False) if labels.dim() > 1 else labels
 
@@ -89,13 +144,29 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
             all_predictions.append(saved_predictions)
             all_labels.append(saved_labels)
 
+    print(f"Total: {total} - Reduced: {reduced}")
     # calculate mean loss
     mean_classifier_loss = np.mean(classifier_loss_list)
     all_predictions = np.concatenate(all_predictions, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
 
+
+    all_detections_predictions = np.concatenate(all_detections_predictions) if len(all_detections_predictions) > 0 else np.array([])
+    all_detections_labels = np.concatenate(all_detections_labels) if len(all_detections_labels) > 0 else np.array([])
+
     # calculate the classification metrics
     metrics = eval_task_metrics(args, all_labels, all_predictions, regression=("regression" in args.task))
+
+    if f"dual" in args.finetune_tag:
+        detec_acc = accuracy_score(all_detections_labels, all_detections_predictions)
+        detec_f1 = f1_score(all_detections_labels, all_detections_predictions, average="macro", zero_division=1)
+        conf_matrix = confusion_matrix(all_detections_labels, all_detections_predictions)
+
+        logging.info(f"Detection Accuracy: {detec_acc}, Detection F1: {detec_f1}")
+        logging.info(f"Detection Confusion Matrix:\n{conf_matrix}")
+
+        print(f"Detection Accuracy: {detec_acc}, Detection F1: {detec_f1}")
+        print(f"Detection Confusion Matrix:\n{conf_matrix}")
 
     return mean_classifier_loss, metrics
 
