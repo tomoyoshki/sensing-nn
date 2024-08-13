@@ -9,24 +9,6 @@ from random import shuffle
 
 class MultiModalDataset(Dataset):
     def __init__(self, args, index_file, label_ratio=1, balanced_sample=False):
-        """
-        Args:
-            modalities (_type_): The list of modalities
-            classes (_type_): The list of classes
-            index_file (_type_): The list of sample file names
-            sample_path (_type_): The base sample path.
-
-        Sample:
-            - label: Tensor
-            - flag
-                - phone
-                    - audio: True
-                    - acc: False
-            - data:
-                -phone
-                    - audio: Tensor
-                    - acc: Tensor
-        """
         self.args = args
         self.sample_files = list(np.loadtxt(index_file, dtype=str))
 
@@ -53,6 +35,8 @@ class MultiModalDataset(Dataset):
 
         for idx in range(len(self.sample_files)):
             _, label, detection_label, _ = self.__getitem__(idx)
+            if label < 0:
+                continue
             sample_labels.append(label)
             label_count[label] += 1
 
@@ -82,13 +66,155 @@ class MultiModalDataset(Dataset):
 
         return dict_data, label, detection_label, 0
 
+    def get_ict_multi(self, data):
+        vehicles = data["vehicle_id"]
+        label = torch.zeros(4)
+        for vid in vehicles:
+            label[vid] += 1
+
+        seismic_data = data["seismic"]
+        acousitc_data = data["acoustic"]
+
+        dict_data = {
+            "shake": {
+                "seismic": seismic_data[::2].reshape(1, 10, 20),
+                "audio": acousitc_data[::2].reshape(1, 10, 1600)
+            }
+        }
+
+        detection_label = torch.tensor(0)
+
+        if data["dis"] is not None:
+            dis_mean = data["dis"].mean(dim=0) # mean distance
+            for dis in dis_mean:
+                if dis is not None and dis <= 15:
+                    detection_label = torch.tensor(1) # has car if one of the vehicle is present
+        else:
+            dis_mean = torch.tensor([100, 100])
+        
+        meta_data = dis_mean
+
+        if self.args.multi_class:
+            if detection_label > 0:
+                # has car
+                labels = torch.nn.functional.one_hot(labels, num_classes=self.args.num_class)
+            else:
+                labels = torch.LongTensor([0] * self.args.num_class)
+
+        detection_label = detection_label.reshape(1)
+        return dict_data, label, detection_label, meta_data
+    
+    def get_gcq(self, sample):
+        data = sample["data"]
+        detection_label = torch.tensor(1)
+
+        if sample["label"] == "background":
+            detection_label = torch.tensor(0)
+        
+        label = sample["label"]
+
+        label_dict = {
+            "polaris": 0,
+            "silverado": 1,
+            "sedan": 1,
+            "warthog": 2,
+            "husky": 3,
+            "background": -1
+        }
+        if isinstance(label, str):
+            label = torch.LongTensor([label_dict[label]])
+        
+        label = label.long().item()
+        
+        for loc in data:
+            for mod in data[loc]:
+                data[loc][mod] = data[loc][mod].reshape(1, 10, -1)
+                if isinstance(data[loc][mod], np.ndarray):
+                    data[loc][mod] = torch.from_numpy(data[loc][mod])
+                data[loc][mod] = data[loc][mod].float()
+        meta_data = -1
+        
+        return data, label, detection_label, meta_data
+
+    def get_gcq_mixed(self, sample):
+        data = sample["data"]
+        detection_label = torch.tensor(1)
+
+        if sample["label"] == "background":
+            detection_label = torch.tensor(0)
+        
+        label = sample["label"]
+
+        label_dict = {
+            "polaris": 0,
+            "silverado": 1,
+            "sedan": 1,
+            "warthog": 2,
+            "husky": 3,
+            "background": -1
+        }
+        if isinstance(label, str):
+            label = torch.LongTensor([label_dict[label]])
+        
+        if not isinstance(label, list):
+            label = [label]
+        
+        multi_label = torch.FloatTensor([0] * self.args.num_class)
+        if detection_label > 0:
+            for l in label:
+                if l >= 0:
+                    multi_label[l] = 1
+        
+        # print(multi_label)
+
+        for loc in data:
+            for mod in data[loc]:
+                data[loc][mod] = data[loc][mod].reshape(1, 10, -1)
+                if isinstance(data[loc][mod], np.ndarray):
+                    data[loc][mod] = torch.from_numpy(data[loc][mod])
+                data[loc][mod] = data[loc][mod].float()
+        meta_data = -1
+        detection_label = detection_label.reshape(1)
+        return data, multi_label, detection_label, meta_data
+
+    def get_gcq_all_mixed(self, sample):
+        # if "vehicle_id" in sample.keys():
+        #     return self.get_ict_multi(sample)
+        return self.get_gcq_mixed(sample)
+
+
     def __getitem__(self, idx):
         pt_file = self.sample_files[idx]
         sample = torch.load(pt_file)
 
-        for tag in ["ictfiltered", "ictexclusive"]:
-            if tag in self.args.finetune_set:
+        for tag in ["ictfiltered", "ictexclusive", "ictyizhuo"]:
+            if self.args.option == "train" and tag in self.args.finetune_set:
                 return self.get_ict(sample)
+            if self.args.option == "test" and tag in self.args.test_set:
+                return self.get_ict(sample)
+        
+        for tag in ["gcqallmixed", "gcqday1filtered", "gcqday2filtered"]:
+            if self.args.option == "train" and tag in self.args.finetune_set:
+                return self.get_gcq_all_mixed(sample)
+            if self.args.option == "test" and tag in self.args.test_set:
+                return self.get_gcq_all_mixed(sample)
+            
+        for tag in ["gcqall"]:
+            if self.args.option == "train" and tag in self.args.finetune_set:
+                return self.get_gcq(sample)
+            if self.args.option == "test" and tag in self.args.test_set:
+                return self.get_gcq(sample)
+        
+        for tag in ["gcqmixed"]:
+            if self.args.option == "train" and tag in self.args.finetune_set:
+                return self.get_gcq_mixed(sample)
+            if self.args.option == "test" and tag in self.args.test_set:
+                return self.get_gcq_mixed(sample)
+        
+        
+        for tag in ["ict6"]:
+            if tag in self.args.test_set:
+                return self.get_ict_multi(sample)
 
         data = sample["data"]
         # ACIDS and Parkland
@@ -242,26 +368,6 @@ class TripletMultiModalDataset(Dataset):
         """
         Reference:
             https://github.com/adambielski/siamese-triplet/blob/0c719f9e8f59fa386e8c59d10b2ddde9fac46276/datasets.py#L79
-
-        Args:
-            modalities (_type_): The list of modalities
-            classes (_type_): The list of classes
-            index_file (_type_): The list of sample file names
-            sample_path (_type_): The base sample path.
-
-        Sample:
-            - label: Tensor
-            - flag
-                - phone
-                    - audio: True
-                    - acc: False
-            - data:
-                -phone
-                    - audio: Tensor
-                    - acc: Tensor
-
-        Function:
-            Generate a triplet of samples (anchor, pos, neg) within each batch
         """
         self.sample_files = list(np.loadtxt(os.path.join(base_path, index_file), dtype=str))
         self.base_path = base_path

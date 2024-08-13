@@ -209,7 +209,7 @@ def set_model_weight_file(args):
         # finetune_suffix = f"_{args.label_ratio}_finetune" if args.stage == "finetune" else ""
         args.classifier_weight = os.path.join(
             args.weight_folder,
-            f"{args.dataset}_{args.model}_{args.task}{args.tag_suffix}_best.pt",
+            f"{args.dataset}_{args.model}_{args.task}{args.tag_suffix}best.pt",
         )
     elif args.train_mode in {"contrastive", "predictive", "generative"}:
         if args.stage == "pretrain":
@@ -220,7 +220,7 @@ def set_model_weight_file(args):
         else:
             args.classifier_weight = os.path.join(
                 args.weight_folder,
-                f"{args.dataset}_{args.model}_{args.task}{args.finetune_tag_suffix}_best.pt",
+                f"{args.dataset}_{args.model}_{args.task}{args.finetune_tag_suffix}best.pt",
             )
     else:
         raise Exception(f"Invalid training mode provided: {args.stage}")
@@ -233,11 +233,11 @@ def set_finetune_weights(args):
     """Automatically select the finetune weight during the testing"""
     best_weight = os.path.join(
         args.weight_folder,
-        f"{args.dataset}_{args.model}_{args.task}{args.finetune_tag_suffix}_best.pt",
+        f"{args.dataset}_{args.model}_{args.task}{args.finetune_tag_suffix}best.pt",
     )
     latest_weight = os.path.join(
         args.weight_folder,
-        f"{args.dataset}_{args.model}_{args.task}{args.finetune_tag_suffix}_latest.pt",
+        f"{args.dataset}_{args.model}_{args.task}{args.finetune_tag_suffix}latest.pt",
     )
 
     return best_weight, latest_weight

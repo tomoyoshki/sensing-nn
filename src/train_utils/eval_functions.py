@@ -10,28 +10,64 @@ from sklearn.neighbors import KNeighborsClassifier
 from train_utils.knn import extract_sample_features
 from train_utils.loss_calc_utils import calc_pretrain_loss   
 
+def multi_label_accuracy(y_true, y_pred):
+    accuracies = []
+    for i in range(y_true.shape[1]):
+        accuracies.append(accuracy_score(y_true[:, i], y_pred[:, i]))
+    return np.mean(accuracies)
+
 def eval_task_metrics(args, labels, predictions, regression=False):
     """Evaluate the downstream task metrics."""
     # different acc and f1-score definitions for single-class and multi-class problems
+
+    # Print statistics
+    for i in range(labels.shape[1]):
+        print(f"Class {i} - predicted {predictions[:, i].sum()} - labels {labels[:, i].sum()}")
+
     if regression:
         mae = mean_absolute_error(labels, predictions)
         return [mae]
     else:
-        acc_scores = []
-        f1_scores = []
+        if args.multi_class:
+            # has_car_mask = predictions.max(dim=1)[0]
+            # has_car_mask = (has_car_mask > 0)
+            # predictions = predictions[has_car_mask]
+            # labels = labels[has_car_mask]
+            has_car_mask = predictions.max(axis=1)
+            has_car_mask = (has_car_mask > 0)
+            predictions = predictions[has_car_mask]
+            labels = labels[has_car_mask]
+            reduced = has_car_mask.shape[0] - has_car_mask.sum()
+            print(f"{reduced=}")
 
-        if args.multi_class and False:
-            for i in range(args.num_class):
-                acc = accuracy_score(labels[:, i], predictions[:, i])
-                f1 = f1_score(labels[:, i], predictions[:, i], zero_division=1)
+            predicted = predictions.max(axis=1).sum()
+            actual = labels.max(axis=1).sum()
+            print(f"{predicted=} - {actual=}")
 
-                if acc <= 1 and f1 <= 1:
-                    acc_scores.append(acc)
-                    f1_scores.append(f1)
+            if labels.shape[0] > 0:
+                random_idx = torch.randint(labels.shape[0], (5, ))
+                print(f"=\tRandomly selected sample labels")
+                print(labels[random_idx])
+                print(f"=\tCorresponding predictions")
+                print(predictions[random_idx])
 
-                mean_acc = np.mean(acc_scores)
-                mean_f1 = np.mean(f1_scores)
-                conf_matrix = []
+            mean_acc = multi_label_accuracy(labels, predictions)
+            mean_f1 = f1_score(labels, predictions, average="weighted")
+
+            # has_car_mask = (labels.sum(axis=1) > 0)
+            # predictions = predictions[has_car_mask]
+            # labels = labels[has_car_mask]
+            lb = torch.tensor(labels).argmax(dim=1, keepdim=True)
+            pd = torch.tensor(predictions).argmax(dim=1, keepdim=True)
+            conf_matrix = confusion_matrix(lb, pd)
+
+            has_car_mask = (labels.sum(axis=1) > 0)
+            predictions = predictions[has_car_mask]
+            labels = labels[has_car_mask]
+            lb = torch.tensor(labels).argmax(dim=1, keepdim=True)
+            pd = torch.tensor(predictions).argmax(dim=1, keepdim=True)
+            conf_matrix = (conf_matrix, confusion_matrix(lb, pd))
+            # conf_matrix = []
         else:
             if args.task in {"distance_classification", "speed_classification"}:
                 num_classes = args.dataset_config[args.task]["num_classes"]
@@ -74,10 +110,11 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
         for i, (time_loc_inputs, labels, detection_labels, index) in tqdm(enumerate(dataloader), total=num_batches):
 
             total += labels.shape[0]
-
             if "dual" in args.finetune_tag:
-                labels = torch.stack((labels, detection_labels), dim=1) # [128, 2]
-
+                if labels.dim() > 1:
+                    labels = torch.cat((labels, detection_labels.reshape(-1, 1)), dim=1) # [128, 2]
+                else:
+                    labels = torch.stack((labels, detection_labels), dim=1) # [128, 2]
             # move to target device, FFT, and augmentations
             freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
 
@@ -87,7 +124,13 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
             if args.multi_class or "multiclass" in args.finetune_tag:
                 labels = labels.reshape(labels.shape[0], -1)
                 detection_labels = labels[:, -1].reshape(labels.shape[0], -1).long()
-                labels = torch.nn.functional.one_hot(labels[:, 0], num_classes=args.num_class).float()
+                if "dual" in args.finetune_tag:
+                    labels = labels[:, :-1].reshape(labels.shape[0], -1)
+                if labels.shape[1] == 1:
+                    labels = torch.nn.functional.one_hot(labels[:, 0], num_classes=args.num_class).float()
+                elif labels.shape[1] == 0:
+                    labels = labels.reshape(labels.shape[0], 1)
+                    labels = torch.nn.functional.one_hot(labels, num_classes=args.num_class).float()
                 if "dual" in args.finetune_tag:
                     labels = torch.cat((labels, detection_labels), dim=1)
 
@@ -95,19 +138,43 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
 
             if "regression" in args.task:
                 predictions = logits.squeeze()
-            elif "dual" in args.finetune_tag:
+            elif "dual" in args.finetune_tag and args.multi_class:
+                class_labels = labels[:, :-1] # class labels
+                class_logits = logits[:, :-2] # class logits for each class
+
+                class_logits_max = torch.max(class_logits, dim=1)[0] # get the maximum prediction
+
+                try:
+                    threshold = float(args.finetune_tag.split('_')[-2])
+                except:
+                    threshold = 0.85
+
+                has_car_mask = (class_logits_max > threshold) # has car if one class has higher than 0.75 prediction
+                detection_labels = labels[:, -1]
+
+                all_detections_labels.append(detection_labels.cpu().numpy())
+                
+                # reduced += has_car_mask.shape[0] - has_car_mask.sum()
+                # class_logits = class_logits[has_car_mask]
+                # class_labels = class_labels[has_car_mask]
+                # real_no_car_mask = real_no_car_mask[has_car_mask]
+
+                predictions = (class_logits > 0.95).float()
+                labels = class_labels.float()
+
+                all_detections_predictions.append(has_car_mask.cpu().numpy())
+
+            elif "dual_single" in args.finetune_tag:
                 # First make prediction on if the car is present < 15 vs > 70
                 detection_labels = labels[:, -1]
                 detection_logits = logits[:, -2:] # last two class
                 class_labels = labels[:, :-1] # class labels
                 class_logits = logits[:, :-2]
 
+                # Detection is single class
                 detection_prediction = detection_logits.argmax(dim=1, keepdim=False)
                 detection_labels = detection_labels
 
-
-                all_detections_labels.append(detection_labels.cpu().numpy())
-                all_detections_predictions.append(detection_prediction.cpu().numpy())
 
                 prediction_mask = (detection_prediction > 0)
 
@@ -116,24 +183,43 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
                 class_labels = class_labels[prediction_mask]
 
                 max_logits = class_logits.max(dim=1)[0]
-                # prediction_mask = (max_logits > 0.7)
-                # reduced += prediction_mask.shape[0] - prediction_mask.sum()
-                # class_logits = class_logits[prediction_mask]
-                # class_labels = class_labels[prediction_mask]
+
+                try:
+                    threshold = float(args.finetune_tag.split('_')[-2])
+                except:
+                    threshold = 0.7
+                
+                prediction_mask = (max_logits > threshold)
+                reduced += prediction_mask.shape[0] - prediction_mask.sum()
+                class_logits = class_logits[prediction_mask]
+                class_labels = class_labels[prediction_mask]
 
                 # predictions = (logits > 0.5).float()
                 predictions = class_logits.argmax(dim=1, keepdim=False)
-                labels = class_labels.argmax(dim=1, keepdim=False)
+                labels = class_labels
+                # labels = class_labels.argmax(dim=1, keepdim=False)
+
+                # detection_prediction[~prediction_mask] = 0
+                all_detections_labels.append(detection_labels.cpu().numpy())
+                all_detections_predictions.append(detection_prediction.cpu().numpy())
+
             else:
                 if args.multi_class:
                     predictions = (logits > 0.85).float()
-                    predictions = logits.argmax(dim=1, keepdim=False)
-                    labels = labels.argmax(dim=1, keepdim=False) if labels.dim() > 1 else labels
+                    labels = labels.float()
+
+                    # labels = labels.float()
+                    # predictions = logits.argmax(dim=1, keepdim=False)
+                    # labels = labels.argmax(dim=1, keepdim=False) if labels.dim() > 1 else labels
                 else:
                     # logits[logits < 0.7] = 0
                     # logits_sum = logits.sum(dim=1)
                     # logits_mask = (logits_sum == 0).int() # only keep the highest predictions
                     # logits[logits_mask, -1] = 1.0
+                    
+
+                    # Logits [128, 4], swap the order of classes
+                    # logits = logits[:, [1, 0, 3, 2]]
                     predictions = logits.argmax(dim=1, keepdim=False) # predict whether each sample has car or not
                     # predictions[predictions > 3] = 3
                     labels = labels.argmax(dim=1, keepdim=False) if labels.dim() > 1 else labels
@@ -144,11 +230,15 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
             all_predictions.append(saved_predictions)
             all_labels.append(saved_labels)
 
+    logging.info(f"Total: {total} - Reduced: {reduced}")
     print(f"Total: {total} - Reduced: {reduced}")
     # calculate mean loss
     mean_classifier_loss = np.mean(classifier_loss_list)
     all_predictions = np.concatenate(all_predictions, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
+
+    np.savetxt("predictions.txt", all_predictions, delimiter="\n")
+    np.savetxt("labels.txt", all_labels, delimiter="\n")
 
 
     all_detections_predictions = np.concatenate(all_detections_predictions) if len(all_detections_predictions) > 0 else np.array([])
@@ -162,10 +252,10 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
         detec_f1 = f1_score(all_detections_labels, all_detections_predictions, average="macro", zero_division=1)
         conf_matrix = confusion_matrix(all_detections_labels, all_detections_predictions)
 
-        logging.info(f"Detection Accuracy: {detec_acc}, Detection F1: {detec_f1}")
+        logging.info(f"Detection Accuracy: {round(detec_acc, 4)}, Detection F1: {round(detec_f1, 4)}")
         logging.info(f"Detection Confusion Matrix:\n{conf_matrix}")
 
-        print(f"Detection Accuracy: {detec_acc}, Detection F1: {detec_f1}")
+        print(f"Detection Accuracy: {round(detec_acc, 4)}, Detection F1: {round(detec_f1, 4)}")
         print(f"Detection Confusion Matrix:\n{conf_matrix}")
 
     return mean_classifier_loss, metrics
@@ -333,10 +423,17 @@ def val_and_logging(
     else:
         logging.info(f"Val loss: {val_loss: .5f}")
         logging.info(f"Val acc: {val_metrics[0]: .5f}, val f1: {val_metrics[1]: .5f}")
-        logging.info(f"Val confusion matrix:\n {val_metrics[2]} \n")
+        if isinstance(val_metrics[2], tuple):
+            logging.info(f"Val confusion matrix:\n {val_metrics[2][0]}\n{val_metrics[2][1]} \n")
+        else:
+            logging.info(f"Val confusion matrix:\n {val_metrics[2]} \n")
         logging.info(f"Test loss: {test_loss: .5f}")
         logging.info(f"Test acc: {test_metrics[0]: .5f}, test f1: {test_metrics[1]: .5f}")
-        logging.info(f"Test confusion matrix:\n {test_metrics[2]} \n")
+
+        if isinstance(test_metrics[2], tuple):
+            logging.info(f"Test confusion matrix:\n {test_metrics[2][0]}\n{test_metrics[2][1]} \n")
+        else:
+            logging.info(f"Test confusion matrix:\n {test_metrics[2]} \n")
 
     # write tensorboard train log
     if tensorboard_logging:

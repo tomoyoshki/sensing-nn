@@ -72,21 +72,21 @@ def finetune(
         # choose one random sample idx:
         for i, (time_loc_inputs, labels, detection_labels, _) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
-
             if "dual" in args.finetune_tag:
-                labels = torch.stack((labels, detection_labels), dim=1)
+                labels = torch.cat((labels, detection_labels), dim=1)
 
             aug_freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
 
             # forward pass
             logits = classifier(aug_freq_loc_inputs)
 
-            if args.multi_class or "multiclass" in args.finetune_tag:
-                labels = labels.reshape(labels.shape[0], -1)
-                detection_labels = labels[:, -1].reshape(labels.shape[0], -1).long()
-                labels = torch.nn.functional.one_hot(labels[:, 0], num_classes=args.num_class).float()
-                if "dual" in args.finetune_tag:
-                    labels = torch.cat((labels, detection_labels), dim=1)
+            # if args.multi_class or "multiclass" in args.finetune_tag:
+                # labels = labels.reshape(labels.shape[0], -1)
+                # detection_labels = labels[:, -1].reshape(labels.shape[0], -1).long()
+                # if labels.shape
+                # labels = torch.nn.functional.one_hot(labels[:, 0], num_classes=args.num_class).float()
+                # if "dual" in args.finetune_tag:
+                    # labels = torch.cat((labels, detection_labels), dim=1)
 
             loss = classifier_loss_func(logits, labels)
 

@@ -64,9 +64,14 @@ def test(args):
         print(f"Test classifier loss: {test_classifier_loss: .5f}, test mse: {test_metrics[0]: .5f}")
         return test_classifier_loss, test_metrics[0]
     else:
+        
         print(f"Test classifier loss: {test_classifier_loss: .5f}")
         print(f"Test acc: {test_metrics[0]: .5f}, test f1: {test_metrics[1]: .5f}")
-        print(f"Test confusion matrix:\n {test_metrics[2]}")
+        if isinstance(test_metrics[2], tuple):
+            print(f"Test confusion matrix 1:\n {test_metrics[2][0]}")
+            print(f"Test confusion matrix 2:\n {test_metrics[2][1]}")
+        else:
+            print(f"Test confusion matrix:\n {test_metrics[2]}")
         
         if args.output_conf:
             plot_confusion_matrix(args, test_metrics[2])

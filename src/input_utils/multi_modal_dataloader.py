@@ -18,18 +18,7 @@ def create_dataloader(dataloader_option, args, batch_size=64, workers=5):
         data_path (_type_): _description_
         workers (_type_): _description_
     """
-    # get the training file prefix
-    index_prefix = None
-    # if args.train_mode in {"supervised"} and args.tag is not None and args.tag != "" and args.option != "test" and args.stage == "train":
-    #     index_prefix = args.tag.split("_")[0]
-    # elif args.stage == "finetune" and args.option != "test" and args.finetune_tag is not None and args.finetune_tag != "":
-    #     index_prefix = args.finetune_tag.split("_")[0]
-    #     if "gq" in index_prefix:
-    #         logging.info(f"=\tUsing GQ dataset for finetuning")
-    #         args.dataset_config["num_classes"] = 4
-    # elif args.option == "test" and args.test_tag is not None and args.test_tag != "":
-    #     index_prefix = args.test_tag.split("_")[0]
-    
+    # get the training file prefix    
     if args.stage in {"finetune"}:
         dataloader_set = args.finetune_set
     
@@ -37,13 +26,7 @@ def create_dataloader(dataloader_option, args, batch_size=64, workers=5):
         assert dataloader_option == "test", "Dataloader is test but args.option != test"
         dataloader_set = args.test_set
 
-
-    # if index_prefix is not None:
-        # index_prefix = f"{index_prefix}_"
-    # else:
-        # index_prefix = ""
-
-    logging.info(f"Loading set from {dataloader_set}")
+    logging.info(f"=\tLoading set from {dataloader_set}")
 
     # select the index file
     label_ratio = 1
@@ -70,7 +53,6 @@ def create_dataloader(dataloader_option, args, batch_size=64, workers=5):
         and (args.train_mode == "supervised" or args.stage == "finetune")
     )
 
-    print(f"balanced_sample_flag: {balanced_sample_flag}")
     sequence_sampler_flag = args.sequence_sampler and args.train_mode == "contrastive" and args.stage == "pretrain"
 
     # init the dataset

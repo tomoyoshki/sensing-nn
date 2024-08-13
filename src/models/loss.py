@@ -7,23 +7,93 @@ import math
 from general_utils.tensor_utils import extract_non_diagonal_matrix
 from models.CMCV2Modules import split_features
 
+# class WeightedMultiClassLoss(nn.Module):
+#     def __init__(self, class_weights=None):
+#         super(WeightedMultiClassLoss, self).__init__()
+#         self.class_weights = class_weights
+
+#     def forward(self, inputs, targets):
+#         # Calculate cross-entropy loss
+#         print(targets.sum(dim=1))
+#         ce_loss = nn.CrossEntropyLoss(weight=self.class_weights, reduction='none')(inputs, targets)
+        
+#         # Determine whether the target is all zeros
+#         zero_mask = (targets.sum(dim=1) == 0).float()
+        
+#         # Weight for instances with no target classes
+#         no_target_weight = 0.0001
+        
+#         # Apply weights
+#         weighted_loss = (1 - zero_mask) * ce_loss + zero_mask * ce_loss * no_target_weight
+#         return weighted_loss.mean()
+
+class WeightedMultiClassLoss(nn.Module):
+    def __init__(self, class_weights=None, no_target_weight=0.2):
+        super(WeightedMultiClassLoss, self).__init__()
+        self.class_weights = class_weights
+        self.no_target_weight = no_target_weight
+
+    def forward(self, inputs, targets):
+        # Calculate binary cross-entropy loss for each label
+        bce_loss = nn.BCEWithLogitsLoss(weight=self.class_weights, reduction='none')(inputs, targets)
+        
+        # Determine whether the target is all zeros
+        zero_mask = (targets.sum(dim=1) == 0).float()
+        
+        # Apply BCE loss normally to non-zero targets
+        weighted_loss = (1 - zero_mask).unsqueeze(1) * bce_loss
+        
+        # For instances where the target is all zeros, encourage the model to output zero
+        zero_target_penalty = zero_mask.unsqueeze(1) * torch.sigmoid(inputs)
+        
+        # Combine both losses
+        total_loss = weighted_loss + self.no_target_weight * zero_target_penalty
+        
+        # Return the average loss
+        return total_loss.mean()
+
 class MultiObjLoss(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.args = args
 
-        self.class_objective = nn.BCELoss() if args.multi_class == True else nn.CrossEntropyLoss() 
-        self.detection_objective = nn.CrossEntropyLoss()
+        self.class_objective = WeightedMultiClassLoss() if args.multi_class == True else nn.CrossEntropyLoss()
+
+        # detection_weights = torch.tensor([1e8, 1e-8], dtype=torch.float32) # no car, has car
+        detection_weights = torch.tensor([1, 1], dtype=torch.float32) # no car, has car
+        self.detection_objective = nn.CrossEntropyLoss(weight=detection_weights.to(self.args.device))
+
         self.dual = "dual" in args.finetune_tag
 
-        print(f"Initializing MultiObjecive Loss")
+        try:
+            self.detect_weights = float(self.args.finetune_tag.split('_')[-1])
+        except:
+            self.detect_weights = 0.1
+        
+
+
+        print(f"=\tInitializing MultiObjecive Loss with detect weights: {self.detect_weights}")
     
     def forward(self, logits, labels):
-
         # Classifications
         class_logits = logits[:, :self.args.num_class]
 
-        if self.dual:            
+        if self.dual and self.args.multi_class:
+
+            # get class labels
+            class_labels = labels[:, :-1]
+            detection_labels = labels[:, -1]
+
+            # set no class to zeros
+            no_car_mask = (detection_labels == 0)
+            has_car_mask = ~no_car_mask
+
+            class_loss = self.class_objective(class_logits[has_car_mask], class_labels[has_car_mask])
+            class_loss += self.detect_weights * self.class_objective(class_logits[no_car_mask], torch.zeros_like(class_logits[no_car_mask]))
+        elif self.args.multi_class:
+            class_loss = self.class_objective(class_logits.float(), labels.float())
+            detection_loss = 0
+        elif self.dual:
             class_labels = labels[:, :-1]
             detection_labels = labels[:, -1]
             detection_logits = logits[:, -2:] # last two class
@@ -32,11 +102,12 @@ class MultiObjLoss(nn.Module):
             class_logits = class_logits[has_car_mask]
             class_labels = class_labels[has_car_mask]
         
-        # Only calculate classification loss on those with cars, ignores those without cars
-        
-        
-        detection_loss = self.detection_objective(detection_logits, detection_labels.long())
-        class_loss = self.class_objective(class_logits, class_labels)
+            # Only calculate classification loss on those with cars, ignores those without cars
+            detection_loss = self.detection_objective(detection_logits, detection_labels.long())
+
+            class_labels = class_labels.reshape(-1)
+
+            class_loss = self.class_objective(class_logits, class_labels)
         
         return class_loss + detection_loss
 
