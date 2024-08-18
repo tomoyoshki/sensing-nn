@@ -216,6 +216,12 @@ def parse_base_args(option="train"):
         default="default",
         help="set to test on",
     )
+    
+    parser.add_argument(
+        "-modality",
+        default=None,
+        help="Specify the modality to use.",
+    )
 
     args = parser.parse_args()
 

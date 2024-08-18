@@ -12,7 +12,6 @@ class MultiModalDataset(Dataset):
         self.args = args
         self.sample_files = list(np.loadtxt(index_file, dtype=str))
 
-
         self.label_dict = {
             "gle350": 0,
             "miata": 1,
@@ -20,13 +19,14 @@ class MultiModalDataset(Dataset):
             "mustang": 3,
         }
         
+        print(len(self.sample_files))
+
         if label_ratio < 1:
             shuffle(self.sample_files)
             self.sample_files = self.sample_files[: round(len(self.sample_files) * label_ratio)]
 
         if balanced_sample:
             self.load_sample_labels()
-            
 
     def load_sample_labels(self):
         logging.info(f"=\tBalancing samples")
@@ -35,11 +35,14 @@ class MultiModalDataset(Dataset):
 
         for idx in range(len(self.sample_files)):
             _, label, detection_label, _ = self.__getitem__(idx)
-            if label < 0:
-                continue
-            sample_labels.append(label)
-            label_count[label] += 1
 
+            if label.shape[0] > 1:
+                label = torch.argmax(label).item()
+                sample_labels.append(label)
+                label_count[label] += 1
+            else:
+                sample_labels.append(label)
+                label_count[label] += 1
         self.sample_weights = []
         self.epoch_len = int(np.max(label_count) * len(label_count))
         for sample_label in sample_labels:
@@ -54,44 +57,39 @@ class MultiModalDataset(Dataset):
         acousitc_data = data["acoustic"]
 
         dict_data = {
-            "shake": {
-                "seismic": seismic_data[::2].reshape(1, 10, 20),
-                "audio": acousitc_data[::2].reshape(1, 10, 1600)
-            }
+            "shake": {"seismic": seismic_data[::2].reshape(1, 10, 20), "audio": acousitc_data[::2].reshape(1, 10, 1600)}
         }
 
         detection_label = torch.tensor(0)
         if data["meta/distance_mean"] is not None and data["meta/distance_mean"] <= 15:
-            detection_label = torch.tensor(1) # has car
+            detection_label = torch.tensor(1)  # has car
 
         return dict_data, label, detection_label, 0
 
-    def get_ict_multi(self, data):
-        vehicles = data["vehicle_id"]
-        label = torch.zeros(4)
-        for vid in vehicles:
-            label[vid] += 1
+    def get_ict_dual(self, data):
+        vehicles = data["vehicle_id"].item()
+        if isinstance(vehicles, int):
+            vehicles = [vehicles]
+        
+        labels = torch.FloatTensor(vehicles)
 
         seismic_data = data["seismic"]
         acousitc_data = data["acoustic"]
 
         dict_data = {
-            "shake": {
-                "seismic": seismic_data[::2].reshape(1, 10, 20),
-                "audio": acousitc_data[::2].reshape(1, 10, 1600)
-            }
+            "shake": {"seismic": seismic_data[::2].reshape(1, 10, 20), "audio": acousitc_data[::2].reshape(1, 10, 1600)}
         }
 
         detection_label = torch.tensor(0)
 
         if data["dis"] is not None:
-            dis_mean = data["dis"].mean(dim=0) # mean distance
-            for dis in dis_mean:
+            dis_mean = data["dis"].mean(dim=0)  # mean distance
+            for dis in data["dis"]:
                 if dis is not None and dis <= 15:
-                    detection_label = torch.tensor(1) # has car if one of the vehicle is present
+                    detection_label = torch.tensor(1)  # has car if one of the vehicle is present
         else:
-            dis_mean = torch.tensor([100, 100])
-        
+            dis_mean = torch.tensor(-1)
+
         meta_data = dis_mean
 
         if self.args.multi_class:
@@ -102,30 +100,23 @@ class MultiModalDataset(Dataset):
                 labels = torch.LongTensor([0] * self.args.num_class)
 
         detection_label = detection_label.reshape(1)
-        return dict_data, label, detection_label, meta_data
-    
+        return dict_data, labels, detection_label.float(), meta_data.float()
+
     def get_gcq(self, sample):
         data = sample["data"]
         detection_label = torch.tensor(1)
 
         if sample["label"] == "background":
             detection_label = torch.tensor(0)
-        
+
         label = sample["label"]
 
-        label_dict = {
-            "polaris": 0,
-            "silverado": 1,
-            "sedan": 1,
-            "warthog": 2,
-            "husky": 3,
-            "background": -1
-        }
+        label_dict = {"polaris": 0, "silverado": 1, "sedan": 1, "warthog": 2, "husky": 3, "background": -1}
         if isinstance(label, str):
             label = torch.LongTensor([label_dict[label]])
-        
+
         label = label.long().item()
-        
+
         for loc in data:
             for mod in data[loc]:
                 data[loc][mod] = data[loc][mod].reshape(1, 10, -1)
@@ -133,7 +124,7 @@ class MultiModalDataset(Dataset):
                     data[loc][mod] = torch.from_numpy(data[loc][mod])
                 data[loc][mod] = data[loc][mod].float()
         meta_data = -1
-        
+
         return data, label, detection_label, meta_data
 
     def get_gcq_mixed(self, sample):
@@ -142,30 +133,21 @@ class MultiModalDataset(Dataset):
 
         if sample["label"] == "background":
             detection_label = torch.tensor(0)
-        
+
         label = sample["label"]
 
-        label_dict = {
-            "polaris": 0,
-            "silverado": 1,
-            "sedan": 1,
-            "warthog": 2,
-            "husky": 3,
-            "background": -1
-        }
+        label_dict = {"polaris": 0, "silverado": 1, "sedan": 1, "warthog": 2, "husky": 3, "background": -1}
         if isinstance(label, str):
             label = torch.LongTensor([label_dict[label]])
-        
+
         if not isinstance(label, list):
             label = [label]
-        
+
         multi_label = torch.FloatTensor([0] * self.args.num_class)
         if detection_label > 0:
             for l in label:
                 if l >= 0:
                     multi_label[l] = 1
-        
-        # print(multi_label)
 
         for loc in data:
             for mod in data[loc]:
@@ -177,41 +159,77 @@ class MultiModalDataset(Dataset):
         detection_label = detection_label.reshape(1)
         return data, multi_label, detection_label, meta_data
 
-    def get_gcq_all_mixed(self, sample):
-        # if "vehicle_id" in sample.keys():
-        #     return self.get_ict_multi(sample)
-        return self.get_gcq_mixed(sample)
+    def get_ict_multi(self, data):
+        
+        if "dual" in self.args.finetune_tag:
+            return self.get_ict_dual(data)
 
+        vehicles = data["vehicle_id"].item()
+
+        if isinstance(vehicles, int):
+            vehicles = [vehicles]
+
+        multi_label = torch.zeros(4)
+        for vid in vehicles:
+            multi_label[vid] += 1
+
+        seismic_data = data["seismic"]
+        acousitc_data = data["acoustic"]
+
+        dict_data = {
+            "shake": {"seismic": seismic_data[::2].reshape(1, 10, 20), "audio": acousitc_data[::2].reshape(1, 10, 1600)}
+        }
+
+        detection_label = torch.tensor(0)
+
+        if data["dis"] is not None:
+            dis_mean = data["dis"].mean(dim=0)  # mean distance
+            for dis in data["dis"]:
+                if dis is not None and dis <= 15:
+                    detection_label = torch.tensor(1)  # has car if one of the vehicle is present
+        else:
+            dis_mean = torch.tensor(100)
+
+        if detection_label == 0:
+            multi_label = torch.FloatTensor([0] * 4)
+
+        return dict_data, multi_label, detection_label.float(), dis_mean.float()
 
     def __getitem__(self, idx):
         pt_file = self.sample_files[idx]
         sample = torch.load(pt_file)
 
-        for tag in ["ictfiltered", "ictexclusive", "ictyizhuo"]:
+        for tag in ["ictexclusive"]:
+            if self.args.option == "train" and tag in self.args.finetune_set:
+                return self.get_ict_multi(sample)
+            if self.args.option == "test" and tag in self.args.test_set:
+                return self.get_ict_multi(sample)
+
+        for tag in ["ictfiltered", "ictyizhuo"]:
             if self.args.option == "train" and tag in self.args.finetune_set:
                 return self.get_ict(sample)
             if self.args.option == "test" and tag in self.args.test_set:
                 return self.get_ict(sample)
-        
+
+
         for tag in ["gcqallmixed", "gcqday1filtered", "gcqday2filtered"]:
             if self.args.option == "train" and tag in self.args.finetune_set:
-                return self.get_gcq_all_mixed(sample)
+                return self.get_gcq_mixed(sample)
             if self.args.option == "test" and tag in self.args.test_set:
-                return self.get_gcq_all_mixed(sample)
-            
+                return self.get_gcq_mixed(sample)
+
         for tag in ["gcqall"]:
             if self.args.option == "train" and tag in self.args.finetune_set:
                 return self.get_gcq(sample)
             if self.args.option == "test" and tag in self.args.test_set:
                 return self.get_gcq(sample)
-        
+
         for tag in ["gcqmixed"]:
             if self.args.option == "train" and tag in self.args.finetune_set:
                 return self.get_gcq_mixed(sample)
             if self.args.option == "test" and tag in self.args.test_set:
                 return self.get_gcq_mixed(sample)
-        
-        
+
         for tag in ["ict6"]:
             if tag in self.args.test_set:
                 return self.get_ict_multi(sample)
@@ -231,32 +249,32 @@ class MultiModalDataset(Dataset):
                 raise ValueError(f"Unknown task: {self.args.task}")
         else:
             label = sample["label"]
-        
+
         if isinstance(label, str):
             if label not in self.label_dict:
                 print(f"Label not in the dictionary: {label}")
             label = self.label_dict[label]
-        
+
         dist = int(pt_file.split(".")[0].split("_")[-1])
 
         dist_threshold = 15
-        
+
         if ("multiclass" in self.args.finetune_tag or "dist" in self.args.finetune_tag) and dist > dist_threshold:
-            label = 4 # background
+            label = 4  # background
 
         # if "detection" in self.args.finetune_tag:
 
         detection_label = -1
 
         if dist > dist_threshold:
-            detection_label = 0 # no car
+            detection_label = 0  # no car
         else:
-            detection_label = 1 # has car
+            detection_label = 1  # has car
 
         for loc in data:
             for mod in data[loc]:
                 if data[loc][mod].ndim == 2:
-                    data[loc][mod] = torch.from_numpy(data[loc][mod]).unsqueeze(0)  
+                    data[loc][mod] = torch.from_numpy(data[loc][mod]).unsqueeze(0)
 
         return data, label, detection_label, idx
 
@@ -337,14 +355,14 @@ class MultiModalSequenceDataset(Dataset):
                 raise ValueError(f"Unknown task: {self.args.task}")
         else:
             label = sample["label"]
-        
+
         self.label_dict = {
             "gle350": 7,
             "miata": 8,
             "cx30": 9,
             "mustang": 5,
         }
-        
+
         if isinstance(label, str):
             if label not in self.label_dict:
                 print(f"Label not in the dictionary: {label}")
@@ -353,13 +371,11 @@ class MultiModalSequenceDataset(Dataset):
 
         label = label.float()
         label = label.unsqueeze(0).reshape(1)
-        # print(label.shape)
-        # print(type(label))
         for loc in data:
             for mod in data[loc]:
                 if data[loc][mod].ndim == 2:
                     data[loc][mod] = torch.from_numpy(data[loc][mod]).unsqueeze(0).float()
-                    
+
         return data, label, sample_idx
 
 

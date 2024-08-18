@@ -156,6 +156,8 @@ def set_model_weight_file_suffix(args):
     finetune_tag_suffix = finetune_tag_suffix if args.finetune_tag is None else f"_{args.finetune_tag}{finetune_tag_suffix}"
     finetune_tag_suffix = f"_{args.label_ratio}{finetune_tag_suffix}"
     finetune_tag_suffix = finetune_tag_suffix if args.finetune_set is None else f"_{args.finetune_set}{finetune_tag_suffix}"
+    finetune_tag_suffix = finetune_tag_suffix if args.modality is None else f"_{args.modality}{finetune_tag_suffix}"
+    
     finetune_tag_suffix = f"_finetune{finetune_tag_suffix}"
     
     tag_suffix = f""
@@ -205,6 +207,9 @@ def set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=Non
     
     if margin_value is not None:
         args.dataset_config[args.learn_framework]["inter_rank_margin"] = margin_value
+
+    if args.modality is not None:
+        args.dataset_config["modality_names"] = [args.modality]
 
     # verbose
     args.use_gcq_data = str_to_bool(args.use_gcq_data)

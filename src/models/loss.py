@@ -7,28 +7,8 @@ import math
 from general_utils.tensor_utils import extract_non_diagonal_matrix
 from models.CMCV2Modules import split_features
 
-# class WeightedMultiClassLoss(nn.Module):
-#     def __init__(self, class_weights=None):
-#         super(WeightedMultiClassLoss, self).__init__()
-#         self.class_weights = class_weights
-
-#     def forward(self, inputs, targets):
-#         # Calculate cross-entropy loss
-#         print(targets.sum(dim=1))
-#         ce_loss = nn.CrossEntropyLoss(weight=self.class_weights, reduction='none')(inputs, targets)
-        
-#         # Determine whether the target is all zeros
-#         zero_mask = (targets.sum(dim=1) == 0).float()
-        
-#         # Weight for instances with no target classes
-#         no_target_weight = 0.0001
-        
-#         # Apply weights
-#         weighted_loss = (1 - zero_mask) * ce_loss + zero_mask * ce_loss * no_target_weight
-#         return weighted_loss.mean()
-
 class WeightedMultiClassLoss(nn.Module):
-    def __init__(self, class_weights=None, no_target_weight=0.2):
+    def __init__(self, class_weights=None, no_target_weight=0.001):
         super(WeightedMultiClassLoss, self).__init__()
         self.class_weights = class_weights
         self.no_target_weight = no_target_weight
@@ -90,6 +70,8 @@ class MultiObjLoss(nn.Module):
 
             class_loss = self.class_objective(class_logits[has_car_mask], class_labels[has_car_mask])
             class_loss += self.detect_weights * self.class_objective(class_logits[no_car_mask], torch.zeros_like(class_logits[no_car_mask]))
+            
+            detection_loss = 0
         elif self.args.multi_class:
             class_loss = self.class_objective(class_logits.float(), labels.float())
             detection_loss = 0
@@ -105,8 +87,9 @@ class MultiObjLoss(nn.Module):
             # Only calculate classification loss on those with cars, ignores those without cars
             detection_loss = self.detection_objective(detection_logits, detection_labels.long())
 
-            class_labels = class_labels.reshape(-1)
-
+            class_labels = class_labels.reshape(-1).long()
+            
+            # print(class_logits.shape, class_labels.shape)
             class_loss = self.class_objective(class_logits, class_labels)
         
         return class_loss + detection_loss

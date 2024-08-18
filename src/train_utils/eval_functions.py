@@ -20,9 +20,9 @@ def eval_task_metrics(args, labels, predictions, regression=False):
     """Evaluate the downstream task metrics."""
     # different acc and f1-score definitions for single-class and multi-class problems
 
-    # Print statistics
-    for i in range(labels.shape[1]):
-        print(f"Class {i} - predicted {predictions[:, i].sum()} - labels {labels[:, i].sum()}")
+    if args.multi_class:
+        for i in range(labels.shape[1]):
+            print(f"Class {i} - predicted {predictions[:, i].sum()} - labels {labels[:, i].sum()}")
 
     if regression:
         mae = mean_absolute_error(labels, predictions)
@@ -66,7 +66,9 @@ def eval_task_metrics(args, labels, predictions, regression=False):
             labels = labels[has_car_mask]
             lb = torch.tensor(labels).argmax(dim=1, keepdim=True)
             pd = torch.tensor(predictions).argmax(dim=1, keepdim=True)
-            conf_matrix = (conf_matrix, confusion_matrix(lb, pd))
+            
+            if lb.shape[0] > 0 and pd.shape[0] > 0:
+                conf_matrix = (conf_matrix, confusion_matrix(lb, pd))
             # conf_matrix = []
         else:
             if args.task in {"distance_classification", "speed_classification"}:
@@ -74,7 +76,11 @@ def eval_task_metrics(args, labels, predictions, regression=False):
                 mean_acc = 1 - (np.abs(labels-predictions) / np.maximum(labels, (num_classes - 1) - labels))
                 mean_acc = np.nan_to_num(mean_acc, nan=1.0)
                 mean_acc = mean_acc.mean()
-            else:    
+            else: 
+                if labels.ndim > 1 and labels.shape[1] > 1:
+                    labels = labels.argmax(axis=1)
+                else:
+                    labels = labels.reshape(-1)
                 mean_acc = accuracy_score(labels, predictions)
             mean_f1 = f1_score(labels, predictions, average="macro", zero_division=1)
             try:
@@ -205,23 +211,12 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
 
             else:
                 if args.multi_class:
-                    predictions = (logits > 0.85).float()
+                    predictions = (logits > 0.75).float()
                     labels = labels.float()
-
-                    # labels = labels.float()
-                    # predictions = logits.argmax(dim=1, keepdim=False)
-                    # labels = labels.argmax(dim=1, keepdim=False) if labels.dim() > 1 else labels
                 else:
-                    # logits[logits < 0.7] = 0
-                    # logits_sum = logits.sum(dim=1)
-                    # logits_mask = (logits_sum == 0).int() # only keep the highest predictions
-                    # logits[logits_mask, -1] = 1.0
-                    
-
                     # Logits [128, 4], swap the order of classes
                     # logits = logits[:, [1, 0, 3, 2]]
                     predictions = logits.argmax(dim=1, keepdim=False) # predict whether each sample has car or not
-                    # predictions[predictions > 3] = 3
                     labels = labels.argmax(dim=1, keepdim=False) if labels.dim() > 1 else labels
 
             # for future computation of acc or F1 score
