@@ -70,12 +70,17 @@ def finetune(
         train_loss_list = []
         
         # choose one random sample idx:
-        for i, (time_loc_inputs, labels, _) in tqdm(enumerate(train_dataloader), total=num_batches):
+        for i, (time_loc_inputs, labels, detection_labels, _) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
+            if "dual" in args.finetune_tag:
+                detection_labels = detection_labels.reshape(-1, 1)
+                labels = torch.cat((labels, detection_labels), dim=1)
+
             aug_freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
 
             # forward pass
             logits = classifier(aug_freq_loc_inputs)
+
             loss = classifier_loss_func(logits, labels)
 
             # back propagation

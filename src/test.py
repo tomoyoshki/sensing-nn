@@ -4,6 +4,7 @@ import warnings
 
 warnings.simplefilter("ignore", UserWarning)
 
+from models.loss import MultiObjLoss
 import torch.nn as nn
 
 # utils
@@ -32,6 +33,7 @@ def test(args):
 
     # Init the classifier model
     classifier = init_backbone_model(args)
+    args.classifier_weight = args.classifier_weight.replace("best", "latest")
     classifier = load_model_weight(args, classifier, args.classifier_weight, load_class_layer=True)
     print(f"Weight: {args.classifier_weight}")
     args.classifier = classifier
@@ -40,7 +42,9 @@ def test(args):
     if "regression" in args.task:
         classifier_loss_func = nn.MSELoss()
     else:
-        if args.multi_class:
+        if "dual" in args.finetune_tag:
+            classifier_loss_func = MultiObjLoss(args)
+        elif args.multi_class:
             classifier_loss_func = nn.BCELoss()
         else:
             classifier_loss_func = nn.CrossEntropyLoss()
@@ -61,12 +65,19 @@ def test(args):
         print(f"Test classifier loss: {test_classifier_loss: .5f}, test mse: {test_metrics[0]: .5f}")
         return test_classifier_loss, test_metrics[0]
     else:
-        print(f"Test classifier loss: {test_classifier_loss: .5f}")
-        print(f"Test acc: {test_metrics[0]: .5f}, test f1: {test_metrics[1]: .5f}")
-        print(f"Test confusion matrix:\n {test_metrics[2]}")
         
-        if args.output_conf:
-            plot_confusion_matrix(args, test_metrics[2])
+        print(f"Test classifier loss: {test_classifier_loss: .5f}")
+        
+        if isinstance(test_metrics[0], tuple):
+            for i in range(2):
+                print(f"Test acc {i}: {test_metrics[0][i]: .5f}, test f1 {i}: {test_metrics[1][i]: .5f}")
+        else:
+            print(f"Test acc: {test_metrics[0]: .5f}, test f1: {test_metrics[1]: .5f}")
+        if isinstance(test_metrics[2], tuple):
+            print(f"Test confusion matrix 1:\n {test_metrics[2][0]}")
+            print(f"Test confusion matrix 2:\n {test_metrics[2][1]}")
+        else:
+            print(f"Test confusion matrix:\n {test_metrics[2]}")
 
         return test_classifier_loss, test_metrics[0], test_metrics[1]
 

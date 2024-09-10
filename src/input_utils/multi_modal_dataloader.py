@@ -18,22 +18,15 @@ def create_dataloader(dataloader_option, args, batch_size=64, workers=5):
         data_path (_type_): _description_
         workers (_type_): _description_
     """
-    # get the training file prefix
-    index_prefix = None
-    if args.train_mode in {"supervised"} and args.tag is not None and args.tag != "" and args.option != "test" and args.stage == "train":
-        index_prefix = args.tag.split("_")[0]
-    elif args.stage == "finetune" and args.option != "test" and args.finetune_tag is not None and args.finetune_tag != "":
-        index_prefix = args.finetune_tag.split("_")[0]
-        if "gq" in index_prefix:
-            logging.info(f"=\tUsing GQ dataset for finetuning")
-            args.dataset_config["num_classes"] = 4
-    elif args.option == "test" and args.test_tag is not None and args.test_tag != "":
-        index_prefix = args.test_tag.split("_")[0]
+    # get the training file prefix    
+    if args.stage in {"finetune"}:
+        dataloader_set = args.finetune_set
     
-    if index_prefix is not None:
-        index_prefix = f"{index_prefix}_"
-    else:
-        index_prefix = ""
+    if args.option in {"test"}:
+        assert dataloader_option == "test", "Dataloader is test but args.option != test"
+        dataloader_set = args.test_set
+
+    logging.info(f"=\tLoading set from {dataloader_set}")
 
     # select the index file
     label_ratio = 1
@@ -43,14 +36,15 @@ def create_dataloader(dataloader_option, args, batch_size=64, workers=5):
             index_file = args.dataset_config["pretrain_index_file"]
         else:
             """supervised training"""
-            index_file = args.dataset_config[args.task][f"{index_prefix}train_index_file"]
+            index_file = args.dataset_config[args.task][dataloader_set]["train_index_file"]
             label_ratio = args.label_ratio
     elif dataloader_option == "val":
-        index_file = args.dataset_config[args.task][f"{index_prefix}val_index_file"]
+        index_file = args.dataset_config[args.task][dataloader_set]["val_index_file"]
     else:
-        index_file = args.dataset_config[args.task][f"{index_prefix}test_index_file"]
+        index_file = args.dataset_config[args.task][dataloader_set][f"test_index_file"]
 
     logging.info(f"=\tLoading {dataloader_option} dataloader index file from: {index_file}")
+
     # init the flags
     balanced_sample_flag = (
         args.balanced_sample
@@ -58,6 +52,7 @@ def create_dataloader(dataloader_option, args, batch_size=64, workers=5):
         and dataloader_option == "train"
         and (args.train_mode == "supervised" or args.stage == "finetune")
     )
+
     sequence_sampler_flag = args.sequence_sampler and args.train_mode == "contrastive" and args.stage == "pretrain"
 
     # init the dataset

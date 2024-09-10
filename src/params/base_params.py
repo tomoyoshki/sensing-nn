@@ -42,7 +42,7 @@ def parse_base_args(option="train"):
     parser.add_argument(
         "-model",
         type=str,
-        default="TransformerV3",
+        default="TransformerV4",
         help="The backbone classification model to use.",
     )
 
@@ -157,7 +157,7 @@ def parse_base_args(option="train"):
     parser.add_argument(
         "-finetune_tag",
         type=str,
-        default=None,
+        default="",
         help="Specify the finetune tag.",
     )
     
@@ -201,6 +201,26 @@ def parse_base_args(option="train"):
         type=str,
         default="false",
         help="Whether to output the confusion matrix",
+    )
+
+    parser.add_argument(
+        "-finetune_set",
+        type=str,
+        default="default",
+        help="set to finetune on",
+    )
+
+    parser.add_argument(
+        "-test_set",
+        type=str,
+        default="default",
+        help="set to test on",
+    )
+    
+    parser.add_argument(
+        "-modality",
+        default=None,
+        help="Specify the modality to use.",
     )
 
     args = parser.parse_args()
