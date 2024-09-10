@@ -81,9 +81,11 @@ def finetune(
             # forward pass
             logits = classifier(aug_freq_loc_inputs)
 
-            if args.multi_class == False and labels.dim() > 1:
+            if args.multi_class == False and labels.dim() > 1 and args.task in {"vehicle_classification"}:
                 labels = labels.argmax(dim=1)
 
+            # labels to float
+            # labels = labels.float()
             loss = classifier_loss_func(logits, labels)
 
             # back propagation
