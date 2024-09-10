@@ -51,6 +51,51 @@ class MultiModalDataset(Dataset):
 
     def __len__(self):
         return len(self.sample_files)
+    
+    def get_normal(self, sample, pt_file, idx):
+        data = sample["data"]
+        # ACIDS and Parkland
+        if isinstance(sample["label"], dict):
+            if self.args.task == "vehicle_classification":
+                label = sample["label"]["vehicle_type"]
+            elif self.args.task == "distance_classification":
+                label = sample["label"]["distance"]
+            elif self.args.task == "speed_classification":
+                label = sample["label"]["speed"] // 5 - 1
+            elif self.args.task == "terrain_classification":
+                label = sample["label"]["terrain"]
+            else:
+                raise ValueError(f"Unknown task: {self.args.task}")
+        else:
+            label = sample["label"]
+
+        if isinstance(label, str):
+            if label not in self.label_dict:
+                print(f"Label not in the dictionary: {label}")
+            label = self.label_dict[label]
+
+        dist = int(pt_file.split(".")[0].split("_")[-1])
+
+        dist_threshold = 15
+
+        if ("multiclass" in self.args.finetune_tag or "dist" in self.args.finetune_tag) and dist > dist_threshold:
+            label = 4  # background
+
+        # if "detection" in self.args.finetune_tag:
+
+        detection_label = -1
+
+        if dist > dist_threshold:
+            detection_label = 0  # no car
+        else:
+            detection_label = 1  # has car
+
+        for loc in data:
+            for mod in data[loc]:
+                if data[loc][mod].ndim == 2:
+                    data[loc][mod] = torch.from_numpy(data[loc][mod]).unsqueeze(0)
+
+        return data, label, detection_label, idx
 
     def get_ict(self, data):
         label = data["vehicle_id"]
@@ -196,6 +241,30 @@ class MultiModalDataset(Dataset):
 
         return dict_data, multi_label, detection_label.float(), dis_mean.float()
 
+    def get_gcq_aug(self, sample):
+        data = sample["data"]
+        label = sample["label"]
+        distance = sample["distance"]
+        label_dict = {"polaris": 0, "silverado": 1, "sedan": 1, "truck": 1, "warthog": 2, "background": -1}
+        class_labels = torch.FloatTensor([0] * 3)
+        for l in label:
+            class_labels[label_dict[l]] = 1
+            distance_label = torch.FloatTensor([distance[l]])
+        
+        
+        if self.args.task == "vehicle_classification":
+            label = class_labels
+        elif self.args.task == "distance_regression":
+            label = distance_label
+        elif self.args.task == "distance_classification":
+            if distance_label < 15:
+                label = torch.FloatTensor([0])
+            elif distance_label < 30:
+                label = torch.FloatTensor([1])
+            else:
+                label = torch.FloatTensor([2])
+        return data, label, 0
+    
     def __getitem__(self, idx):
         pt_file = self.sample_files[idx]
         sample = torch.load(pt_file)
@@ -213,7 +282,7 @@ class MultiModalDataset(Dataset):
                 return self.get_ict(sample)
 
 
-        for tag in ["gcqallmixed", "gcqday1filtered", "gcqday2filtered"]:
+        for tag in ["gcqallmixed", "gcqday1filtered", "gcqday2filtered", "gcqmixed"]:
             if self.args.option == "train" and tag in self.args.finetune_set:
                 return self.get_gcq_mixed(sample)
             if self.args.option == "test" and tag in self.args.test_set:
@@ -223,61 +292,15 @@ class MultiModalDataset(Dataset):
             if self.args.option == "train" and tag in self.args.finetune_set:
                 return self.get_gcq(sample)
             if self.args.option == "test" and tag in self.args.test_set:
-                return self.get_gcq(sample)
-
-        for tag in ["gcqmixed"]:
+                return self.get_gcq(sample) 
+            
+        for tag in ["gcq20240806", "gcq20240807"]:
             if self.args.option == "train" and tag in self.args.finetune_set:
-                return self.get_gcq_mixed(sample)
+                return self.get_gcq_aug(sample)
             if self.args.option == "test" and tag in self.args.test_set:
-                return self.get_gcq_mixed(sample)
-
-        for tag in ["ict6"]:
-            if tag in self.args.test_set:
-                return self.get_ict_multi(sample)
-
-        data = sample["data"]
-        # ACIDS and Parkland
-        if isinstance(sample["label"], dict):
-            if self.args.task == "vehicle_classification":
-                label = sample["label"]["vehicle_type"]
-            elif self.args.task == "distance_classification":
-                label = sample["label"]["distance"]
-            elif self.args.task == "speed_classification":
-                label = sample["label"]["speed"] // 5 - 1
-            elif self.args.task == "terrain_classification":
-                label = sample["label"]["terrain"]
-            else:
-                raise ValueError(f"Unknown task: {self.args.task}")
-        else:
-            label = sample["label"]
-
-        if isinstance(label, str):
-            if label not in self.label_dict:
-                print(f"Label not in the dictionary: {label}")
-            label = self.label_dict[label]
-
-        dist = int(pt_file.split(".")[0].split("_")[-1])
-
-        dist_threshold = 15
-
-        if ("multiclass" in self.args.finetune_tag or "dist" in self.args.finetune_tag) and dist > dist_threshold:
-            label = 4  # background
-
-        # if "detection" in self.args.finetune_tag:
-
-        detection_label = -1
-
-        if dist > dist_threshold:
-            detection_label = 0  # no car
-        else:
-            detection_label = 1  # has car
-
-        for loc in data:
-            for mod in data[loc]:
-                if data[loc][mod].ndim == 2:
-                    data[loc][mod] = torch.from_numpy(data[loc][mod]).unsqueeze(0)
-
-        return data, label, detection_label, idx
+                return self.get_gcq_aug(sample)         
+        
+        return self.get_normal(sample, pt_file, idx)
 
 
 class MultiModalSequenceDataset(Dataset):

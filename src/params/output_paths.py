@@ -171,8 +171,8 @@ def set_model_weight_folder(args):
                 args.train_log_file = os.path.join(weight_folder, f"{tag_suffix}pretrain_log.txt")
                 args.tensorboard_log = os.path.join(weight_folder, f"pretrain_events")
             elif args.stage == "finetune":
-                args.train_log_file = os.path.join(weight_folder, f"{args.task}_{args.finetune_tag_suffix}log.txt")
-                args.tensorboard_log = os.path.join(weight_folder, f"{args.task}_{args.finetune_tag_suffix}events")
+                args.train_log_file = os.path.join(weight_folder, f"{args.task}{args.finetune_tag_suffix}log.txt")
+                args.tensorboard_log = os.path.join(weight_folder, f"{args.task}{args.finetune_tag_suffix}events")
             elif args.stage == "alignment":
                 args.train_log_file = os.path.join(weight_folder, f"{args.tag_suffix}_log.txt")
                 args.tensorboard_log = os.path.join(weight_folder, f"{args.tag_suffix}_events")

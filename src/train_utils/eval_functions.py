@@ -125,11 +125,12 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
     total = 0
     reduced = 0
     with torch.no_grad():
-        for i, (time_loc_inputs, labels, detection_labels, index) in tqdm(
+        for i, (time_loc_inputs, labels, index) in tqdm(
             enumerate(dataloader), total=num_batches
         ):
             total += labels.shape[0]
             if "dual" in args.finetune_tag:
+                labels, detection_labels = labels
                 if labels.dim() > 1:
                     labels = torch.cat(
                         (labels, detection_labels.reshape(-1, 1)), dim=1
@@ -253,8 +254,8 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
             all_predictions.append(saved_predictions)
             all_labels.append(saved_labels)
 
-    logging.info(f"Total: {total} - Reduced: {reduced}")
-    print(f"Total: {total} - Reduced: {reduced}")
+    # logging.info(f"Total: {total} - Reduced: {reduced}")
+    # print(f"Total: {total} - Reduced: {reduced}")
     # calculate mean loss
     mean_classifier_loss = np.mean(classifier_loss_list)
     all_predictions = np.concatenate(all_predictions, axis=0)

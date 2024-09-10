@@ -70,16 +70,19 @@ def finetune(
         train_loss_list = []
         
         # choose one random sample idx:
-        for i, (time_loc_inputs, labels, detection_labels, _) in tqdm(enumerate(train_dataloader), total=num_batches):
+        for i, (time_loc_inputs, labels, _) in tqdm(enumerate(train_dataloader), total=num_batches):
             # move to target device, FFT, and augmentations
             if "dual" in args.finetune_tag:
+                labels, detection_labels = labels
                 detection_labels = detection_labels.reshape(-1, 1)
                 labels = torch.cat((labels, detection_labels), dim=1)
-
             aug_freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
 
             # forward pass
             logits = classifier(aug_freq_loc_inputs)
+
+            if args.multi_class == False and labels.dim() > 1:
+                labels = labels.argmax(dim=1)
 
             loss = classifier_loss_func(logits, labels)
 
@@ -100,8 +103,6 @@ def finetune(
         epoch_end_time = time.time()
         
         time_taken.append(epoch_end_time - epoch_beign_time)
-        
-        logging.info(f"Epoch {epoch} took {epoch_end_time - epoch_beign_time} s")
         if epoch % val_epochs == 0:
             train_loss = np.mean(train_loss_list)
             val_metric, val_loss = val_and_logging(

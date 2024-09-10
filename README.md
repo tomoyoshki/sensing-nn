@@ -1,41 +1,103 @@
 # FOCAL (VibroFM)
 
-Major changes
+## Requirements
 
-1. Add multiclass, if you want to run multiclass, simply add `-finetune_tag=multiclass`
-2. Add different finetuning set and testing set support
-    - E.g. `-finetune_set=ictfiltered`, `-finetune_set=ictexclusive`
-    - E.g. `-test_set=ictfiltered`, `-test_set=ictexclusive`
-    - Dataset explanation
-        - This selects the set with different index path listed in `Parkland.yaml`
-        - ICT Filtered is the one where Yizhuo did the 15 meter filtering, (15 min for train and 45 min for val, non-filtered 45min  for test)
-        - ICT Exclusive is the new one with <15 meter and >70 meter filtering, (15 min for train and 45 min for val, non-filtered 45min  for test)
-3. Add mlp classifier support (not necessary)
-4. Add vehicle detector support, so if "dual" is in finetune_tag, then the classifier returns both class predictions (which class this vehicle belongs to) and vehilcle detection (whether there is a vehicle), if this is on, then vehicles detected as negative (is not nearby) will be discarded, see TransformerV4_CMC.py and finetune.py and eval_functions.py to see the discard logic, not necessary for the paper but possibly useful for demo
+1. **Dependencies**: ```conda create -n [NAME] python=3.10; conda activate [NAME]```
 
-Example usage finetuning
+2. **Installation**:
+
+    ```bash
+    git clone [repo] [dir]
+    cd [dir]
+    pip install -r requirements.txt
+    ```
+
+## Data
+
+Processed Data path: `/home/tkimura4/data/datasets/MOD/GracesQuarters/2024-08-0X-GQ/individual_time_samples`
+
+Index file path: `/home/tkimura4/data/indices/single/2024-08-0X-GQ`
+
+You do not need to modify these if you are running on Eugene. The file path is already in the `Parkland.yaml` file. 
+
+In `Parkland.yaml`, there is a `SET` for each `TASK`, where the index path is specified.
+
+```yaml
+vehicle_classification:
+    ...
+    gcq20240806:
+            num_classes: 4
+            train_index_file: /home/tkimura4/data/indices/single/2024-08-06-GQ/train_index.txt
+            val_index_file: /home/tkimura4/data/indices/single/2024-08-06-GQ/val_index.txt
+            test_index_file: /home/tkimura4/data/indices/single/2024-08-06-GQ/test_index.txt
+
+    gcq20240807:
+            num_classes: 4
+            train_index_file: /home/tkimura4/data/indices/single/2024-08-07-GQ/train_index.txt
+            val_index_file: /home/tkimura4/data/indices/single/2024-08-07-GQ/val_index.txt
+            test_index_file: /home/tkimura4/data/indices/single/2024-08-07-GQ/test_index.txt
+    ...
+distance_regression:
+    ...
+distance_classification:
+    ...
+```
+
+## Models
+
+The model we are using is `TransformerV4.py`, it is a SWIN-Transformer. 
+
+### Pretrained Weights
+
+The code will automatically select the newest weights, or specifiy the weight path (see below)
+```
+└── weights
+    └── Parkland_TransformerV4_debug
+        ├── exp0_contrastive_CMCV2
+        ├── exp..._contrastive_CMCV2
+        └── exp[LATEST]_contrastive_CMCV2
+```
+
+Put the weight folder under Parkland_TransformerV4_debug
+
+## Training
+
+The following command will run supervised training for Transformer (`-model=TransformerV4`).
+
+### FOCAL Pre-training
 
 ```bash
-# For multiclass finetuning
-python3 train.py -gpu=X -model=TransformerV4 -learn_framework=CMCV2 -stage=finetune -finetune_set=ictfiltered -finetune_tag=multiclass
-
-# For multiclass and vehicle detection
-python3 train.py -gpu=X -model=TransformerV4 -learn_framework=CMCV2 -stage=finetune -finetune_set=ictfiltered -finetune_tag=multiclass_dual
-
-# Different set
-python3 train.py -gpu=X -model=TransformerV4 -learn_framework=CMCV2 -stage=finetune -finetune_set=ictexclusive -finetune_tag=multiclass_dual
+python train.py -model=[MODEL] -dataset=[DATASET] -learn_framework=FOCAL
 ```
 
-**Weights**
+### FOCAL Fine-tuning with specific downstream task
 
+```bash
+python train.py -model=TransformerV4 -dataset=Parkland -learn_framework=CMCV2 -task=[TASK] -stage=finetune -model_weight=[PATH TO MODEL WEIGHT] -finetune_set=[SET]
 ```
-All on Eugene
 
-pretrain weights: /home/tkimura4/FTSSense/weights/Parkland_TransformerV4_debug/exp100_contrastive_CMCV2/Parkland_TransformerV4_pretrain_latest.pt
+- `dataset` default to Parkland
+- `TASK` is default to vehicle_classification
+- `MODEL WEIGHT` is default to the weight folder with latest `expID`
+- Specify `finetune set` you would like to run
+    - For GQ data we collected in august, it would be `gcq20240806` and `gcq20240806`
 
-Finetuned weights (multi class on ict exclusive < 15 meters & > 70 meters): /home/tkimura4/FTSSense/weights/Parkland_TransformerV4_debug/exp100_contrastive_CMCV2/Parkland_TransformerV4_vehicle_classification_finetune_ictexclusive_1.0_multiclass_best.pt
+**Example**
 
-Finetuned weights (multi class on ict filtered - < 15 meters): /home/tkimura4/FTSSense/weights/Parkland_TransformerV4_debug/exp100_contrastive_CMCV2/Parkland_TransformerV4_vehicle_classification_finetune_ictfiltered_1.0_multiclass_best.pt
-```
+- Run Aug20240806 Data Vehicle Classification
+
+    `python3 train.py -gpu=0 -model=TransformerV4 -learn_framework=CMCV2 -stage=finetune -finetune_set=gcq20240806 -balanced_sample=False`
+
+- Run Aug20240806 Data Distance Regression
+
+    `python3 train.py -gpu=0 -model=TransformerV4 -learn_framework=CMCV2 -stage=finetune -finetune_set=gcq20240806 -balanced_sample=False -task=distance_regression`
+
+- Run Aug20240807 Data Distance Regression with specific weights
+
+    `python3 train.py -gpu=0 -model=TransformerV4 -learn_framework=CMCV2 -stage=finetune -finetune_set=gcq20240806 -balanced_sample=False -task=distance_regression -model_weight=/home/tkimura4/FTSSense/weights/Parkland_TransformerV4_debug/exp99_contrastive_CMCV2`
+
+- Finetune weights should be stored under the same model weight folder
+
+### Testing
 
 **Note that for testing, simply change `train.py` to `test.py` and ensure everything else is the same, and add -test_set=XXX**
