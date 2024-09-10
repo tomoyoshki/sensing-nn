@@ -33,6 +33,7 @@ def test(args):
 
     # Init the classifier model
     classifier = init_backbone_model(args)
+    args.classifier_weight = args.classifier_weight.replace("best", "latest")
     classifier = load_model_weight(args, classifier, args.classifier_weight, load_class_layer=True)
     print(f"Weight: {args.classifier_weight}")
     args.classifier = classifier
@@ -66,15 +67,17 @@ def test(args):
     else:
         
         print(f"Test classifier loss: {test_classifier_loss: .5f}")
-        print(f"Test acc: {test_metrics[0]: .5f}, test f1: {test_metrics[1]: .5f}")
+        
+        if isinstance(test_metrics[0], tuple):
+            for i in range(2):
+                print(f"Test acc {i}: {test_metrics[0][i]: .5f}, test f1 {i}: {test_metrics[1][i]: .5f}")
+        else:
+            print(f"Test acc: {test_metrics[0]: .5f}, test f1: {test_metrics[1]: .5f}")
         if isinstance(test_metrics[2], tuple):
             print(f"Test confusion matrix 1:\n {test_metrics[2][0]}")
             print(f"Test confusion matrix 2:\n {test_metrics[2][1]}")
         else:
             print(f"Test confusion matrix:\n {test_metrics[2]}")
-        
-        if args.output_conf:
-            plot_confusion_matrix(args, test_metrics[2])
 
         return test_classifier_loss, test_metrics[0], test_metrics[1]
 

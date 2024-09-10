@@ -10,6 +10,7 @@ from random import shuffle
 class MultiModalDataset(Dataset):
     def __init__(self, args, index_file, label_ratio=1, balanced_sample=False):
         self.args = args
+        self.index_file = index_file
         self.sample_files = list(np.loadtxt(index_file, dtype=str))
 
         self.label_dict = {
@@ -190,7 +191,7 @@ class MultiModalDataset(Dataset):
         else:
             dis_mean = torch.tensor(100)
 
-        if detection_label == 0:
+        if detection_label == 0 and self.args.option != "test":
             multi_label = torch.FloatTensor([0] * 4)
 
         return dict_data, multi_label, detection_label.float(), dis_mean.float()

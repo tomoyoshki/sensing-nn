@@ -45,6 +45,7 @@ vehicle_classification:
         
         # ICT Exclusive data filtering <15 meter and > 70 meters
         ictexclusive:
+                class_names: ['miata', 'gle350', 'mustang', 'cx30']
                 num_classes: 4
                 train_index_file: /home/jinyang7/data/index/pt_index_train0329_valid0329_2s_acoustic_seismic_exclusive1570_None_None/train_index.txt 
                 val_index_file: /home/jinyang7/data/index/pt_index_train0329_valid0329_2s_acoustic_seismic_exclusive1570_None_None/valid_index.txt

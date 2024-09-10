@@ -8,10 +8,12 @@ from general_utils.tensor_utils import extract_non_diagonal_matrix
 from models.CMCV2Modules import split_features
 
 class WeightedMultiClassLoss(nn.Module):
-    def __init__(self, class_weights=None, no_target_weight=0.001):
+    def __init__(self, class_weights=None, no_target_weight=1e-10):
         super(WeightedMultiClassLoss, self).__init__()
         self.class_weights = class_weights
         self.no_target_weight = no_target_weight
+        
+        print(f"=\tInitializing WeightedMultiClassLoss with no_target_weight: {no_target_weight}")
 
     def forward(self, inputs, targets):
         # Calculate binary cross-entropy loss for each label
@@ -37,7 +39,10 @@ class MultiObjLoss(nn.Module):
         super().__init__()
         self.args = args
 
-        self.class_objective = WeightedMultiClassLoss() if args.multi_class == True else nn.CrossEntropyLoss()
+        class_weights = torch.tensor([1, 1, 3, 3], dtype=torch.float32, device=args.device)
+        # self.class_objective = WeightedMultiClassLoss(class_weights=class_weights) if args.multi_class else nn.CrossEntropyLoss()
+        
+        self.class_objective = nn.BCELoss() if args.multi_class else nn.CrossEntropyLoss()
 
         # detection_weights = torch.tensor([1e8, 1e-8], dtype=torch.float32) # no car, has car
         detection_weights = torch.tensor([1, 1], dtype=torch.float32) # no car, has car
@@ -47,7 +52,7 @@ class MultiObjLoss(nn.Module):
 
         try:
             self.detect_weights = float(self.args.finetune_tag.split('_')[-1])
-        except:
+        except ValueError:
             self.detect_weights = 0.1
         
 
