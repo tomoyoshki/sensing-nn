@@ -238,15 +238,12 @@ class TransformerV4_CMC(nn.Module):
 
         # Classification layer
         if (self.args.train_mode == "supervised" or self.config["pretrained_head"] == "linear") and "mlp" not in self.args.finetune_tag:
-            """Linear classification layers for supervised learning or finetuning."""
             self.class_layer = nn.Sequential(
                 nn.Linear(self.sample_dim, self.args.num_class),
-                nn.Sigmoid() if self.args.multi_class or "multiclass" in self.args.finetune_tag else nn.Softmax()
             )
 
             self.detection_class_layer = nn.Sequential(
                 nn.Linear(self.sample_dim, 2),
-                nn.Softmax()
             )
 
         else:
@@ -255,14 +252,12 @@ class TransformerV4_CMC(nn.Module):
                 nn.Linear(self.sample_dim, self.config["fc_dim"]),
                 nn.GELU(),
                 nn.Linear(self.config["fc_dim"], self.args.num_class),
-                nn.Sigmoid() if self.args.multi_class or "multiclass" in self.args.finetune_tag else nn.Softmax()
             )
 
             self.detection_class_layer = nn.Sequential(
                 nn.Linear(self.sample_dim, self.config["fc_dim"]),
                 nn.GELU(),
                 nn.Linear(self.config["fc_dim"], 2),
-                nn.Softmax()
             )
         
         if self.args.multi_class or "multiclass" in self.args.finetune_tag:
