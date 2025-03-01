@@ -15,14 +15,12 @@ torch.set_printoptions(threshold=sys.maxsize)
 
 # train utils
 from train_utils.supervised_train import supervised_train
-from train_utils.pretrain import pretrain
-from train_utils.finetune import finetune
 
 
 # utils
 from torch.utils.tensorboard import SummaryWriter
 from params.train_params import parse_train_params
-from input_utils.multi_modal_dataloader import create_dataloader, preprocess_triplet_batch
+from input_utils.multi_modal_dataloader import create_dataloader
 from input_utils.time_input_utils import count_range
 from train_utils.model_selection import init_backbone_model, init_loss_func
 
@@ -52,11 +50,11 @@ def train(args):
     # Init the classifier model
     classifier = init_backbone_model(args)
     args.classifier = classifier
-    logging.info(f"=\tClassifier model loaded")
+    logging.info("=\tClassifier model loaded")
 
     # Init the Tensorboard summary writer
     tb_writer = SummaryWriter(args.tensorboard_log)
-    logging.info(f"=\tTensorboard loaded")
+    logging.info("=\tTensorboard loaded")
 
     # Optional range counting for training data
     if args.count_range:
@@ -67,7 +65,6 @@ def train(args):
     loss_func = init_loss_func(args)
     logging.info("=\tLoss function defined")
 
-    print(args.train_mode, args.stage)
     if args.train_mode == "supervised" and args.stage == "train":
         supervised_train(
             args,
@@ -80,31 +77,8 @@ def train(args):
             tb_writer,
             num_batches,
         )
-    elif args.stage == "pretrain":
-        pretrain(
-            args,
-            classifier,
-            augmenter,
-            train_dataloader,
-            val_dataloader,
-            test_dataloader,
-            loss_func,
-            tb_writer,
-            num_batches,
-        )
-    elif args.stage == "finetune":
-        finetune(
-            args,
-            classifier,
-            augmenter,
-            train_dataloader,
-            val_dataloader,
-            test_dataloader,
-            loss_func,
-            tb_writer,
-            num_batches,
-        )
     else:
+        logging.error(f"=\tInvalid training mode {args.train_mode} - {args.stage}")
         pass
 
 

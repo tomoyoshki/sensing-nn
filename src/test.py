@@ -1,21 +1,17 @@
-import os
 import warnings
 
 
-warnings.simplefilter("ignore", UserWarning)
 
-from models.loss import MultiObjLoss
 import torch.nn as nn
 
 # utils
-from general_utils.time_utils import time_sync
 from general_utils.weight_utils import load_model_weight
 from params.test_params import parse_test_params
 from input_utils.multi_modal_dataloader import create_dataloader
 from train_utils.eval_functions import eval_supervised_model
 from train_utils.model_selection import init_backbone_model
-# from output_utils.plot_confusion_matrix import plot_confusion_matrix
-# from general_utils.size_utils import get_model_memory_size, get_model_parameter_count, get_model_size
+
+warnings.simplefilter("ignore", UserWarning)
 
 
 def test(args):
@@ -42,21 +38,13 @@ def test(args):
     if "regression" in args.task:
         classifier_loss_func = nn.MSELoss()
     else:
-        if "dual" in args.finetune_tag:
-            classifier_loss_func = MultiObjLoss(args)
-        elif args.multi_class:
-            classifier_loss_func = nn.BCELoss()
-        else:
-            classifier_loss_func = nn.CrossEntropyLoss()
+        classifier_loss_func = nn.CrossEntropyLoss()
 
     # print model layers
     if args.verbose:
         for name, param in classifier.named_parameters():
             if param.requires_grad:
                 print(name)
-
-    # print(f"{args.model} + {args.learn_framework} size")
-    # get_model_size(classifier)
     
     test_classifier_loss, test_metrics = eval_supervised_model(
         args, classifier, augmenter, test_dataloader, classifier_loss_func

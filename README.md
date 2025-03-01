@@ -1,4 +1,4 @@
-# FOCAL (VibroFM)
+# IoT Sensing Training Pipelines
 
 ## Requirements
 
@@ -12,92 +12,73 @@
     pip install -r requirements.txt
     ```
 
-## Data
+## Datasets
 
-Processed Data path: `/home/tkimura4/data/datasets/MOD/GracesQuarters/2024-08-0X-GQ/individual_time_samples`
+There are four datasets available. Parkland (MOD, parkland is how we call it, but in paper, please refer to it as MOD), ACIDS, RealWorld-HAR, PAMAP2.
 
-Index file path: `/home/tkimura4/data/indices/single/2024-08-0X-GQ`
+Specify which datasets to run.
 
-You do not need to modify these if you are running on Eugene. The file path is already in the `Parkland.yaml` file. 
-
-In `Parkland.yaml`, there is a `SET` for each `TASK`, where the index path is specified.
-
-```yaml
-vehicle_classification:
-    ...
-    gcq20240806:
-            num_classes: 4
-            train_index_file: /home/tkimura4/data/indices/single/2024-08-06-GQ/train_index.txt
-            val_index_file: /home/tkimura4/data/indices/single/2024-08-06-GQ/val_index.txt
-            test_index_file: /home/tkimura4/data/indices/single/2024-08-06-GQ/test_index.txt
-
-    gcq20240807:
-            num_classes: 4
-            train_index_file: /home/tkimura4/data/indices/single/2024-08-07-GQ/train_index.txt
-            val_index_file: /home/tkimura4/data/indices/single/2024-08-07-GQ/val_index.txt
-            test_index_file: /home/tkimura4/data/indices/single/2024-08-07-GQ/test_index.txt
-    ...
-distance_regression:
-    ...
-distance_classification:
-    ...
+```bash
+python3 train.py -dataset=[Parkland, ACIDS, RealWorld_HAR, PAMAP2]
 ```
+
 
 ## Models
 
-The model we are using is `TransformerV4.py`, it is a SWIN-Transformer. 
+Models and relevant utils functions are implemented in `src/models/`. If you are adding a new model, please read the followings. I have also added exception message to inform you if you miss any of these. 
 
-### Pretrained Weights
+**Model configurations**
+
+1. Add configurations in your dataset config file (`src/data/DATASET.yaml`), this will be the configurations of your models. See how DeepSense or TransformerV4 in each dataset.yaml file. 
+
+**Model Registry**
+
+1. Implement your model
+2. Import your model and add model in `src/train_utils/model_selection.py`
+
+I have created a NEWMODEL as an example with PAMAP2.yaml config file. 
+
+### Experiment Weights
 
 The code will automatically select the newest weights, or specifiy the weight path (see below)
 ```
 └── weights
-    └── Parkland_TransformerV4_debug
-        ├── exp0_contrastive_CMCV2
-        ├── exp..._contrastive_CMCV2
-        └── exp[LATEST]_contrastive_CMCV2
+    └── DATASET_MODEL_debug
+        ├── expXXX_supervised_TASK_1.0
+        └── exp[LATEST]_supervised_TASK_1.0
 ```
 
-Put the weight folder under Parkland_TransformerV4_debug
+## Running the code
 
-## Training
 
-The following command will run supervised training for Transformer (`-model=TransformerV4`).
-
-### FOCAL Pre-training
+### Supervised training
 
 ```bash
-python train.py -model=[MODEL] -dataset=[DATASET] -learn_framework=FOCAL
+python3 train.py -gpu=X -model=X -dataset=X
 ```
-
-### FOCAL Fine-tuning with specific downstream task
-
-```bash
-python train.py -model=TransformerV4 -dataset=Parkland -learn_framework=CMCV2 -task=[TASK] -stage=finetune -model_weight=[PATH TO MODEL WEIGHT] -finetune_set=[SET]
-```
-
-- `dataset` default to Parkland
-- `TASK` is default to vehicle_classification
-- `MODEL WEIGHT` is default to the weight folder with latest `expID`
-- Specify `finetune set` you would like to run
-    - For GQ data we collected in august, it would be `gcq20240806` and `gcq20240806`
 
 **Example**
 
-- Run Aug20240806 Data Vehicle Classification
+```bash
+python3 train.py -gpu=0 -model=TransformerV4 -dataset=Parkland
+```
 
-    `python3 train.py -gpu=0 -model=TransformerV4 -learn_framework=CMCV2 -stage=finetune -finetune_set=gcq20240806 -balanced_sample=False`
-
-- Run Aug20240806 Data Distance Regression
-
-    `python3 train.py -gpu=0 -model=TransformerV4 -learn_framework=CMCV2 -stage=finetune -finetune_set=gcq20240806 -balanced_sample=False -task=distance_regression`
-
-- Run Aug20240807 Data Distance Regression with specific weights
-
-    `python3 train.py -gpu=0 -model=TransformerV4 -learn_framework=CMCV2 -stage=finetune -finetune_set=gcq20240806 -balanced_sample=False -task=distance_regression -model_weight=/home/tkimura4/FTSSense/weights/Parkland_TransformerV4_debug/exp99_contrastive_CMCV2`
-
-- Finetune weights should be stored under the same model weight folder
 
 ### Testing
 
-**Note that for testing, simply change `train.py` to `test.py` and ensure everything else is the same, and add -test_set=XXX**
+
+```bash
+python3 test.py -gpu=X -model=X -dataset=X
+```
+
+**Example**: This will select the latest experiment. 
+
+```bash
+python3 train.py -gpu=0 -model=TransformerV4 -dataset=Parkland
+```
+
+**Example**: You can also specify a specific experiment to run. . 
+
+```bash
+python3 train.py -gpu=0 -model=TransformerV4 -dataset=Parkland -weight=/home/tkimura4/emsoft/weights/Parkland_TransformerV4_debug/exp9_supervised_vehicle_classification_1.0
+```

@@ -1,5 +1,4 @@
 import os
-import json
 import torch
 import getpass
 import logging
@@ -58,7 +57,7 @@ def select_device(device="", batch_size=0, newline=True):
 
     if not newline:
         s = s.rstrip()
-    print(s)
+    logging.info(s)
 
     return torch.device(arg)
 
@@ -69,22 +68,6 @@ def get_train_mode(learn_framework):
     NOTE: Add the learn framework to this register when adding a new learn framework.
     """
     learn_framework_register = {
-        "SimCLR": "contrastive",
-        "SimCLRFusion": "contrastive",
-        "MoCo": "contrastive",
-        "MoCoFusion": "contrastive",
-        "Cosmo": "contrastive",
-        "CMC": "contrastive",
-        "CMCV2": "contrastive",
-        "Cocoa": "contrastive",
-        "TS2Vec": "contrastive",
-        "TNC": "contrastive",
-        "GMC": "contrastive",
-        "TSTCC": "contrastive",
-        "MTSS": "predictive",
-        "ModPred": "predictive",
-        "ModPredFusion": "predictive",
-        "MAE": "generative",
         "no": "supervised",
     }
 
@@ -103,15 +86,13 @@ def set_task(args):
     task_default_task = {
         "ACIDS": "vehicle_classification",
         "Parkland": "vehicle_classification",
-        "WESAD": "stress_classification",
         "RealWorld_HAR": "activity_classification",
-        "PPG": "hr_regression",
         "PAMAP2": "activity_classification",
     }
 
     task = task_default_task[args.dataset] if args.task is None else args.task
 
-    print("Task: ", task)
+    logging.info("Task: ", task)
 
     return task
 
@@ -169,19 +150,8 @@ def set_model_weight_file_suffix(args):
 
 
 def set_data_config(args):
-    if args.stage in {"finetune"}:
-        args.num_class = args.dataset_config[args.task][args.finetune_set]["num_classes"]
-
-
-    if "distbackground" in args.finetune_tag:
-        args.num_class += 1
-    elif "detection" in args.finetune_tag:
-        args.num_class = 2
-
+    args.num_class = args.dataset_config[args.task]["num_classes"]
     return args
-
-# Parkland_TransformerV4_vehicle_classification_finetune_1.0_best.pt
-# Parkland_TransformerV4_vehicle_classification_1.0_finetune_best
 
 
 def set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=None):
@@ -229,22 +199,21 @@ def set_auto_params(args, lambda_type=None, lambda_weight=None, margin_value=Non
 
     # Sing-class problem or multi-class problem
     if args.dataset in {} or "multiclass" in args.finetune_tag:
-        print(f"=\tEnabled Multi-class")
         args.multi_class = True
     else:
-        print(f"=\tSingle Class only")
         args.multi_class = False
 
     # process the missing modalities,
     if args.miss_modalities is not None:
         args.miss_modalities = set(args.miss_modalities.split(","))
-        print(f"Missing modalities: {args.miss_modalities}")
     else:
         args.miss_modalities = set()
 
     # set the train mode
     args.train_mode = get_train_mode(args.learn_framework)
-    print(f"Set train mode: {args.train_mode}")
+    
+    if args.train_mode == "supervised":
+        args.stage = "train"
 
     # set batch size
     args = set_batch_size(args)

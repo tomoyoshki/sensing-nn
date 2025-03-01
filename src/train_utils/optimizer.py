@@ -6,14 +6,7 @@ import re
 
 def define_optimizer(args, parameters):
     """Define the optimizer."""
-    if args.train_mode in {"supervised"}:
-        optimizer_config = args.dataset_config[args.model]["optimizer"]
-    elif args.stage == "pretrain":
-        optimizer_config = args.dataset_config[args.learn_framework]["pretrain_optimizer"]
-    elif args.stage == "finetune":
-        optimizer_config = args.dataset_config[args.learn_framework]["finetune_optimizer"]
-    else:
-        raise Exception("Optimizer not defined.")
+    optimizer_config = args.dataset_config[args.model]["optimizer"]
     optimizer_name = optimizer_config["name"]
     
     # select weight decay

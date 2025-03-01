@@ -6,7 +6,6 @@ import numpy as np
 
 from torch.utils.data import DataLoader
 from input_utils.multi_modal_dataset import MultiModalDataset, MultiModalSequenceDataset
-from input_utils.yaml_utils import load_yaml
 from torch.utils.data import Sampler
 
 
@@ -18,16 +17,6 @@ def create_dataloader(dataloader_option, args, batch_size=64, workers=5):
         data_path (_type_): _description_
         workers (_type_): _description_
     """
-    # get the training file prefix    
-    if args.stage in {"finetune"}:
-        dataloader_set = args.finetune_set
-    
-    if args.option in {"test"}:
-        assert dataloader_option == "test", "Dataloader is test but args.option != test"
-        dataloader_set = args.test_set
-
-    logging.info(f"=\tLoading set from {dataloader_set}")
-
     # select the index file
     label_ratio = 1
     if dataloader_option == "train":
@@ -36,14 +25,12 @@ def create_dataloader(dataloader_option, args, batch_size=64, workers=5):
             index_file = args.dataset_config["pretrain_index_file"]
         else:
             """supervised training"""
-            index_file = args.dataset_config[args.task][dataloader_set]["train_index_file"]
+            index_file = args.dataset_config[args.task]["train_index_file"]
             label_ratio = args.label_ratio
     elif dataloader_option == "val":
-        index_file = args.dataset_config[args.task][dataloader_set]["val_index_file"]
+        index_file = args.dataset_config[args.task]["val_index_file"]
     else:
-        index_file = args.dataset_config[args.task][dataloader_set][f"test_index_file"]
-
-    logging.info(f"=\tLoading {dataloader_option} dataloader index file from: {index_file}")
+        index_file = args.dataset_config[args.task]["test_index_file"]
 
     # init the flags
     balanced_sample_flag = (
@@ -52,7 +39,6 @@ def create_dataloader(dataloader_option, args, batch_size=64, workers=5):
         and dataloader_option == "train"
         and (args.train_mode == "supervised" or args.stage == "finetune")
     )
-
     sequence_sampler_flag = args.sequence_sampler and args.train_mode == "contrastive" and args.stage == "pretrain"
 
     # init the dataset

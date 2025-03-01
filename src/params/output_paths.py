@@ -137,7 +137,11 @@ def set_model_weight_folder(args):
         "Supervised training or self-supervised pretraining"
         weight_folder = os.path.join(dataset_model_path, f"exp{newest_id + 1}") + f"_{suffix}"
         check_paths([weight_folder])
-        model_config = args.dataset_config[args.model]
+        
+        if args.model in args.dataset_config:
+            model_config = args.dataset_config[args.model]
+        else:
+            raise Exception(f"Model {args.model} not found in the dataset config. Please add your custom model config in {args.dataset}.yaml file")
         
         
         with open(os.path.join(weight_folder, "experiment_args.json"), "w") as f:
@@ -209,19 +213,8 @@ def set_model_weight_file(args):
         # finetune_suffix = f"_{args.label_ratio}_finetune" if args.stage == "finetune" else ""
         args.classifier_weight = os.path.join(
             args.weight_folder,
-            f"{args.dataset}_{args.model}_{args.task}{args.tag_suffix}best.pt",
+            f"{args.dataset}_{args.model}_{args.task}{args.tag_suffix}_best.pt",
         )
-    elif args.train_mode in {"contrastive", "predictive", "generative"}:
-        if args.stage == "pretrain":
-            args.classifier_weight = os.path.join(
-                args.weight_folder,
-                f"{args.dataset}_{args.model}_pretrain_best.pt",
-            )
-        else:
-            args.classifier_weight = os.path.join(
-                args.weight_folder,
-                f"{args.dataset}_{args.model}_{args.task}{args.finetune_tag_suffix}best.pt",
-            )
     else:
         raise Exception(f"Invalid training mode provided: {args.stage}")
 
