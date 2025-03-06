@@ -114,11 +114,11 @@ class ResNetBackbone(nn.Module):
         x = torch.flatten(x, 1)
         return x
 
-class MultiModalResNet(nn.Module):
+class ResNet(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.args = args
-        self.config = args.dataset_config["StandardResNet"]
+        self.config = args.dataset_config["ResNet"]
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
         self.multi_location_flag = len(self.locations) > 1
@@ -155,8 +155,9 @@ class MultiModalResNet(nn.Module):
             nn.Linear(self.feature_dim, self.config["fc_dim"]),
             nn.ReLU(),
         )
+        # breakpoint()
         self.class_layer = nn.Sequential(
-            nn.Linear(self.config["fc_dim"], args.dataset_config["num_classes"]),
+            nn.Linear(self.config["fc_dim"], args.dataset_config["vehicle_classification"]["num_classes"]),
         )
 
     def forward(self, freq_x, class_head=True):
@@ -169,10 +170,15 @@ class MultiModalResNet(nn.Module):
                 loc_mod_features[loc].append(features)
             loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=1)
 
+
+
         # Fuse modalities for each location
+        # breakpoint()
         fused_loc_features = {}
         for loc in self.locations:
-            fused_loc_features[loc] = self.mod_fusion_layers[loc](loc_mod_features[loc])
+            # breakpoint()
+            # fused_loc_features[loc] = self.mod_fusion_layers[loc](loc_mod_features[loc])
+            fused_loc_features[loc] = loc_mod_features[loc].mean(dim=1)
 
         # Fuse locations if multiple locations
         if not self.multi_location_flag:

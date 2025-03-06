@@ -28,7 +28,9 @@ from train_utils.model_selection import init_backbone_model, init_loss_func
 def train(args):
     """The specific function for training."""
     # Init data loaders
+    print("Creating train, val, and test dataloaders")
     train_dataloader = create_dataloader("train", args, batch_size=args.batch_size, workers=args.workers)
+    print("Train dataloader created")
     val_dataloader = create_dataloader("val", args, batch_size=args.batch_size, workers=args.workers)
     test_dataloader = create_dataloader("test", args, batch_size=args.batch_size, workers=args.workers)
     num_batches = len(train_dataloader)

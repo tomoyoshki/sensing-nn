@@ -14,8 +14,8 @@ from data_augmenter.ScalingAugmenter import ScalingAugmenter
 from data_augmenter.NegationAugmenter import NegationAugmenter
 from data_augmenter.HorizontalFlipAugmenter import HorizontalFlipAugmenter
 from data_augmenter.ChannelShuffleAugmenter import ChannelShuffleAugmenter
-from data_augmenter.TimeWarpAugmenter import TimeWarpAugmenter
-from data_augmenter.MagWarpAugmenter import MagWarpAugmenter
+# from data_augmenter.TimeWarpAugmenter import TimeWarpAugmenter
+# from data_augmenter.MagWarpAugmenter import MagWarpAugmenter
 from data_augmenter.TimeMaskAugmenter import TimeMaskAugmenter
 
 from data_augmenter.FreqMaskAugmenter import FreqMaskAugmenter
@@ -200,8 +200,8 @@ class Augmenter:
             "negation": NegationAugmenter,
             "horizontal_flip": HorizontalFlipAugmenter,
             "channel_shuffle": ChannelShuffleAugmenter,
-            "time_warp": TimeWarpAugmenter,
-            "mag_warp": MagWarpAugmenter,
+            # "time_warp": TimeWarpAugmenter,
+            # "mag_warp": MagWarpAugmenter,
             "time_mask": TimeMaskAugmenter,
         }
 

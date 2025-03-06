@@ -24,6 +24,7 @@ class MeanFusionBlock(nn.Module):
         # mean out
         if rescale_factors is None:
             # if True:
+            # breakpoint()
             batch_mean_out = torch.mean(input_feature, dim=3, keepdim=False)
         else:
             b, c, i, s = input_feature.shape
