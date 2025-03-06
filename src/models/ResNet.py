@@ -1,125 +1,193 @@
+# src/models/StandardResNet.py
 import torch
 import torch.nn as nn
-import math
 import torch.nn.functional as F
-
-from models.ConvModules import ConvBlock
 from models.FusionModules import MeanFusionBlock
 
+class BasicBlock(nn.Module):
+    expansion = 1
 
-class ResNet(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1, dropout_ratio=0):
+        super().__init__()
+        
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, 
+                              stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3,
+                              stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.dropout = nn.Dropout2d(p=dropout_ratio)
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_channels != self.expansion * out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, self.expansion * out_channels,
+                         kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion * out_channels)
+            )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.dropout(out)
+        out = self.bn2(self.conv2(out))
+        out = self.dropout(out)
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
+
+class Bottleneck(nn.Module):
+    expansion = 4
+
+    def __init__(self, in_channels, out_channels, stride=1, dropout_ratio=0):
+        super().__init__()
+        
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3,
+                              stride=stride, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.conv3 = nn.Conv2d(out_channels, out_channels * self.expansion,
+                              kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(out_channels * self.expansion)
+        self.dropout = nn.Dropout2d(p=dropout_ratio)
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_channels != self.expansion * out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, self.expansion * out_channels,
+                         kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion * out_channels)
+            )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.dropout(out)
+        out = F.relu(self.bn2(self.conv2(out)))
+        out = self.dropout(out)
+        out = self.bn3(self.conv3(out))
+        out = self.dropout(out)
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
+
+class ResNetBackbone(nn.Module):
+    def __init__(self, block_type, layers, in_channels, dropout_ratio):
+        super().__init__()
+        
+        self.in_channels = 64
+        self.block_type = block_type
+        self.dropout_ratio = dropout_ratio
+        
+        # Initial convolution
+        self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7,
+                              stride=2, padding=3, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        
+        # ResNet layers
+        self.layer1 = self._make_layer(64, layers[0])
+        self.layer2 = self._make_layer(128, layers[1], stride=2)
+        self.layer3 = self._make_layer(256, layers[2], stride=2)
+        self.layer4 = self._make_layer(512, layers[3], stride=2)
+        
+        # Final pooling
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+
+    def _make_layer(self, out_channels, blocks, stride=1):
+        layers = []
+        layers.append(self.block_type(self.in_channels, out_channels, stride, self.dropout_ratio))
+        self.in_channels = out_channels * self.block_type.expansion
+        for _ in range(1, blocks):
+            layers.append(self.block_type(self.in_channels, out_channels, dropout_ratio=self.dropout_ratio))
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = self.maxpool(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        return x
+
+class MultiModalResNet(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.args = args
-        self.config = args.dataset_config["ResNet"]
-        self.device = args.device
+        self.config = args.dataset_config["StandardResNet"]
         self.modalities = args.dataset_config["modality_names"]
         self.locations = args.dataset_config["location_names"]
         self.multi_location_flag = len(self.locations) > 1
 
-        """(loc, mod) feature extraction"""
-        self.loc_mod_extractors = nn.ModuleDict()
-        for loc in self.locations:
-            self.loc_mod_extractors[loc] = nn.ModuleDict()
-            for mod in self.modalities:
-                if type(self.config["loc_mod_conv_lens"]) is dict:
-                    """for acoustic processing in Parkland data"""
-                    conv_lens = self.config["loc_mod_conv_lens"][mod]
-                    in_stride = self.config["loc_mod_in_conv_stride"][mod]
-                else:
-                    conv_lens = self.config["loc_mod_conv_lens"]
-                    in_stride = 1
+        # Define block type
+        block_type = BasicBlock if self.config["block_type"] == "basic" else Bottleneck
 
-                # define the extractor
-                self.loc_mod_extractors[loc][mod] = ConvBlock(
+        # Create ResNet backbone for each modality and location
+        self.mod_loc_backbones = nn.ModuleDict()
+        for loc in self.locations:
+            self.mod_loc_backbones[loc] = nn.ModuleDict()
+            for mod in self.modalities:
+                self.mod_loc_backbones[loc][mod] = ResNetBackbone(
+                    block_type=block_type,
+                    layers=self.config["layers"],
                     in_channels=args.dataset_config["loc_mod_in_freq_channels"][loc][mod],
-                    out_channels=self.config["loc_mod_out_channels"],
-                    in_spectrum_len=args.dataset_config["loc_mod_spectrum_len"][loc][mod],
-                    interval_num=self.config["interval_num"],
-                    conv_lens=conv_lens,
-                    dropout_ratio=self.config["dropout_ratio"],
-                    num_inter_layers=self.config["loc_mod_conv_inter_layers"],
-                    in_stride=in_stride,
+                    dropout_ratio=self.config["dropout_ratio"]
                 )
 
-        """mod feature fusion and loc feature extraction"""
+        # Feature dimension after ResNet backbone
+        self.feature_dim = 512 * block_type.expansion
+
+        # Modality fusion for each location
         self.mod_fusion_layers = nn.ModuleDict()
         for loc in self.locations:
             self.mod_fusion_layers[loc] = MeanFusionBlock()
-        self.loc_extractors = nn.ModuleDict()
-        for loc in self.locations:
-            self.loc_extractors[loc] = ConvBlock(
-                in_channels=1,
-                out_channels=self.config["loc_out_channels"],
-                in_spectrum_len=self.config["loc_mod_out_channels"],
-                interval_num=1,
-                conv_lens=self.config["loc_conv_lens"],
-                dropout_ratio=self.config["dropout_ratio"],
-                num_inter_layers=self.config["loc_conv_inter_layers"],
-            )
 
-        """loc feature fusion and sample feature extraction"""
+        # Location fusion if multiple locations
         if self.multi_location_flag:
             self.loc_fusion_layer = MeanFusionBlock()
-            self.interval_extractor = ConvBlock(
-                in_channels=1,
-                out_channels=self.config["loc_out_channels"],
-                in_spectrum_len=self.config["loc_out_channels"],
-                interval_num=1,
-                conv_lens=self.config["loc_conv_lens"],
-                dropout_ratio=self.config["dropout_ratio"],
-                num_inter_layers=self.config["loc_conv_inter_layers"],
-            )
 
-        # Step 5: Classification layer
+        # Final classification layers
         self.sample_embd_layer = nn.Sequential(
-            nn.Linear(self.config["loc_out_channels"], self.config["fc_dim"]),
+            nn.Linear(self.feature_dim, self.config["fc_dim"]),
             nn.ReLU(),
         )
         self.class_layer = nn.Sequential(
             nn.Linear(self.config["fc_dim"], args.dataset_config["num_classes"]),
-            # nn.Sigmoid() if args.multi_class else nn.Softmax(dim=1),
         )
 
     def forward(self, freq_x, class_head=True):
-        """The forward function of ResNet.
-        Args:
-            x (_type_): x is a dictionary consisting of the Tensor input of each input modality.
-                        For each modality, the data is in (b, c (2 * 3 or 1), i (intervals), s (spectrum)) format.
-        """
-        # Step 4: Single (loc, mod) feature extraction
-        loc_mod_features = dict()
+        # Extract features for each modality at each location
+        loc_mod_features = {}
         for loc in self.locations:
             loc_mod_features[loc] = []
             for mod in self.modalities:
-                loc_mod_features[loc].append(self.loc_mod_extractors[loc][mod](freq_x[loc][mod]))
-            loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=3)
+                features = self.mod_loc_backbones[loc][mod](freq_x[loc][mod])
+                loc_mod_features[loc].append(features)
+            loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=1)
 
-        # Step 4: Feature fusion for different mods in the same location
-        fused_loc_features = dict()
+        # Fuse modalities for each location
+        fused_loc_features = {}
         for loc in self.locations:
             fused_loc_features[loc] = self.mod_fusion_layers[loc](loc_mod_features[loc])
 
-        # Step 5: Feature extraction for each location
-        extracted_loc_features = dict()
-        for loc in self.locations:
-            extracted_loc_features[loc] = self.loc_extractors[loc](fused_loc_features[loc])
-
-        # Step 6: Location fusion, (b, c, i)
+        # Fuse locations if multiple locations
         if not self.multi_location_flag:
-            final_feature = extracted_loc_features[self.locations[0]]
+            final_feature = fused_loc_features[self.locations[0]]
         else:
-            interval_fusion_input = torch.stack([extracted_loc_features[loc] for loc in self.locations], dim=3)
-            fused_feature = self.loc_fusion_layer(interval_fusion_input)
-            final_feature = self.interval_extractor(fused_feature)
+            loc_features = torch.stack([fused_loc_features[loc] for loc in self.locations], dim=1)
+            final_feature = self.loc_fusion_layer(loc_features)
 
-        # Step 7: Classification on features
-        final_feature = torch.flatten(final_feature, start_dim=1)
+
+        # print(final_feature.shape)
+        # Classification
         sample_features = self.sample_embd_layer(final_feature)
 
         if class_head:
             logits = self.class_layer(sample_features)
             return logits
         else:
-            """Self-supervised pre-training"""
             return sample_features

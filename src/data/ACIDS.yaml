@@ -60,6 +60,38 @@ loc_mod_spectrum_len:
 # For sequence-based contrastive learning 
 seq_len: 4
 
+ResNet:
+  # Architecture settings
+  block_type: "basic"  # "basic" for ResNet18/34, "bottleneck" for ResNet50+
+  layers: [2, 2, 2, 2]  # ResNet18
+  # layers: [3, 4, 6, 3]  # ResNet34
+  # layers: [3, 4, 6, 3]  # ResNet50 (with block_type: "bottleneck")
+  dropout_ratio: 0.2
+  fc_dim: 256
+
+  # Optimizer config
+  optimizer:
+    name: "AdamW"
+    start_lr: 0.0001
+    warmup_lr: 0.000001
+    min_lr: 0.000001
+    clip_grad: 5.0
+    weight_decay: 0.05
+
+  # LR scheduler
+  lr_scheduler:
+    name: "cosine"
+    warmup_prefix: True
+    warmup_epochs: 0
+    train_epochs: 10
+    start_epoch: 0
+    decay_epochs: 2
+    decay_rate: 0.2
+
+  fixed_augmenters:
+    time_augmenters: ["no"]
+    freq_augmenters: ["no"]
+
 
 # DeepSense config
 DeepSense:

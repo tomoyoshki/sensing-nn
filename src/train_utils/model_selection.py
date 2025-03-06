@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from models.ResNet import ResNet
+from models.ResNet_old import ResNet
 from models.DeepSense import DeepSense
 from models.TransformerV4 import TransformerV4
 from models.NEWMODEL import NEWMODEL
