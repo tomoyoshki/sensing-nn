@@ -12,6 +12,8 @@ class DynamicQuantizer(torch.autograd.Function):
             return x
         else:
             ctx.save_for_backward(x, alpha)
+            # update this according to PACT implementation: https://github.com/KwangHoonAn/PACT/blob/master/module.py - slight difference right now
+            # this is asymmetric quantization, we can also do symmetric quantization if needed
             scale = (
                 (2**nbit - 1) if alpha is None else (2**nbit - 1) / alpha
             )
@@ -35,10 +37,6 @@ class DynamicQuantizer(torch.autograd.Function):
             ).view(-1)
 
             return grad_output * x_range.float(), None, grad_alpha
-            # x, = ctx.saved_tensors
-            # print("grad_output: ", grad_output)
-            # grad_input = grad_output.clone()
-            return grad_output, None, None
         
 
 
@@ -55,8 +53,8 @@ class DoReFaW(nn.Module):
         """forward pass"""
         w = torch.tanh(inp)
         maxv = torch.abs(w).max()
-        w = w / (2 * maxv) + 0.5
-        w = 2 * quantize(w, nbit_w) - 1
+        w = w / (2 * maxv) + 0.5 # This is the quantization step in DoreFa
+        w = 2 * quantize(w, nbit_w) - 1 # This is the dequantization step in DoreFa
         return w
 
 
@@ -66,7 +64,8 @@ class DoReFaA(nn.Module):
 
     def forward(self, inp, nbit_a, *args, **kwargs):
         """forward pass"""
-        return quantize(torch.clamp(inp, 0, 1), nbit_a, *args, **kwargs)
+        # Ideally there is no need to dequantize here, but try it out if accuracy is not good.
+        return quantize(torch.clamp(inp, 0, 1), nbit_a, *args, **kwargs) #
 
 
 class PACT(nn.Module):
@@ -94,6 +93,7 @@ class QuanConv(nn.Module):
         has_offset=False,
         fix=False,
         batch_norm=False,
+        layer_name=None,
     ):
         super(QuanConv, self).__init__()
         self.in_channels = in_channels
@@ -117,6 +117,8 @@ class QuanConv(nn.Module):
         self.alpha_setup_flag = False
         self.alpha_common = nn.Parameter(torch.ones(1), requires_grad=True)
         nn.init.constant_(self.alpha_common, 10)
+
+        self.layer_name = layer_name # String to identify the layer
 
     def alpha_setup(self, bitwidth_opts):
         self.bitwidth_opts = bitwidth_opts
@@ -146,24 +148,27 @@ class QuanConv(nn.Module):
 
         if self.curr_bitwidth < 32:
             w = self.quantize_w(self.weight, self.curr_bitwidth)
-            weight_scale = (
-                1.0
-                / (
-                    self.out_channels
-                    * self.kernel_size[0]
-                    * self.kernel_size[1]
-                )
-                ** 0.5
-            )
-            weight_scale = weight_scale / torch.std(w.detach())
-            w = w * weight_scale
+            
+            # Adabits method of scaling weights I think may or maynot use it. 
+            # weight_scale = (
+            #     1.0
+            #     / (
+            #         self.out_channels
+            #         * self.kernel_size[0]
+            #         * self.kernel_size[1]
+            #     )
+            #     ** 0.5
+            # )
+            # weight_scale = weight_scale / torch.std(w.detach())
+            # w = w * weight_scale
 
             bias = self.bias
-            if bias is not None:
-                bias = bias * weight_scale
+            # if bias is not None:
+            #     bias = bias * weight_scale
 
-            alpha = self.alpha[self.bitwidth_opts.index(self.curr_bitwidth)]
+            
             if isinstance(self.quantize_a, PACT):
+                alpha = self.alpha[self.bitwidth_opts.index(self.curr_bitwidth)]
                 x = self.quantize_a(inp, self.curr_bitwidth, alpha)
             elif isinstance(self.quantize_a, DoReFaA):
                 x = self.quantize_a(inp, self.curr_bitwidth)
