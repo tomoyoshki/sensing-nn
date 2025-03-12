@@ -1,12 +1,12 @@
 # data paths  
-pretrain_index_file: /data/sl29/home_sl29/data/ACIDS/random_partition_index_vehicle_classification/train_index.txt 
+pretrain_index_file: /home/tkimura4/data/datasets/ACIDS/random_partition_index_vehicle_classification/train_index.txt 
 vehicle_classification:
         num_classes: 10 
         class_names: ["background", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
-        train_index_file: /data/sl29/home_sl29/data/ACIDS/random_partition_index_vehicle_classification/train_index.txt 
-        val_index_file: /data/sl29/home_sl29/data/ACIDS/random_partition_index_vehicle_classification/val_index.txt  
-        test_index_file: /data/sl29/home_sl29/data/ACIDS/random_partition_index_vehicle_classification/test_index.txt 
-        train_class_count_file: /data/sl29/home_sl29/data/ACIDS/random_partition_index_vehicle_classification/train_class_count.txt
+        train_index_file: /home/tkimura4/data/datasets/ACIDS/random_partition_index_vehicle_classification/train_index.txt 
+        val_index_file: /home/tkimura4/data/datasets/ACIDS/random_partition_index_vehicle_classification/val_index.txt  
+        test_index_file: /home/tkimura4/data/datasets/ACIDS/random_partition_index_vehicle_classification/test_index.txt 
+        train_class_count_file: /home/tkimura4/data/datasets/ACIDS/random_partition_index_vehicle_classification/train_class_count.txt
 distance_classification:
         num_classes: 5
         class_names: ["5", "10", "25", "50", "75"]

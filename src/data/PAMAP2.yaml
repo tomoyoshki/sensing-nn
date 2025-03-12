@@ -1,11 +1,11 @@
 # data paths  
-pretrain_index_file: /data/sl29/home_sl29/data/PAMAP2/time_data_partition/train_index.txt 
+pretrain_index_file: /home/tkimura4/data/datasets/PAMAP2/time_data_partition/train_index.txt 
 activity_classification:
         num_classes: 18  # number of classes
         class_names: ["lying", "sitting", "standing", "walking", "running", "cycling", "nordic walking", "watching TV", "computer work", "car driving", "ascending stairs", "descending stairs", "vacuum cleaning", "ironing", "folding laundry", "house cleaning", "playing soccer", "rope jumping"]
-        train_index_file: /data/sl29/home_sl29/data/PAMAP2/time_data_partition/train_index.txt 
-        val_index_file: /data/sl29/home_sl29/data/PAMAP2/time_data_partition/test_index.txt  
-        test_index_file: /data/sl29/home_sl29/data/PAMAP2/time_data_partition/test_index.txt 
+        train_index_file: /home/tkimura4/data/datasets/PAMAP2/time_data_partition/train_index.txt 
+        val_index_file: /home/tkimura4/data/datasets/PAMAP2/time_data_partition/test_index.txt  
+        test_index_file: /home/tkimura4/data/datasets/PAMAP2/time_data_partition/test_index.txt 
 
 repetition: 3
 

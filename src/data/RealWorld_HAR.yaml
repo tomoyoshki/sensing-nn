@@ -1,11 +1,11 @@
 # data paths  
-pretrain_index_file: /data/sl29/home_sl29/data/RealWorld-HAR/time_data_partition/train_index.txt
+pretrain_index_file: /home/tkimura4/data/datasets/RealWorld-HAR/time_data_partition/train_index.txt
 activity_classification:
         num_classes: 8 
         class_names: ["climbingdown", "climbingup", "jumping", "lying", "running", "sitting", "standing", "walking"]
-        train_index_file: /data/sl29/home_sl29/data/RealWorld-HAR/time_data_partition/train_index.txt
-        val_index_file: /data/sl29/home_sl29/data/RealWorld-HAR/time_data_partition/test_index.txt
-        test_index_file: /data/sl29/home_sl29/data/RealWorld-HAR/time_data_partition/test_index.txt
+        train_index_file: /home/tkimura4/data/datasets/RealWorld-HAR/time_data_partition/train_index.txt
+        val_index_file: /home/tkimura4/data/datasets/RealWorld-HAR/time_data_partition/test_index.txt
+        test_index_file: /home/tkimura4/data/datasets/RealWorld-HAR/time_data_partition/test_index.txt
 
 
 # Segments

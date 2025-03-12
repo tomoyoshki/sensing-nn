@@ -1,11 +1,11 @@
 # data paths  
-pretrain_index_file: /data/sl29/home_sl29/data/Parkland/time_data_partition/pretrain_index.txt 
+pretrain_index_file: /home/tkimura4/data/datasets/MOD/Parkland/time_data_partition/pretrain_index.txt 
 vehicle_classification:
         num_classes: 7  # number of classes
         class_names: ["Polaris", "Warhog", "Truck", "motor", "tesla", "mustang", "walk"]
-        train_index_file: /data/sl29/home_sl29/data/Parkland/time_data_partition/train_index.txt 
-        val_index_file: /data/sl29/home_sl29/data/Parkland/time_data_partition/val_index.txt  
-        test_index_file: /data/sl29/home_sl29/data/Parkland/time_data_partition/test_index.txt 
+        train_index_file: /home/tkimura4/data/datasets/MOD/Parkland/time_data_partition/train_index.txt 
+        val_index_file: /home/tkimura4/data/datasets/MOD/Parkland/time_data_partition/val_index.txt  
+        test_index_file: /home/tkimura4/data/datasets/MOD/Parkland/time_data_partition/test_index.txt 
 
 repetition: 3
 
