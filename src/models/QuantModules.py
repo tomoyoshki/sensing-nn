@@ -78,8 +78,12 @@ class PACT(nn.Module):
         input_val = quantize(input, nbit_a, alpha)
         return input_val
     
-
+# TODO: Make QuanConv a geenral class which access all different kind of Quantizations - Maybe its a cleaner way of doing it.
 class QuanConv(nn.Module):
+
+    layer_registry = {}
+    layer_counter = 0
+
     def __init__(
         self,
         in_channels,
@@ -118,7 +122,16 @@ class QuanConv(nn.Module):
         self.alpha_common = nn.Parameter(torch.ones(1), requires_grad=True)
         nn.init.constant_(self.alpha_common, 10)
 
-        self.layer_name = layer_name # String to identify the layer
+        self.layer_name = f"layer_{QuanConv.layer_counter}"
+        QuanConv.layer_counter += 1
+        QuanConv.layer_registry[self.layer_name] = self
+
+    def set_bitwidth(self, bitwidth):
+        self.curr_bitwidth = bitwidth
+
+    def get_bitwidth(self):
+        assert self.curr_bitwidth is not None, "bitwidth is None"
+        return self.curr_bitwidth
 
     def alpha_setup(self, bitwidth_opts):
         self.bitwidth_opts = bitwidth_opts
@@ -198,3 +211,101 @@ class QuanConv(nn.Module):
                 self.groups,
             )
         return x
+    
+
+class CustomBatchNorm(nn.Module):
+    layer_registry = {}
+    layer_counter = 0
+    def __init__(self, out_channels): #type can be float, switchable, or transitional
+        super(CustomBatchNorm, self).__init__()
+        self.out_channels = out_channels
+        self.bn_float = nn.BatchNorm2d(out_channels)
+        self.bns = None
+        self.bitwidth_options = None # List of bitwidths
+        self.switchable = False
+        self.transitional = False
+
+        self.layer_name = f"layer_{CustomBatchNorm.layer_counter}"
+        CustomBatchNorm.layer_counter += 1
+        CustomBatchNorm.layer_registry[self.layer_name] = self
+
+        # Used for transitional BatchNorm
+        self.prev_bitwidth = 32
+        self.succ_bitwidth = 32
+        self.floating_point = None
+        # self.bn_type = None
+
+    def set_corresponding_input_conv(self, input_conv):
+        self.input_conv = input_conv
+
+    def set_corresponding_input_output_convs(self, input_conv, output_conv):
+        self.input_conv = input_conv
+        self.output_conv = output_conv
+
+    def set_corresponding_output_conv(self, output_conv):
+        self.output_conv = output_conv
+
+    def set_prev_bitwidth(self, prev_bitwidth):
+        self.prev_bitwidth = prev_bitwidth
+
+    def set_succ_bitwidth(self, succ_bitwidth):
+        self.succ_bitwidth = succ_bitwidth
+    
+    def set_switchable(self, bitwidth_options): # bitwidth options is a list of bitwidths
+        self.bitwidth_options = bitwidth_options
+        if 32 not in self.bitwidth_options:
+            self.bitwidth_options.append(32)
+        self.bns = {}
+        for bitwidth in bitwidth_options:
+            self.bns[bitwidth] = nn.BatchNorm2d(self.out_channels)
+        self.switchable = True
+        self.transitional = False
+        self.floating_point = False
+
+    def set_to_transitional(self, bitwidth_options):
+        self.switchable = False
+        self.transitional = True
+        self.bitwidth_options = bitwidth_options
+        if 32 not in self.bitwidth_options:
+            self.bitwidth_options.append(32)
+        self.bns = {}
+        for bitwidth_pred in bitwidth_options:
+            for bitwidth_succ in bitwidth_options:
+                self.bns[bitwidth_pred][bitwidth_succ] = nn.BatchNorm2d(self.out_channels)
+
+    def set_to_float(self):
+        self.switchable = False
+        self.transitional = False
+        self.floating_point = True
+
+    def forward(self, x):
+        if self.switchable:
+            # Switchable BatchNorm (Used in CoQuant, and AnyPrecision)
+            assert self.bitwidth_options is not None, "bitwidth options not set"
+            assert self.input_conv is not None, "input conv not set"
+            idx_alpha = self.bitwidth_options.index(self.input_conv.curr_bitwidth)
+            return self.bns[idx_alpha](x)
+        elif self.floating_point:
+            # Traditional BatchNorm
+            return self.bn(x)
+        elif self.transitional:
+            # Transitional BatchNorm (Used in Bit-Mixer)
+
+            # idx_pred = self.bitwidth_options.index(self.input_conv.curr_bitwidth)
+            # if self.output_conv is not None:
+            #     idx_succ = self.bitwidth_options.index(self.output_conv.curr_bitwidth)
+            # else:
+            #     idx_succ = self.bitwidth_options.index(32)
+            # idx_succ = self.bitwidth_options.index(self.succ_bitwidth)
+            assert self.input_conv is not None, "input conv not set for self.transitional == True"
+            if self.output_conv is not None:
+                return self.bns[self.input_conv.curr_bitwidth][self.output_conv.curr_bitwidth](x)
+            else:
+                return self.bns[self.input_conv.curr_bitwidth][32](x)
+            # return self.bns[idx_pred][idx_succ](x)
+        else:
+            raise ValueError(f"Invalid BatchNorm type, valid options are switchable, "\
+            "transitional, and floating_point. Make sure you have called either,\
+            set_switchable, set_to_transitional, or set_to_float before running model inference. Currently "
+            "self.floating_point is set to {self.floating_point},\
+            self.switchable is set to {self.switchable}, and self.transitional is set to {self.transitional}")
