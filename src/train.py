@@ -14,7 +14,7 @@ np.set_printoptions(threshold=sys.maxsize)
 torch.set_printoptions(threshold=sys.maxsize)
 
 # train utils
-from train_utils.supervised_train import supervised_train
+from train_utils.adaptive_training import supervised_train
 
 
 # utils
@@ -79,6 +79,7 @@ def train(args):
             tb_writer,
             num_batches,
         )
+    
     else:
         logging.error(f"=\tInvalid training mode {args.train_mode} - {args.stage}")
         pass

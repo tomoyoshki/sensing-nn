@@ -11,11 +11,11 @@ class BasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, dropout_ratio=0):
         super().__init__()
         
-        self.conv1 = QuanConv(in_channels, out_channels, kernel_size=3, 
+        self.conv1 = QuanConv(in_channels, out_channels, kernel_size=(3,3), 
                               stride=stride, padding=1, bias=False)
         self.bn1 = CustomBatchNorm(out_channels)
         
-        self.conv2 = QuanConv(out_channels, out_channels, kernel_size=3,
+        self.conv2 = QuanConv(out_channels, out_channels, kernel_size=(3,3),
                               stride=1, padding=1, bias=False)
         self.bn2 = CustomBatchNorm(out_channels)
         self.dropout = nn.Dropout2d(p=dropout_ratio)
@@ -24,7 +24,7 @@ class BasicBlock(nn.Module):
         if stride != 1 or in_channels != self.expansion * out_channels:
             self.shortcut = nn.Sequential(
                 QuanConv(in_channels, self.expansion * out_channels,
-                         kernel_size=1, stride=stride, bias=False),
+                         kernel_size=(1,1), stride=stride, bias=False),
                 CustomBatchNorm(self.expansion * out_channels)
             )
 
@@ -63,6 +63,7 @@ class BasicBlock(nn.Module):
         out = F.relu(out)
         return out
 
+# Can ignore this for now -  not using it
 class Bottleneck(nn.Module):
     expansion = 4
 
@@ -103,13 +104,13 @@ class ResNetBackbone(nn.Module):
         super().__init__()
         
         self.in_channels = 64
-        self.block_type = block_type
+        self.block_type = block_type # BasicBlock
         self.dropout_ratio = dropout_ratio
         self.batch_norm = CustomBatchNorm
         self.batch_norm_type = batch_norm_type
         
         # Initial convolution
-        self.conv1 = QuanConv(in_channels, 64, kernel_size=7,
+        self.conv1 = QuanConv(in_channels, 64, kernel_size=(7, 7),
                               stride=2, padding=3, bias=False)
         self.bn1 = CustomBatchNorm(64)
         self.bn1.set_corresponding_input_conv(input_conv=self.conv1)
@@ -117,21 +118,24 @@ class ResNetBackbone(nn.Module):
         
         # ResNet layers
         self.layer1, last_bn_layer1 = self._make_layer(64, layers[0],prev_batch_norm=self.bn1)
-        self.layer2, last_bn_layer2 = self._make_layer(128, layers[1], stride=2,prev_bathc_norm=last_bn_layer1)
+        self.layer2, last_bn_layer2 = self._make_layer(128, layers[1], stride=2,prev_batch_norm=last_bn_layer1)
         self.layer3, last_bn_layer3 = self._make_layer(256, layers[2], stride=2,prev_batch_norm=last_bn_layer2)
         self.layer4, last_bn_layer4 = self._make_layer(512, layers[3], stride=2,prev_batch_norm=last_bn_layer3)
         
         # Final pooling
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 
+
+    # check this function again make sure its right
     def _make_layer(self, out_channels, blocks, stride=1,prev_batch_norm=None):
-        layers = []
+        layers = [] # basicblock1, basickblock2, ... 
         layers.append(self.block_type(self.in_channels, out_channels, stride, self.dropout_ratio))
-        prev_batch_norm.set_next_conv(layers[0].get_first_conv())
+        prev_batch_norm.set_corresponding_output_conv(layers[-1].get_first_conv()) # Maybe this was the issue - changed from 0 to -1
         self.in_channels = out_channels * self.block_type.expansion
         for i in range(1, blocks):
             layers.append(self.block_type(self.in_channels, out_channels, dropout_ratio=self.dropout_ratio))
-            layers[i-1].set_next_conv(layers[i].get_first_conv())
+            layers[i-1].set_next_conv(layers[i].get_first_conv()) # Set the next conv layer for the previous block (its 
+            # just a helper function for layers[i-1].last_conv.set_corresponding_output_conv(layers[i].first_conv)
 
         
         # first_conv_layer = layers[0].first_conv
@@ -158,9 +162,11 @@ class ResNet(nn.Module):
         self.locations = args.dataset_config["location_names"]
         self.multi_location_flag = len(self.locations) > 1
         self.bn = CustomBatchNorm
-        
-        if self.config["bn_type"] == "float" or self.config["bn_type"] == "switch" or self.config["bn_type"] == "transitional":
-            self.bn_type = self.config["bn_type"]
+        self.Conv = QuanConv
+        self.quantization_config = args.dataset_config["quantization"]
+        # breakpoint()
+        if self.quantization_config["bn_type"] == "float" or self.quantization_config["bn_type"] == "switch" or self.quantization_config["bn_type"] == "transitional":
+            self.bn_type = self.quantization_config["bn_type"]
         else:
             raise ValueError(f"Invalid batch normalization type: {self.config['bn_type']}, \
                              correct options are 'float', 'switch', or 'transitional'. \
@@ -179,7 +185,8 @@ class ResNet(nn.Module):
                     layers=self.config["layers"],
                     in_channels=args.dataset_config["loc_mod_in_freq_channels"][loc][mod],
                     dropout_ratio=self.config["dropout_ratio"],
-                    batch_norm_type=self.bn_type
+                    batch_norm_type=self.bn_type,
+                    batch_norm=self.bn
                 )
 
         # Feature dimension after ResNet backbone

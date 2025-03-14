@@ -94,6 +94,134 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
 
     return mean_classifier_loss, metrics
 
+def get_random_quantizations_schemes_given_average(args, classifier):
+    quantization_config = args.dataset_config["quantization"]
+    average_bitwidths = quantization_config["test_and_val_average_bitwidths"]
+    bitwidth_options = quantization_config["bitwidth_options"]
+    number_of_quantization_schemes_per_avg_bw = quantization_config["test_and_val_total_schemes"]
+    delta = quantization_config["delta"]
+    num_layers = len(classifier.Conv.layer_registry)
+    
+    # Initialize dictionary to store quantization schemes for each target average bitwidth
+    quantization_schemes = {avg_bw: [] for avg_bw in average_bitwidths}
+    
+    # For each target average bitwidth
+    logging.info("-"*30 + "Started Generating Random Bitwidth Configurations" + "-"*30)
+    for target_avg_bw in tqdm(average_bitwidths):
+        while len(quantization_schemes[target_avg_bw]) < number_of_quantization_schemes_per_avg_bw:
+            # Randomly generate bitwidths for each layer
+            layer_bitwidths = np.random.choice(bitwidth_options, size=num_layers)
+            current_avg_bw = np.mean(layer_bitwidths)
+            
+            # Check if the average is within the acceptable range
+            if abs(current_avg_bw - target_avg_bw) <= delta:
+                # Create dictionary mapping layer names to bitwidths
+                scheme = {}
+                for i, layer_name in enumerate(classifier.Conv.layer_registry.keys()):
+                    scheme[layer_name] = int(layer_bitwidths[i])
+                
+                # Add scheme if it's not already in the list
+                if scheme not in quantization_schemes[target_avg_bw]:
+                    quantization_schemes[target_avg_bw].append(scheme)
+    
+    return quantization_schemes
+
+
+
+
+
+def eval_quantized_supervised_model(args, classifier, augmenter, dataloader, loss_func):
+    """Evaluate the performance on the given dataloader.
+
+    Args:
+        model (_type_): _description_
+        dataloader (_type_): _description_
+    """
+    # set both the classifier and augmenter to eval mode
+    quantization_schemes = get_random_quantizations_schemes_given_average(args, classifier)
+    classifier.eval()
+
+    # iterate over all batches
+    num_batches = len(dataloader)
+    classifier_loss_list = []
+    all_predictions = []
+    all_labels = []
+    with torch.no_grad():
+        for avg_bitwidth, schemes in quantization_schemes.items():
+            scheme_metrics = []
+
+            for scheme in schemes:
+                for layer_name, bitwidth in scheme.items():
+                    layer = classifier.Conv.layer_registry[layer_name]
+                    layer.set_bitwidth(bitwidth)
+
+
+                classifier_loss_list = []
+                final_predictions = []
+                final_labels = []
+                for i, (time_loc_inputs, labels, index) in tqdm(enumerate(dataloader), total=num_batches):
+                    # Move to target device, FFT, and augmentations
+                    freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
+       
+                    # Forward pass
+                    logits = classifier(freq_loc_inputs)
+                    classifier_loss_list.append(loss_func(logits, labels).item())
+                    breakpoint()
+                    if "regression" in args.task:
+                        predictions = logits.squeeze()
+                        # Take the maximum prediction across time dimension if needed
+                        if predictions.dim() > 1:
+                            predictions = torch.max(predictions, dim=1)[0]
+                    else:
+                        if args.multi_class:
+                            predictions = (logits > 0.5).float()
+                            # Take the maximum prediction across time dimension if needed
+                            if predictions.dim() > 2:
+                                predictions = torch.max(predictions, dim=1)[0]
+                        else:
+                            if logits.dim() > 2:  # If there's a time dimension
+                                # Take max confidence across time dimension
+                                predictions = torch.max(logits, dim=1)[0].argmax(dim=1)
+                            else:
+                                predictions = logits.argmax(dim=1)
+                            
+                            if labels.dim() > 1:
+                                labels = labels.argmax(dim=1)
+
+
+
+        for i, (time_loc_inputs, labels, index) in tqdm(enumerate(dataloader), total=num_batches):
+            # move to target device, FFT, and augmentations
+            freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
+
+            # forward pass
+            logits = classifier(freq_loc_inputs)
+            classifier_loss_list.append(loss_func(logits, labels).item())
+
+            if "regression" in args.task:
+                predictions = logits.squeeze()
+            else:
+                if args.multi_class:
+                    predictions = (logits > 0.5).float()
+                else:
+                    predictions = logits.argmax(dim=1, keepdim=False)
+                    labels = labels.argmax(dim=1, keepdim=False) if labels.dim() > 1 else labels
+
+            # for future computation of acc or F1 score
+            saved_predictions = predictions.cpu().numpy()
+            saved_labels = labels.cpu().numpy()
+            all_predictions.append(saved_predictions)
+            all_labels.append(saved_labels)
+
+    # calculate mean loss
+    mean_classifier_loss = np.mean(classifier_loss_list)
+    all_predictions = np.concatenate(all_predictions, axis=0)
+    all_labels = np.concatenate(all_labels, axis=0)
+
+    # calculate the classification metrics
+    metrics = eval_task_metrics(args, all_labels, all_predictions, regression=("regression" in args.task))
+
+    return mean_classifier_loss, metrics
 
 def val_and_logging(
     args,
@@ -119,8 +247,13 @@ def val_and_logging(
         classifier_loss_func (_type_): _description_
     """
     """Supervised training or fine-tuning"""
-    val_loss, val_metrics = eval_supervised_model(args, model, augmenter, val_loader, loss_func)
-    test_loss, test_metrics = eval_supervised_model(args, model, augmenter, test_loader, loss_func)
+    quantization_config = args.dataset_config["quantization"]
+    if not quantization_config["enable"]:
+        val_loss, val_metrics = eval_supervised_model(args, model, augmenter, val_loader, loss_func)
+        test_loss, test_metrics = eval_supervised_model(args, model, augmenter, test_loader, loss_func)
+    else:
+        val_loss, val_metrics = eval_quantized_supervised_model(args, model, augmenter, val_loader, loss_func)
+        test_loss, test_metrics = eval_quantized_supervised_model(args, model, augmenter, test_loader, loss_func)
 
     if "regression" in args.task:
         logging.info(f"Val loss: {val_loss: .5f}, val mae: {val_metrics[0]: .5f}")
