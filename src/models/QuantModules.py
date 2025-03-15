@@ -78,7 +78,7 @@ class PACT(nn.Module):
 
     def forward(self, inp, nbit_a, alpha, *args, **kwargs):
         """forward pass"""
-        input = torch.clamp(inp, min=0, max=alpha.item())
+        input = torch.clamp(inp, min=0, max=alpha.item()) #
         input_val = quantize(input, nbit_a, alpha)
         return input_val
     
@@ -132,6 +132,7 @@ class QuanConv(nn.Module):
         self.layer_name = f"layer_{QuanConv.layer_counter}"
         QuanConv.layer_counter += 1
         QuanConv.layer_registry[self.layer_name] = self
+        self.float_mode = False
 
     def set_bitwidth(self, bitwidth):
         assert bitwidth <=32 and bitwidth > 1, "bitwidth should be between 2 and 32"
@@ -165,7 +166,6 @@ class QuanConv(nn.Module):
         total_sum = 0
         for layer_name, layer in cls.layer_registry.items():
             total_sum += layer.set_random_bitwidth()
-
         return total_sum / total
 
         
@@ -182,54 +182,57 @@ class QuanConv(nn.Module):
             self.alpha_setup(bitwidth_opts)
 
     def forward(self, inp):
-        assert self.alpha_setup_flag, "alpha not setup"
-        assert self.curr_bitwidth is not None, "bitwidth is None"
-        assert self.quantize_w is not None, "quantize_w is None"
-        assert self.quantize_a is not None, "quantize_a is None"
+        if not self.float_mode:
+            assert self.alpha_setup_flag, "alpha not setup"
+            assert self.curr_bitwidth is not None, "bitwidth is None"
+            assert self.quantize_w is not None, "quantize_w is None"
+            assert self.quantize_a is not None, "quantize_a is None"
 
-        # idx_alpha = self.bitwidth_opts.index(self.curr_bitwidth)
-        # alpha = torch.abs(self.alpha[idx_alpha])
+            # idx_alpha = self.bitwidth_opts.index(self.curr_bitwidth)
+            # alpha = torch.abs(self.alpha[idx_alpha])
 
-        if self.curr_bitwidth < 32:
-            w = self.quantize_w(self.weight, self.curr_bitwidth)
-            bias = self.bias
-            # Adabits method of scaling weights I think may or maynot use it.
-            if self.sat_weight_scaling:
-                weight_scale = (  
-                    1.0
-                    / (
-                        self.out_channels
-                        * self.kernel_size[0]
-                        * self.kernel_size[1]
+            if self.curr_bitwidth <= 32:
+                w = self.quantize_w(self.weight, self.curr_bitwidth)
+                bias = self.bias
+                # Adabits method of scaling weights I think may or maynot use it.
+                if self.sat_weight_scaling:
+                    weight_scale = (  
+                        1.0
+                        / (
+                            self.out_channels
+                            * self.kernel_size[0]
+                            * self.kernel_size[1]
+                        )
+                        ** 0.5
                     )
-                    ** 0.5
-                )
-                weight_scale = weight_scale / torch.std(w.detach())
-                w = w * weight_scale
+                    weight_scale = weight_scale / torch.std(w.detach())
+                    w = w * weight_scale
 
-                bias = bias * weight_scale if bias is not None else None
-            
-            if isinstance(self.quantize_a, PACT):
-                alpha = self.alpha[self.bitwidth_opts.index(self.curr_bitwidth)]
-                x = self.quantize_a(inp, self.curr_bitwidth, alpha)
-            elif isinstance(self.quantize_a, DoReFaA):
-                x = self.quantize_a(inp, self.curr_bitwidth)
+                    bias = bias * weight_scale if bias is not None else None
+                
+                if isinstance(self.quantize_a, PACT):
+                    alpha = self.alpha[self.bitwidth_opts.index(self.curr_bitwidth)]
+                    x = self.quantize_a(inp, self.curr_bitwidth, alpha)
+                elif isinstance(self.quantize_a, DoReFaA):
+                    x = self.quantize_a(inp, self.curr_bitwidth)
+                else:
+                    raise ValueError(
+                        "Only PACT and DoReFaA implmented for activation quantization"
+                    )
+
+                x = nn.functional.conv2d(
+                    x,
+                    w,
+                    bias,
+                    self.stride,
+                    self.padding,
+                    self.dilation,
+                    self.groups,
+                )
+                return x
             else:
-                raise ValueError(
-                    "Only PACT and DoReFaA implmented for activation"
-                )
-
-            x = nn.functional.conv2d(
-                x,
-                w,
-                bias,
-                self.stride,
-                self.padding,
-                self.dilation,
-                self.groups,
-            )
-        else:
-            assert self.curr_bitwidth == 32, "bitwidth is not 32"
+                raise ValueError(f"Invalid bitwidth {self.curr_bitwidth}")
+        elif self.float_mode:
             x = nn.functional.conv2d(
                 inp,
                 self.weight,
@@ -239,7 +242,21 @@ class QuanConv(nn.Module):
                 self.dilation,
                 self.groups,
             )
-        return x
+            return x
+        else:
+            raise ValueError(f"Invalid mode, self.float_mode is set to {self.float_mode} - should be either True or False")
+            # else:
+            #     assert self.curr_bitwidth == 32, "bitwidth is not 32"
+            #     x = nn.functional.conv2d(
+            #         inp,
+            #         self.weight,
+            #         self.bias,
+            #         self.stride,
+            #         self.padding,
+            #         self.dilation,
+            #         self.groups,
+            #     )
+            # return x
     
 
 class CustomBatchNorm(nn.Module):

@@ -3,13 +3,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from models.FusionModules import MeanFusionBlock
-from models.QuantModules import QuanConv, CustomBatchNorm
+from models.QuantModules import QuanConv, CustomBatchNorm, DoReFaA, PACT
 
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, in_channels, out_channels, stride=1, dropout_ratio=0):
+    def __init__(self,args, in_channels, out_channels, stride=1, dropout_ratio=0):
         super().__init__()
+
+        self.quantization_config = args.dataset_config["quantization"]
+        self.args = args
         
         self.conv1 = QuanConv(in_channels, out_channels, kernel_size=(3,3), 
                               stride=stride, padding=1, bias=False)
@@ -29,6 +32,7 @@ class BasicBlock(nn.Module):
             )
 
         self.bn1.set_corresponding_input_output_convs(input_conv=self.conv1, output_conv=self.conv2)
+
         if stride != 1 or in_channels != self.expansion * out_channels:
             self.bn2.set_corresponding_input_output_convs(input_conv=self.conv2, output_conv=self.shortcut[0])
             self.shortcut[1].set_corresponding_input_conv(input_conv=self.shortcut[0])
@@ -55,13 +59,22 @@ class BasicBlock(nn.Module):
         self.last_batch_norm.set_corresponding_output_conv(output_conv=next_conv)
     
     def forward(self, x):
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = self.dropout(out)
-        out = self.bn2(self.conv2(out))
-        out = self.dropout(out)
-        out += self.shortcut(x)
-        out = F.relu(out)
-        return out
+        if not self.quantization_config["enable"]:
+            out = F.relu(self.bn1(self.conv1(x)))
+            out = self.dropout(out)
+            out = self.bn2(self.conv2(out))
+            out = self.dropout(out)
+            out += self.shortcut(x)
+            out = F.relu(out)
+            return out
+        elif self.quantization_config["enable"]:
+            out = self.bn1(self.conv1(x))
+            out = self.dropout(out)
+            out = self.bn2(self.conv2(out))
+            out = self.dropout(out)
+            out += self.shortcut(x)
+            # out = F.relu(out) # Point to check whether we need to add activation quantization step here - it would be handled by the next layer ideally
+            return out
 
 # Can ignore this for now -  not using it
 class Bottleneck(nn.Module):
@@ -100,20 +113,22 @@ class Bottleneck(nn.Module):
         return out
 
 class ResNetBackbone(nn.Module):
-    def __init__(self, block_type, layers, in_channels, dropout_ratio, batch_norm, batch_norm_type):
+    def __init__(self, args, block_type, layers, in_channels, dropout_ratio, batch_norm, batch_norm_type):
         super().__init__()
-        
+        self.quantization_config = args.dataset_config["quantization"]
+        self.args = args
         self.in_channels = 64
         self.block_type = block_type # BasicBlock
         self.dropout_ratio = dropout_ratio
         self.batch_norm = CustomBatchNorm
         self.batch_norm_type = batch_norm_type
+        self.alpha1= nn.Parameter(torch.ones(1), requires_grad=True) # Alpha for PACT for activation post first layer.
         
         # Initial convolution
-        self.conv1 = QuanConv(in_channels, 64, kernel_size=(7, 7),
+        self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(7, 7),
                               stride=2, padding=3, bias=False)
-        self.bn1 = CustomBatchNorm(64)
-        self.bn1.set_corresponding_input_conv(input_conv=self.conv1)
+        self.bn1 = nn.BatchNorm2d(64)
+        # self.bn1.set_corresponding_input_conv(input_conv=self.conv1)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         
         # ResNet layers
@@ -125,15 +140,29 @@ class ResNetBackbone(nn.Module):
         # Final pooling
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 
+        #Activation Quantization Function
+        if self.quantization_config["enable"]:
+            if self.quantization_config["activation_quantization"] == "dorefa":
+                self.activation_quant = DoReFaA()
+            elif self.quantization_config["activation_quantization"] == "pact":
+                self.activation_quant = PACT()
+            else:
+                raise ValueError(f"Invalid activation quantization function: {self.quantization_config['activation_quantization']}, \
+                                correct options are 'dorefa' or 'pact'. \
+                                Please add them to the dataset config (YAML) file.")
+            
+        self.nbit_first_layer = 16
+
 
     # check this function again make sure its right
     def _make_layer(self, out_channels, blocks, stride=1,prev_batch_norm=None):
         layers = [] # basicblock1, basickblock2, ... 
-        layers.append(self.block_type(self.in_channels, out_channels, stride, self.dropout_ratio))
-        prev_batch_norm.set_corresponding_output_conv(layers[-1].get_first_conv()) # Maybe this was the issue - changed from 0 to -1
+        layers.append(self.block_type(self.args, self.in_channels, out_channels, stride, self.dropout_ratio))
+        if isinstance(prev_batch_norm, CustomBatchNorm):
+            prev_batch_norm.set_corresponding_output_conv(layers[0].get_first_conv()) # Should be 0 not -1
         self.in_channels = out_channels * self.block_type.expansion
         for i in range(1, blocks):
-            layers.append(self.block_type(self.in_channels, out_channels, dropout_ratio=self.dropout_ratio))
+            layers.append(self.block_type(self.args, self.in_channels, out_channels, dropout_ratio=self.dropout_ratio))
             layers[i-1].set_next_conv(layers[i].get_first_conv()) # Set the next conv layer for the previous block (its 
             # just a helper function for layers[i-1].last_conv.set_corresponding_output_conv(layers[i].first_conv)
 
@@ -143,15 +172,30 @@ class ResNetBackbone(nn.Module):
         return nn.Sequential(*layers), last_bn_layer
 
     def forward(self, x):
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = self.maxpool(x)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-        x = self.avgpool(x)
-        x = torch.flatten(x, 1)
-        return x
+        if not self.quantization_config["enable"]:
+            # x = x.float()
+            x = F.relu(self.bn1(self.conv1(x)))
+            x = self.maxpool(x)
+            x = self.layer1(x)
+            x = self.layer2(x)
+            x = self.layer3(x)
+            x = self.layer4(x)
+            x = self.avgpool(x)
+            x = torch.flatten(x, 1)
+            return x
+        elif self.quantization_config["enable"]:
+            x = self.bn1(self.conv1(x))
+            # x = self.activation_quant(x,self.nbit_first_layer,self.alpha1)
+            x = self.maxpool(x)
+            x = self.layer1(x)
+            x = self.layer2(x)
+            x = self.layer3(x)
+            x = self.layer4(x)
+            x = self.avgpool(x)
+            x = torch.flatten(x, 1)
+            return x
+         
+
 
 class ResNet(nn.Module):
     def __init__(self, args):
@@ -181,6 +225,7 @@ class ResNet(nn.Module):
             self.mod_loc_backbones[loc] = nn.ModuleDict()
             for mod in self.modalities:
                 self.mod_loc_backbones[loc][mod] = ResNetBackbone(
+                    args=args,
                     block_type=block_type,
                     layers=self.config["layers"],
                     in_channels=args.dataset_config["loc_mod_in_freq_channels"][loc][mod],

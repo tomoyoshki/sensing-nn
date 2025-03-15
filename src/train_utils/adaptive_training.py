@@ -121,31 +121,52 @@ def supervised_train(
     classifier_config = args.dataset_config[args.model]
     quantization_config = args.dataset_config["quantization"]
 
+    if quantization_config["enable"]:
     # Setup Conv quantization Functions
-    for layer_name, layer in classifier.Conv.layer_registry.items():
-        layer.setup_quantize_funcs(
-            weight_quantization=quantization_config["weight_quantization"],
-            activation_quantization=quantization_config["activation_quantization"],
-            bitwidth_opts=quantization_config["bitwidth_options"]
-        ) # Setup queantization function, in case of PACT it will also setup switchable alpha
+        for layer_name, layer in classifier.Conv.layer_registry.items():
+            layer.setup_quantize_funcs(
+                weight_quantization=quantization_config["weight_quantization"],
+                activation_quantization=quantization_config["activation_quantization"],
+                bitwidth_opts=quantization_config["bitwidth_options"]
+            ) # Setup queantization function, in case of PACT it will also setup switchable alpha
 
-        if quantization_config["sat_weight_normalization"]:
-            layer.sat_weight_scaling = True
-        else:
-            layer.sat_weight_scaling = False
+            if quantization_config["sat_weight_normalization"]:
+                layer.sat_weight_scaling = True
+            else:
+                layer.sat_weight_scaling = False
 
-    # Setup CustomBatchNorm Functions
-    for layer_name, layer in classifier.bn.layer_registry.items():
+        # Setup CustomBatchNorm Functions
+        for layer_name, layer in classifier.bn.layer_registry.items():
+            if quantization_config["bn_type"] == "float":
+                layer.set_to_float()
+            elif quantization_config["bn_type"] == "transitional":
+                layer.set_to_transitional(quantization_config["bitwidth_options"])
+            elif quantization_config["bn_type"] == "switch":
+                layer.set_to_switchable(quantization_config["bitwidth_options"])
+            else:
+                raise ValueError("\
+                    quantization_config['bn_type'] is not set as needed in the dataset config file. Valid options are float, transitional, switch.\
+                ")
+        #  self.switchable = False
+        # self.transitional = False
+        # self.floating_point = True
         if quantization_config["bn_type"] == "float":
+            verify_float = True
+            for layer_name, layer in classifier.bn.layer_registry.items():
+                # breakpoint()
+                if not layer.switchable and not layer.transitional and layer.floating_point:
+                    pass
+                else:
+                    raise ValueError(f"BatchNorm Layer {layer_name} is not set to float mode")
+            logging.info("All BatchNorm layers are set to float mode")
+                
+
+    elif not quantization_config["enable"]:
+        for layer_name, layer in classifier.Conv.layer_registry.items():
+            layer.float_mode = True
+
+        for layer_name, layer in classifier.bn.layer_registry.items():
             layer.set_to_float()
-        elif quantization_config["bn_type"] == "transitional":
-            layer.set_to_transitional(quantization_config["bitwidth_options"])
-        elif quantization_config["bn_type"] == "switch":
-            layer.set_to_switchable(quantization_config["bitwidth_options"])
-        else:
-            raise ValueError("\
-                quantization_config['bn_type'] is not set as needed in the dataset config file. Valid options are float, transitional, switch.\
-            ")
 
      
     # breakpoint()

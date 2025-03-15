@@ -62,8 +62,8 @@ seq_len: 4
 # bn_type: "float"
 quantization:
         bn_type: "float"
-        enable: True
-        bitwidth_options: [2,4,6,8,32]
+        enable: True # False will run everything in float
+        bitwidth_options: [4,8,12]
         joint_quantization_batch_size: 4
         joint_quantization: True
         activation_quantization: "pact"

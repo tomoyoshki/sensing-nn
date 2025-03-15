@@ -157,8 +157,8 @@ def eval_quantized_supervised_model(args, classifier, augmenter, dataloader, los
 
 
                 classifier_loss_list = []
-                final_predictions = []
-                final_labels = []
+                # final_predictions_curr_scheme = []
+                # final_labels_curr_scheme = []
                 for i, (time_loc_inputs, labels, index) in tqdm(enumerate(dataloader), total=num_batches):
                     # Move to target device, FFT, and augmentations
                     freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
@@ -166,7 +166,7 @@ def eval_quantized_supervised_model(args, classifier, augmenter, dataloader, los
                     # Forward pass
                     logits = classifier(freq_loc_inputs)
                     classifier_loss_list.append(loss_func(logits, labels).item())
-                    breakpoint()
+                    # breakpoint()
                     if "regression" in args.task:
                         predictions = logits.squeeze()
                         # Take the maximum prediction across time dimension if needed
@@ -179,47 +179,54 @@ def eval_quantized_supervised_model(args, classifier, augmenter, dataloader, los
                             if predictions.dim() > 2:
                                 predictions = torch.max(predictions, dim=1)[0]
                         else:
-                            if logits.dim() > 2:  # If there's a time dimension
-                                # Take max confidence across time dimension
-                                predictions = torch.max(logits, dim=1)[0].argmax(dim=1)
-                            else:
-                                predictions = logits.argmax(dim=1)
+                            predictions = logits.argmax(dim=1)
                             
                             if labels.dim() > 1:
                                 labels = labels.argmax(dim=1)
+                    saved_predictions = predictions.cpu().numpy()
+                    saved_labels = labels.cpu().numpy()
+                    all_predictions.append(saved_predictions)
+                    all_labels.append(saved_labels)
+                
+        # Calculate mean loss
+        mean_classifier_loss = np.mean(classifier_loss_list)
+        all_predictions = np.concatenate(all_predictions, axis=0)
+        all_labels = np.concatenate(all_labels, axis=0)
+        metrics = eval_task_metrics(args, all_labels, all_predictions, regression=("regression" in args.task))
+                
 
 
 
-        for i, (time_loc_inputs, labels, index) in tqdm(enumerate(dataloader), total=num_batches):
-            # move to target device, FFT, and augmentations
-            freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
+    #     for i, (time_loc_inputs, labels, index) in tqdm(enumerate(dataloader), total=num_batches):
+    #         # move to target device, FFT, and augmentations
+    #         freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
 
-            # forward pass
-            logits = classifier(freq_loc_inputs)
-            classifier_loss_list.append(loss_func(logits, labels).item())
+    #         # forward pass
+    #         logits = classifier(freq_loc_inputs)
+    #         classifier_loss_list.append(loss_func(logits, labels).item())
 
-            if "regression" in args.task:
-                predictions = logits.squeeze()
-            else:
-                if args.multi_class:
-                    predictions = (logits > 0.5).float()
-                else:
-                    predictions = logits.argmax(dim=1, keepdim=False)
-                    labels = labels.argmax(dim=1, keepdim=False) if labels.dim() > 1 else labels
+    #         if "regression" in args.task:
+    #             predictions = logits.squeeze()
+    #         else:
+    #             if args.multi_class:
+    #                 predictions = (logits > 0.5).float()
+    #             else:
+    #                 predictions = logits.argmax(dim=1, keepdim=False)
+    #                 labels = labels.argmax(dim=1, keepdim=False) if labels.dim() > 1 else labels
 
-            # for future computation of acc or F1 score
-            saved_predictions = predictions.cpu().numpy()
-            saved_labels = labels.cpu().numpy()
-            all_predictions.append(saved_predictions)
-            all_labels.append(saved_labels)
+    #         # for future computation of acc or F1 score
+    #         saved_predictions = predictions.cpu().numpy()
+    #         saved_labels = labels.cpu().numpy()
+    #         all_predictions.append(saved_predictions)
+    #         all_labels.append(saved_labels)
 
-    # calculate mean loss
-    mean_classifier_loss = np.mean(classifier_loss_list)
-    all_predictions = np.concatenate(all_predictions, axis=0)
-    all_labels = np.concatenate(all_labels, axis=0)
+    # # calculate mean loss
+    # mean_classifier_loss = np.mean(classifier_loss_list)
+    # all_predictions = np.concatenate(all_predictions, axis=0)
+    # all_labels = np.concatenate(all_labels, axis=0)
 
-    # calculate the classification metrics
-    metrics = eval_task_metrics(args, all_labels, all_predictions, regression=("regression" in args.task))
+    # # calculate the classification metrics
+    # metrics = eval_task_metrics(args, all_labels, all_predictions, regression=("regression" in args.task))
 
     return mean_classifier_loss, metrics
 
