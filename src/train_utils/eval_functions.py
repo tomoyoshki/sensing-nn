@@ -108,12 +108,44 @@ def get_random_quantizations_schemes_given_average(args, classifier):
     # For each target average bitwidth
     logging.info("-"*30 + "Started Generating Random Bitwidth Configurations" + "-"*30)
     for target_avg_bw in tqdm(average_bitwidths):
+        # print("Target Average Bitwidth: ", target_avg_bw)
+        # print(f"Number of Quantization Schemes: {number_of_quantization_schemes_per_avg_bw}")
         while len(quantization_schemes[target_avg_bw]) < number_of_quantization_schemes_per_avg_bw:
             # Randomly generate bitwidths for each layer
-            layer_bitwidths = np.random.choice(bitwidth_options, size=num_layers)
-            current_avg_bw = np.mean(layer_bitwidths)
+            # print(f"Number of Schemes Generated: {len(quantization_schemes[target_avg_bw])}", end="\n")
+            # breakpoint()
+            # layer_bitwidths = np.random.choice(bitwidth_options, size=num_layers)
+            # current_avg_bw = np.mean(layer_bitwidths)
+            # print(current_avg_bw, end=", ")
+            # breakpoint()
+
+            # Method 1: Start with a uniform configuration close to target
+            if np.random.random() < 0.5:
+                # Find the closest available bitwidth options to the target
+                closest_lower = max([b for b in bitwidth_options if b <= target_avg_bw], default=min(bitwidth_options))
+                closest_higher = min([b for b in bitwidth_options if b >= target_avg_bw], default=max(bitwidth_options))
+                
+                # Determine the ratio of higher to lower bitwidths needed
+                if closest_lower == closest_higher:
+                    layer_bitwidths = np.full(num_layers, closest_lower)
+                else:
+                    num_higher = int(round(num_layers * (target_avg_bw - closest_lower) / (closest_higher - closest_lower)))
+                    layer_bitwidths = np.array([closest_higher] * num_higher + [closest_lower] * (num_layers - num_higher))
+                    np.random.shuffle(layer_bitwidths)  # Shuffle to randomize which layers get which bitwidth
             
-            # Check if the average is within the acceptable range
+            # Method 2: Sample around the target with a normal distribution
+            else:
+                # Find standard deviation based on available bitwidth range
+                std_dev = max(1.0, (max(bitwidth_options) - min(bitwidth_options)) / 4)
+                
+                # Generate normally distributed values around the target
+                raw_values = np.random.normal(target_avg_bw, std_dev, num_layers)
+                
+                # Map each value to the nearest available bitwidth option
+                layer_bitwidths = np.array([min(bitwidth_options, key=lambda x: abs(x - val)) for val in raw_values])
+            
+            current_avg_bw = np.mean(layer_bitwidths)
+            # Chneck if the average is within the acceptable range
             if abs(current_avg_bw - target_avg_bw) <= delta:
                 # Create dictionary mapping layer names to bitwidths
                 scheme = {}

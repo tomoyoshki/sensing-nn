@@ -158,7 +158,8 @@ class ResNetBackbone(nn.Module):
     def _make_layer(self, out_channels, blocks, stride=1,prev_batch_norm=None):
         layers = [] # basicblock1, basickblock2, ... 
         layers.append(self.block_type(self.args, self.in_channels, out_channels, stride, self.dropout_ratio))
-        if isinstance(prev_batch_norm, CustomBatchNorm):
+        if isinstance(prev_batch_norm, CustomBatchNorm): # if prev_batch_norm is nn.BatchNorm2d then we do not set the corresponding input conv
+            # the CustomBatchNorm class will assume that absence of input_conv or output_conv means that use 32 bit floating point
             prev_batch_norm.set_corresponding_output_conv(layers[0].get_first_conv()) # Should be 0 not -1
         self.in_channels = out_channels * self.block_type.expansion
         for i in range(1, blocks):
@@ -212,7 +213,7 @@ class ResNet(nn.Module):
         if self.quantization_config["bn_type"] == "float" or self.quantization_config["bn_type"] == "switch" or self.quantization_config["bn_type"] == "transitional":
             self.bn_type = self.quantization_config["bn_type"]
         else:
-            raise ValueError(f"Invalid batch normalization type: {self.config['bn_type']}, \
+            raise ValueError(f"Invalid batch normalization type: {self.quantization_config['bn_type']}, \
                              correct options are 'float', 'switch', or 'transitional'. \
                              Please add them to the dataset config (YAML) file.")
 

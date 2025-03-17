@@ -97,7 +97,7 @@ class QuanConv(nn.Module):
         padding=0,
         dilation=1,
         groups=1,
-        weight_sat_scaling = True,
+        sat_weight_normalization = True,
         bias=True,
         has_offset=False,
         fix=False,
@@ -105,7 +105,7 @@ class QuanConv(nn.Module):
         layer_name=None,
     ):
         super(QuanConv, self).__init__()
-        self.sat_weight_scaling = weight_sat_scaling
+        self.sat_weight_normalization = sat_weight_normalization
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size
@@ -133,6 +133,7 @@ class QuanConv(nn.Module):
         QuanConv.layer_counter += 1
         QuanConv.layer_registry[self.layer_name] = self
         self.float_mode = False
+        self.args = None
 
     def set_bitwidth(self, bitwidth):
         assert bitwidth <=32 and bitwidth > 1, "bitwidth should be between 2 and 32"
@@ -142,12 +143,19 @@ class QuanConv(nn.Module):
         assert self.curr_bitwidth is not None, "bitwidth is None"
         return self.curr_bitwidth
 
-    def alpha_setup(self, bitwidth_opts): #bitwidth_opts a list of different bit-width options [4,6,8]
+    def alpha_setup(self, bitwidth_opts, switchable = True): #bitwidth_opts a list of different bit-width options [4,6,8]
         self.bitwidth_opts = bitwidth_opts
         self.alpha_setup_flag = True
-        self.alpha = nn.Parameter(
-            torch.ones(len(bitwidth_opts)), requires_grad=True
-        )
+        if switchable:
+            self.alpha = nn.Parameter(
+                torch.ones(len(bitwidth_opts)), requires_grad=True
+            )
+            # nn.init.constant_(self.alpha, 10)
+        else:
+            self.alpha = nn.Parameter(
+                torch.ones(1), requires_grad=True
+            )
+            # nn.init.constant_(self.alpha, 10)
 
     def set_random_bitwidth(self):
         assert self.bitwidth_opts is not None, "bitwidth options not set"
@@ -169,8 +177,15 @@ class QuanConv(nn.Module):
         return total_sum / total
 
         
-    def setup_quantize_funcs(self, weight_quantization="dorefa", activation_quantization="dorefa", bitwidth_opts=None):
-        self.bitwidth_opts = bitwidth_opts
+    def setup_quantize_funcs(self, args):
+        # classifier_config = args.dataset_config[args.model]
+        quantization_config = args.dataset_config["quantization"]
+        # quantization_config = args["quantization_config"]
+        weight_quantization = quantization_config["weight_quantization"]
+        activation_quantization = quantization_config["activation_quantization"]
+        self.bitwidth_opts = quantization_config["bitwidth_options"]
+        self.switchable_clipping = quantization_config["switchable_clipping"]
+        self.sat_weight_normalization = quantization_config["sat_weight_normalization"]
         if weight_quantization == "dorefa":
             self.quantize_w = DoReFaW()
         else:
@@ -179,7 +194,29 @@ class QuanConv(nn.Module):
             self.quantize_a = DoReFaA()
         elif activation_quantization == "pact":
             self.quantize_a = PACT()
-            self.alpha_setup(bitwidth_opts)
+            # self.bitwidth_opts = bitwidth_opts
+            self.alpha_setup_flag = True
+            if self.switchable_clipping:
+                self.alpha = nn.Parameter(
+                    torch.ones(len(self.bitwidth_opts)), requires_grad=True
+                )
+                # nn.init.constant_(self.alpha, 10)
+            else:
+                self.alpha = nn.Parameter(
+                    torch.ones(1), requires_grad=True
+                )
+            # self.alpha_setup(bitwidth_opts)
+
+    def get_alpha(self):
+        # assert self.args is not None, "args not set in QuanConv"
+        assert self.alpha_setup_flag, "alpha not setup, run setup_quantize_funcs before running model inference"
+
+        if self.switchable_clipping:
+            return self.alpha[self.bitwidth_opts.index(self.curr_bitwidth)]
+        else:
+            return self.alpha[0]
+
+        
 
     def forward(self, inp):
         if not self.float_mode:
@@ -195,7 +232,7 @@ class QuanConv(nn.Module):
                 w = self.quantize_w(self.weight, self.curr_bitwidth)
                 bias = self.bias
                 # Adabits method of scaling weights I think may or maynot use it.
-                if self.sat_weight_scaling:
+                if self.sat_weight_normalization:
                     weight_scale = (  
                         1.0
                         / (
@@ -211,7 +248,8 @@ class QuanConv(nn.Module):
                     bias = bias * weight_scale if bias is not None else None
                 
                 if isinstance(self.quantize_a, PACT):
-                    alpha = self.alpha[self.bitwidth_opts.index(self.curr_bitwidth)]
+                    # alpha = self.alpha[self.bitwidth_opts.index(self.curr_bitwidth)]
+                    alpha = self.get_alpha()
                     x = self.quantize_a(inp, self.curr_bitwidth, alpha)
                 elif isinstance(self.quantize_a, DoReFaA):
                     x = self.quantize_a(inp, self.curr_bitwidth)
@@ -280,6 +318,8 @@ class CustomBatchNorm(nn.Module):
         self.succ_bitwidth = 32
         self.floating_point = None
         # self.bn_type = None
+        self.input_conv = None
+        self.output_conv = None
 
     def set_corresponding_input_conv(self, input_conv):
         self.input_conv = input_conv
@@ -297,13 +337,13 @@ class CustomBatchNorm(nn.Module):
     def set_succ_bitwidth(self, succ_bitwidth):
         self.succ_bitwidth = succ_bitwidth
     
-    def set_switchable(self, bitwidth_options): # bitwidth options is a list of bitwidths
+    def set_to_switchable(self, bitwidth_options): # bitwidth options is a list of bitwidths
         self.bitwidth_options = bitwidth_options
         if 32 not in self.bitwidth_options:
             self.bitwidth_options.append(32)
-        self.bns = {}
-        for bitwidth in bitwidth_options:
-            self.bns[bitwidth] = nn.BatchNorm2d(self.out_channels)
+        self.bns = nn.ModuleDict({str(bitwidth): nn.BatchNorm2d(self.out_channels) for bitwidth in bitwidth_options})
+        # for bitwidth in bitwidth_options:
+        #     self.bns[bitwidth] = nn.BatchNorm2d(self.out_channels)
         self.switchable = True
         self.transitional = False
         self.floating_point = False
@@ -314,10 +354,13 @@ class CustomBatchNorm(nn.Module):
         self.bitwidth_options = bitwidth_options
         if 32 not in self.bitwidth_options:
             self.bitwidth_options.append(32)
-        self.bns = {}
+        self.bns = nn.ModuleDict()
         for bitwidth_pred in bitwidth_options:
             for bitwidth_succ in bitwidth_options:
-                self.bns[bitwidth_pred][bitwidth_succ] = nn.BatchNorm2d(self.out_channels)
+                # self.bns[bitwidth_pred][bitwidth_succ] = nn.BatchNorm2d(self.out_channels)
+                key = f"{bitwidth_pred}_{bitwidth_succ}"
+                self.bns[key] = nn.BatchNorm2d(self.out_channels)
+        self.floating_point = False
 
     def set_to_float(self):
         self.switchable = False
@@ -328,19 +371,23 @@ class CustomBatchNorm(nn.Module):
         if self.switchable:
             # Switchable BatchNorm (Used in CoQuant, and AnyPrecision)
             assert self.bitwidth_options is not None, "bitwidth options not set"
-            assert self.input_conv is not None, "input conv not set"
-            idx_alpha = self.bitwidth_options.index(self.input_conv.curr_bitwidth)
-            return self.bns[idx_alpha](x)
+            # assert self.input_conv is not None, "input conv not set"
+            input_bitwidth = self.input_conv.curr_bitwidth if self.input_conv != None else 32
+            # idx_alpha = self.bitwidth_options.index(self.input_conv.curr_bitwidth)
+            # print(next(self.bns[str(input_bitwidth)].parameters()).device)
+            # print(x.device)
+            # breakpoint()
+            return self.bns[str(input_bitwidth)](x)
         elif self.floating_point:
             # Traditional BatchNorm
             return self.bn_float(x)
         elif self.transitional:
             # Transitional BatchNorm (Used in Bit-Mixer)
             assert self.input_conv is not None, "input conv not set for self.transitional == True"
-            if self.output_conv is not None:
-                return self.bns[self.input_conv.curr_bitwidth][self.output_conv.curr_bitwidth](x)
-            else:
-                return self.bns[self.input_conv.curr_bitwidth][32](x)
+            input_bitwidth = self.input_conv.curr_bitwidth if self.input_conv != None else 32
+            output_bitwidth = self.output_conv.curr_bitwidth if self.output_conv!= None else 32
+            key = f"{input_bitwidth}_{output_bitwidth}"
+            return self.bns[key](x)
         else:
             raise ValueError(f"Invalid BatchNorm type, valid options are switchable, "\
             "transitional, and floating_point. Make sure you have called either,\

@@ -54,6 +54,8 @@ def train(args):
     args.classifier = classifier
     logging.info("=\tClassifier model loaded")
 
+    
+
     # Init the Tensorboard summary writer
     tb_writer = SummaryWriter(args.tensorboard_log)
     logging.info("=\tTensorboard loaded")

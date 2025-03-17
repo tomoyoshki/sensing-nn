@@ -61,25 +61,21 @@ loc_mod_spectrum_len:
 seq_len: 4
 # bn_type: "float"
 quantization:
-        bn_type: "float"
+        bn_type: "transitional" # switch, float, transitional are valid options
         enable: True # False will run everything in float
         bitwidth_options: [4,8,12]
         joint_quantization_batch_size: 4
         joint_quantization: True
         activation_quantization: "pact"
         weight_quantization: "dorefa"
+        switchable_clipping: False
         sat_weight_normalization: True
         test_and_val_average_bitwidths : [4,8,12]
         test_and_val_total_schemes : 4
         delta : 2
-
-        # Adabits:
-        #         enable: True
-        #         sat_weight_normalization: True
-        #         joint_quantization: True
-        #         activation_quantization: "PACT"
-        #         weight_quantization: "DoReFa"
-
+        kurtosis_regularization: True
+        kurtosis_target: 1.8    
+        kurtosis_weight: 0.1
                 
 
                 

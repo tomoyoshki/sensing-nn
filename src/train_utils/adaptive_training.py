@@ -4,7 +4,9 @@ import logging
 import torch.optim as optim
 import numpy as np
 import time
-
+# import torch
+import torch.nn as nn
+from functools import reduce
 from tqdm import tqdm
 
 # train utils
@@ -15,6 +17,47 @@ from train_utils.lr_scheduler import define_lr_scheduler
 # utils
 from general_utils.time_utils import time_sync
 
+class KurtosisLossCalc:
+    def __init__(self, weight_tensor, kurtosis_target=1.8, k_mode='avg'):
+        self.kurtosis_loss = 0
+        self.kurtosis = 0
+        self.weight_tensor = weight_tensor
+        self.k_mode = k_mode
+        self.kurtosis_target = kurtosis_target
+
+    def fn_regularization(self):
+        return self.kurtosis_calc()
+
+    def kurtosis_calc(self):
+        mean_output = torch.mean(self.weight_tensor)
+        std_output = torch.std(self.weight_tensor)
+        kurtosis_val = torch.mean((((self.weight_tensor - mean_output) / std_output) ** 4))
+        self.kurtosis_loss = (kurtosis_val - self.kurtosis_target) ** 2
+        self.kurtosis = kurtosis_val
+
+        if self.k_mode == 'avg':
+            self.kurtosis_loss = torch.mean((kurtosis_val - self.kurtosis_target) ** 2)
+            self.kurtosis = torch.mean(kurtosis_val)
+        elif self.k_mode == 'max':
+            self.kurtosis_loss = torch.max((kurtosis_val - self.kurtosis_target) ** 2)
+            self.kurtosis = torch.max(kurtosis_val)
+        elif self.k_mode == 'sum':
+            self.kurtosis_loss = torch.sum((kurtosis_val - self.kurtosis_target) ** 2)
+            self.kurtosis = torch.sum(kurtosis_val)
+
+
+def KurtosisLoss(model,target):
+    KurtosisList = []
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear) or isinstance(m, model.Conv):
+            w_kurt_inst = KurtosisLossCalc(m.weight,kurtosis_target=target)
+            w_kurt_inst.fn_regularization()
+            KurtosisList.append(w_kurt_inst.kurtosis_loss)
+    del KurtosisList[0]
+    # del KurtosisList[-1]
+    w_kurtosis_loss = reduce((lambda a, b: a + b), KurtosisList) / len(KurtosisList)
+    w_kurtosis_regularization = w_kurtosis_loss
+    return w_kurtosis_regularization
 
 
 def single_epoch_train(
@@ -70,7 +113,9 @@ def single_epoch_joint_quantization(
     train_loss_list
 ):
      # regularization configuration
-    quantized_conv_class = classifier.Conv # QuanConv 
+    quantized_conv_class = classifier.Conv # QuanConv
+    quantization_config = args.dataset_config["quantization"]
+
     for i, (time_loc_inputs, labels, _) in tqdm(enumerate(train_dataloader), total=num_batches):
         # move to target device, FFT, and augmentations
         aug_freq_loc_inputs, labels = augmenter.forward("fixed", time_loc_inputs, labels)
@@ -87,6 +132,10 @@ def single_epoch_joint_quantization(
             accumulated_loss += current_loss
 
         avg_loss = accumulated_loss / joint_quantization_batch_size
+
+        if quantization_config["enable"] and quantization_config["kurtosis_regularization"]:
+            w_kurtosis_regularization = KurtosisLoss(classifier, quantization_config["kurtosis_target"])
+            avg_loss += quantization_config["kurtosis_weight"]*w_kurtosis_regularization
 
         # back propagation
         optimizer.zero_grad()
@@ -125,15 +174,13 @@ def supervised_train(
     # Setup Conv quantization Functions
         for layer_name, layer in classifier.Conv.layer_registry.items():
             layer.setup_quantize_funcs(
-                weight_quantization=quantization_config["weight_quantization"],
-                activation_quantization=quantization_config["activation_quantization"],
-                bitwidth_opts=quantization_config["bitwidth_options"]
+                args
             ) # Setup queantization function, in case of PACT it will also setup switchable alpha
 
-            if quantization_config["sat_weight_normalization"]:
-                layer.sat_weight_scaling = True
-            else:
-                layer.sat_weight_scaling = False
+            # if quantization_config["sat_weight_normalization"]:
+            #     layer.sat_weight_scaling = True
+            # else:
+            #     layer.sat_weight_scaling = False
 
         # Setup CustomBatchNorm Functions
         for layer_name, layer in classifier.bn.layer_registry.items():
@@ -169,6 +216,10 @@ def supervised_train(
             layer.set_to_float()
 
      
+    #Move classifier to device
+    target_device = args.device
+    classifier.to(target_device)
+    logging.info(f"=\tClassifier moved to {target_device} after setting up BatchNorm and Conv layers")
     # breakpoint()
     # Define the optimizer and learning rate scheduler
     optimizer = define_optimizer(args, classifier.parameters())
