@@ -5,6 +5,18 @@ import torch.nn.functional as F
 from models.FusionModules import MeanFusionBlock
 from models.QuantModules import QuanConv, CustomBatchNorm, DoReFaA, PACT
 
+class CustomSequential(nn.Sequential):
+    def forward(self, x, teacher_input=None):
+        if teacher_input is None:
+            for module in self:
+                x = module(x)
+            return x
+        else:
+            x_student, x_teacher = x, teacher_input
+            for module in self:
+                x_student, x_teacher = module(x_student, teacher_input = x_teacher)
+            return x_student, x_teacher
+
 class BasicBlock(nn.Module):
     expansion = 1
 
@@ -23,9 +35,11 @@ class BasicBlock(nn.Module):
         self.bn2 = CustomBatchNorm(out_channels)
         self.dropout = nn.Dropout2d(p=dropout_ratio)
 
-        self.shortcut = nn.Sequential()
+        self.shortcut = CustomSequential()
         if stride != 1 or in_channels != self.expansion * out_channels:
-            self.shortcut = nn.Sequential(
+            # print(f"{'-'*20} BasicBlock - Creating shortcut {'-'*20}")
+            # print(f"Shortcut conv initialization - in_channels: {in_channels}, out_channels: {self.expansion * out_channels}")
+            self.shortcut = CustomSequential(
                 QuanConv(in_channels, self.expansion * out_channels,
                          kernel_size=(1,1), stride=stride, bias=False),
                 CustomBatchNorm(self.expansion * out_channels)
@@ -58,7 +72,7 @@ class BasicBlock(nn.Module):
 
         self.last_batch_norm.set_corresponding_output_conv(output_conv=next_conv)
     
-    def forward(self, x):
+    def forward(self, x, teacher_input = None):
         if not self.quantization_config["enable"]:
             out = F.relu(self.bn1(self.conv1(x)))
             out = self.dropout(out)
@@ -68,13 +82,50 @@ class BasicBlock(nn.Module):
             out = F.relu(out)
             return out
         elif self.quantization_config["enable"]:
-            out = self.bn1(self.conv1(x))
-            out = self.dropout(out)
-            out = self.bn2(self.conv2(out))
-            out = self.dropout(out)
-            out += self.shortcut(x)
-            # out = F.relu(out) # Point to check whether we need to add activation quantization step here - it would be handled by the next layer ideally
-            return out
+            if teacher_input is None:
+                out = self.bn1(self.conv1(x))
+                out = self.dropout(out)
+                out = self.bn2(self.conv2(out))
+                out = self.dropout(out)
+                out += self.shortcut(x)
+                # out = F.relu(out) # Point to check whether we need to add activation quantization step here - it would be handled by the next layer ideally
+                return out
+            else:
+                # print(f"{'-'*20} BasicBlock - Student and Teacher Forward Pass {'-'*20}")
+                # print(f"Input shape: {x.shape}")
+                out_student, out_teacher = self.conv1(x, teacher_input)
+                try:
+                    out_student, out_teacher = self.bn1(out_student, teacher_input=out_teacher)
+                except:
+                    print(f"BN1: Error in BasicBlock forward pass")
+                    breakpoint()
+                    raise
+                # print(f"After conv1 - Student features shape: {out_student.shape}")
+                # print(f"After conv1 - Teacher features shape: {out_teacher.shape}")
+                out_student = self.dropout(out_student)
+                out_teacher = self.dropout(out_teacher)
+
+                out_student, out_teacher = self.conv2(out_student, out_teacher)
+                # print(f"After conv2 - Student features shape: {out_student.shape}")
+                # print(f"After conv2 - Teacher features shape: {out_teacher.shape}")
+                try:
+                    out_student, out_teacher = self.bn2(out_student, teacher_input=out_teacher)
+                except:
+                    print(f"BN2: Error in BasicBlock forward pass")
+                    breakpoint()
+                    raise
+                out_student = self.dropout(out_student)
+                out_teacher = self.dropout(out_teacher)
+
+                out_student_shortcut, out_teacher_shortcut = self.shortcut(x, teacher_input)
+                # print(f"After shortcut - Student features shape: {out_student_shortcut.shape}")
+                # print(f"After shortcut - Teacher features shape: {out_teacher_shortcut.shape}")
+                out_student += out_student_shortcut
+                out_teacher += out_teacher_shortcut
+                # print(f"After addition - Student features shape: {out_student.shape}")
+                # print(f"After addition - Teacher features shape: {out_teacher.shape}")
+
+                return out_student, out_teacher
 
 # Can ignore this for now -  not using it
 class Bottleneck(nn.Module):
@@ -170,7 +221,7 @@ class ResNetBackbone(nn.Module):
         
         # first_conv_layer = layers[0].first_conv
         last_bn_layer = layers[-1].get_last_batch_norm()
-        return nn.Sequential(*layers), last_bn_layer
+        return CustomSequential(*layers), last_bn_layer
 
     def forward(self, x):
         if not self.quantization_config["enable"]:
@@ -186,15 +237,36 @@ class ResNetBackbone(nn.Module):
             return x
         elif self.quantization_config["enable"]:
             x = self.bn1(self.conv1(x))
-            # x = self.activation_quant(x,self.nbit_first_layer,self.alpha1)
             x = self.maxpool(x)
-            x = self.layer1(x)
-            x = self.layer2(x)
-            x = self.layer3(x)
-            x = self.layer4(x)
-            x = self.avgpool(x)
-            x = torch.flatten(x, 1)
-            return x
+            if not self.training or not self.quantization_config["teacher_student"]:
+            # Testing mode - only student forward pass
+                x = self.layer1(x)
+                x = self.layer2(x)
+                x = self.layer3(x)
+                x = self.layer4(x)
+                x = self.avgpool(x)
+                x = torch.flatten(x, 1)
+                return x
+            else:
+                # Training mode - both student and teacher forward passes
+                # print(f"Before layer1 - Input shape: {x.shape}")
+                x_student, x_teacher = self.layer1(x, x)
+                # print(f"After layer1 - Student features shape: {x_student.shape}")
+                # print(f"After layer1 - Teacher features shape: {x_teacher.shape}")
+                
+                x_student, x_teacher = self.layer2(x_student, x_teacher)
+                # print(f"After layer2 - Student features shape: {x_student.shape}")
+                # print(f"After layer2 - Teacher features shape: {x_teacher.shape}")
+                x_student, x_teacher = self.layer3(x_student, x_teacher)
+                x_student, x_teacher = self.layer4(x_student, x_teacher)
+
+                x_student = self.avgpool(x_student)
+                x_teacher = self.avgpool(x_teacher)
+
+                x_student = torch.flatten(x_student, 1)
+                x_teacher = torch.flatten(x_teacher, 1)
+
+                return x_student, x_teacher
          
 
 
@@ -257,9 +329,15 @@ class ResNet(nn.Module):
             nn.Linear(self.config["fc_dim"], args.dataset_config["vehicle_classification"]["num_classes"]),
         )
 
-    def forward(self, freq_x, class_head=True):
-        # Extract features for each modality at each location
+
+
+    def forward_vanilla(self, freq_x, class_head=True):
+        """
+            Forward Pass for testing or training without distillation, you can run either quantized or non-quantized forward pass
+        """
         loc_mod_features = {}
+        # testing = not self.training
+        # if testing or not self.quantization_config["teacher_student"]:
         for loc in self.locations:
             loc_mod_features[loc] = []
             for mod in self.modalities:
@@ -291,6 +369,71 @@ class ResNet(nn.Module):
 
         if class_head:
             logits = self.class_layer(sample_features)
-            return logits
+            return logits, None
         else:
-            return sample_features
+            return sample_features, None
+
+    def forward_distillation(self, freq_x, class_head=True):
+        """
+            Forward Pass for training with distillation
+        """
+        loc_mod_features_student = {}
+        loc_mod_features_teacher = {}
+        
+        for loc in self.locations:
+            loc_mod_features_student[loc] = []
+            loc_mod_features_teacher[loc] = []
+            for mod in self.modalities:
+                # print(f"Before backbone - Input shape for {loc} {mod}: {freq_x[loc][mod].shape}")
+                features_student, features_teacher = self.mod_loc_backbones[loc][mod](freq_x[loc][mod])
+                # print(f"After backbone - Student features shape: {features_student.shape}")
+                # print(f"After backbone - Teacher features shape: {features_teacher.shape}")
+                loc_mod_features_student[loc].append(features_student)
+                loc_mod_features_teacher[loc].append(features_teacher)
+            
+            loc_mod_features_student[loc] = torch.stack(loc_mod_features_student[loc], dim=1)
+            loc_mod_features_teacher[loc] = torch.stack(loc_mod_features_teacher[loc], dim=1)
+
+        # Fuse modalities for each location
+        fused_loc_features_student = {}
+        fused_loc_features_teacher = {}
+        for loc in self.locations:
+            fused_loc_features_student[loc] = loc_mod_features_student[loc].mean(dim=1)
+            fused_loc_features_teacher[loc] = loc_mod_features_teacher[loc].mean(dim=1)
+
+        # Fuse locations if multiple locations
+        if not self.multi_location_flag:
+            final_feature_student = fused_loc_features_student[self.locations[0]]
+            final_feature_teacher = fused_loc_features_teacher[self.locations[0]]
+        else:
+            loc_features_student = torch.stack([fused_loc_features_student[loc] for loc in self.locations], dim=1)
+            loc_features_teacher = torch.stack([fused_loc_features_teacher[loc] for loc in self.locations], dim=1)
+            final_feature_student = self.loc_fusion_layer(loc_features_student)
+            final_feature_teacher = self.loc_fusion_layer(loc_features_teacher)
+
+        # Classification
+        sample_features_student = self.sample_embd_layer(final_feature_student)
+        sample_features_teacher = self.sample_embd_layer(final_feature_teacher)
+        
+        if class_head:
+            logits_student = self.class_layer(sample_features_student)
+            logits_teacher = self.class_layer(sample_features_teacher)
+            return logits_student, logits_teacher
+        else:
+            return sample_features_student, sample_features_teacher
+
+    def forward(self, freq_x, class_head=True):
+        '''
+            Forward pass for the model, we direct the forward pass to the correct function based on the training mode set in the yaml file. 
+        '''
+        testing = not self.training
+        if testing:
+            forward_func = self.forward_vanilla
+        else:
+             # Training mode - both student and teacher forward passes
+            if self.quantization_config["teacher_student"]:
+                forward_func = self.forward_distillation
+            else:
+                forward_func = self.forward_vanilla
+
+        return forward_func(freq_x, class_head=class_head)

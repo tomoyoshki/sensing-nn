@@ -61,22 +61,27 @@ loc_mod_spectrum_len:
 seq_len: 4
 # bn_type: "float"
 quantization:
-        bn_type: "transitional" # switch, float, transitional are valid options
+        bn_type: "float" # switch, float, transitional are valid options
         enable: True # False will run everything in float
         bitwidth_options: [4,8,12]
-        joint_quantization_batch_size: 4
+        joint_quantization_batch_size: 1
         joint_quantization: True
         activation_quantization: "pact"
         weight_quantization: "dorefa"
         switchable_clipping: False
-        sat_weight_normalization: True
+        sat_weight_normalization: False
         test_and_val_average_bitwidths : [4,8,12]
         test_and_val_total_schemes : 4
         delta : 2
-        kurtosis_regularization: True
+        teacher_student: True
+        teacher_bn_type: "float" # other option is switchable
+        teacher_selection_strategy: "activation_min" # other options weight_min, activation_max, weight_max
+        kurtosis_regularization: False
         kurtosis_target: 1.8    
         kurtosis_weight: 0.1
-                
+        coherence_weight: 0.3
+        energy_weight: 0.5
+        loss_function_for_activation: ["ce_output_activation"] # other options that can be added to list kl_divergence_st_output_activaation, kl_all_hidden_activations
 
                 
 ResNet:

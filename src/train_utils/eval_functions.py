@@ -66,7 +66,7 @@ def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
             freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
 
             # forward pass
-            logits = classifier(freq_loc_inputs)
+            logits, _ = classifier(freq_loc_inputs)
             classifier_loss_list.append(loss_func(logits, labels).item())
 
             if "regression" in args.task:
@@ -196,7 +196,7 @@ def eval_quantized_supervised_model(args, classifier, augmenter, dataloader, los
                     freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
        
                     # Forward pass
-                    logits = classifier(freq_loc_inputs)
+                    logits, _ = classifier(freq_loc_inputs)
                     classifier_loss_list.append(loss_func(logits, labels).item())
                     # breakpoint()
                     if "regression" in args.task:

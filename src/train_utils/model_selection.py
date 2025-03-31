@@ -4,6 +4,7 @@ from models.ResNet import ResNet
 from models.DeepSense import DeepSense
 from models.TransformerV4 import TransformerV4
 from models.NEWMODEL import NEWMODEL
+from models.loss import CustomLoss
 
 
 def init_backbone_model(args):
@@ -30,7 +31,7 @@ def init_loss_func(args):
         if "regression" in args.task:
             loss_func = nn.MSELoss()
         else:
-            loss_func = nn.CrossEntropyLoss()
+            loss_func = CustomLoss(args)
     else:
         raise Exception(f"Invalid train mode provided: {args.train_mode}")
 

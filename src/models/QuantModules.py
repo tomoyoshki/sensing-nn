@@ -99,12 +99,14 @@ class QuanConv(nn.Module):
         groups=1,
         sat_weight_normalization = True,
         bias=True,
+        teacher_selection_strategy = "weighted_activation_min", # "weighted_activation_min", "weight_min", "activation_min", "random", "weighted_activation_max", "weight_max", "activation_max"
         has_offset=False,
         fix=False,
         batch_norm=False,
         layer_name=None,
     ):
         super(QuanConv, self).__init__()
+        self.teacher_selection_strategy = teacher_selection_strategy
         self.sat_weight_normalization = sat_weight_normalization
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -134,7 +136,11 @@ class QuanConv(nn.Module):
         QuanConv.layer_registry[self.layer_name] = self
         self.float_mode = False
         self.args = None
-
+        self.quantization_config = None
+        self.si_weights = None
+        self.best_teacher_bitwidth = None
+        self.best_teacher_activation = None
+        self.recent_student_activation = None
     def set_bitwidth(self, bitwidth):
         assert bitwidth <=32 and bitwidth > 1, "bitwidth should be between 2 and 32"
         self.curr_bitwidth = bitwidth
@@ -180,6 +186,7 @@ class QuanConv(nn.Module):
     def setup_quantize_funcs(self, args):
         # classifier_config = args.dataset_config[args.model]
         quantization_config = args.dataset_config["quantization"]
+        self.quantization_config = quantization_config
         # quantization_config = args["quantization_config"]
         weight_quantization = quantization_config["weight_quantization"]
         activation_quantization = quantization_config["activation_quantization"]
@@ -207,18 +214,262 @@ class QuanConv(nn.Module):
                 )
             # self.alpha_setup(bitwidth_opts)
 
-    def get_alpha(self):
+    def get_alpha(self, bitwidth = None):
         # assert self.args is not None, "args not set in QuanConv"
         assert self.alpha_setup_flag, "alpha not setup, run setup_quantize_funcs before running model inference"
-
+        bitwidth = self.curr_bitwidth if bitwidth is None else bitwidth
         if self.switchable_clipping:
-            return self.alpha[self.bitwidth_opts.index(self.curr_bitwidth)]
+            return self.alpha[self.bitwidth_opts.index(bitwidth)]
         else:
             return self.alpha[0]
 
+    def get_weights_for_all_teachers(self,weight_scale=None):
+        assert self.bitwidth_opts is not None, "bitwidth options not set"
+        teacher_bitwidths = [bitwidth for bitwidth in self.bitwidth_opts if bitwidth > self.curr_bitwidth]
+        teacher_weights = {}
+        # breakpoint()
+        for teacher_bitwidth in teacher_bitwidths:
+            teacher_weights[teacher_bitwidth] = {}
+            teacher_weight = self.quantize_w(self.weight, teacher_bitwidth)
+            teacher_weights[teacher_bitwidth]['weight'] = teacher_weight * weight_scale if weight_scale is not None else teacher_weight
+            if self.bias is not None:
+                teacher_weights[teacher_bitwidth]['bias'] = self.bias * weight_scale if weight_scale is not None else self.bias
+            else:
+                teacher_weights[teacher_bitwidth]['bias'] = None
+        return teacher_weights
+    def _activation_min_sequential(self, x_student, input_teacher, teacher_weights, teacher_bitwidths):
+        """Sequential implementation of activation_min strategy"""
+        min_diff = float("inf")
+        best_teacher_bitwidth = None
+        best_activation = None
         
+        for teacher_bitwidth in teacher_bitwidths:
+            weights = teacher_weights[teacher_bitwidth]
+            teacher_weight = weights['weight']
+            teacher_bias = weights['bias']
 
-    def forward(self, inp):
+            # Get teacher activation
+            if isinstance(self.quantize_a, PACT):
+                alpha = self.get_alpha(teacher_bitwidth)
+                x_teacher = self.quantize_a(input_teacher, teacher_bitwidth, alpha)
+            elif isinstance(self.quantize_a, DoReFaA):
+                x_teacher = self.quantize_a(input_teacher, teacher_bitwidth)
+            else:
+                raise ValueError("Only PACT and DoReFaA implemented for activation quantization")
+
+            # Get teacher output
+            x_teacher = nn.functional.conv2d(
+                x_teacher,
+                teacher_weight,
+                teacher_bias,
+                self.stride,
+                self.padding,
+                self.dilation,
+                self.groups,
+            )
+            
+            activation_diff = x_student - x_teacher
+            msroot = torch.sqrt(torch.mean(activation_diff**2))
+            
+            if msroot < min_diff:
+                min_diff = msroot
+                best_teacher_bitwidth = teacher_bitwidth
+                best_activation = x_teacher
+                
+        return best_activation, best_teacher_bitwidth
+    
+    def _activation_min_parallel(self, x_student, input_teacher, teacher_weights, teacher_bitwidths):
+        """
+        Efficient batched implementation of activation_min strategy using a single convolution operation.
+        
+        This implementation handles grouped convolutions correctly by ensuring channel dimensions match.
+        """
+        batch_size, in_channels, height, width = input_teacher.shape
+        num_bitwidths = len(teacher_bitwidths)
+        
+        # Step 1: Quantize activations for each bitwidth (this remains sequential as it's not the bottleneck)
+        x_teacher_all = {}
+        for teacher_bitwidth in teacher_bitwidths:
+            if isinstance(self.quantize_a, PACT):
+                alpha = self.get_alpha(teacher_bitwidth)
+                x_teacher_all[teacher_bitwidth] = self.quantize_a(input_teacher, teacher_bitwidth, alpha)
+            elif isinstance(self.quantize_a, DoReFaA):
+                x_teacher_all[teacher_bitwidth] = self.quantize_a(input_teacher, teacher_bitwidth)
+            else:
+                raise ValueError("Only PACT and DoReFaA implemented for activation quantization")
+        
+        # Get sample weight to understand dimensions
+        sample_weight = teacher_weights[teacher_bitwidths[0]]['weight']
+        out_channels, weight_in_channels, kernel_h, kernel_w = sample_weight.shape
+        
+        # Check if we're using grouped convolution originally (self.groups > 1)
+        original_groups = self.groups
+        
+        # IMPORTANT: We need a different approach when the original convolution uses groups
+        if original_groups > 1:
+            # We'll perform the convolutions separately and combine results at the end
+            all_outputs = []
+            for bitwidth in teacher_bitwidths:
+                weight = teacher_weights[bitwidth]['weight']
+                bias = teacher_weights[bitwidth]['bias']
+                activation = x_teacher_all[bitwidth]
+                
+                # Perform individual convolution with correct grouping
+                output = nn.functional.conv2d(
+                    activation,
+                    weight,
+                    bias,
+                    self.stride,
+                    self.padding,
+                    self.dilation,
+                    self.groups
+                )
+                all_outputs.append(output)
+            
+            # Find the minimum difference
+            min_diff = float("inf")
+            best_teacher_bitwidth = None
+            best_activation = None
+            
+            for i, bitwidth in enumerate(teacher_bitwidths):
+                activation_diff = x_student - all_outputs[i]
+                msroot = torch.sqrt(torch.mean(activation_diff**2))
+                
+                if msroot < min_diff:
+                    min_diff = msroot
+                    best_teacher_bitwidth = bitwidth
+                    best_activation = all_outputs[i]
+            
+            return best_activation, best_teacher_bitwidth
+        
+        # The approach below is for standard convolutions (groups=1)
+        # For each bitwidth, run a separate convolution
+        all_outputs = []
+        for bitwidth in teacher_bitwidths:
+            weight = teacher_weights[bitwidth]['weight']
+            bias = teacher_weights[bitwidth]['bias']
+            activation = x_teacher_all[bitwidth]
+            
+            # Perform standard convolution
+            output = nn.functional.conv2d(
+                activation,
+                weight,
+                bias,
+                self.stride, 
+                self.padding,
+                self.dilation,
+                self.groups
+            )
+            all_outputs.append(output)
+            
+        # Find the minimum difference
+        min_diff = float("inf")
+        best_teacher_bitwidth = None
+        best_activation = None
+        
+        for i, bitwidth in enumerate(teacher_bitwidths):
+            activation_diff = x_student - all_outputs[i]
+            msroot = torch.sqrt(torch.mean(activation_diff**2))
+            
+            if msroot < min_diff:
+                min_diff = msroot
+                best_teacher_bitwidth = bitwidth
+                best_activation = all_outputs[i]
+        
+        return best_activation, best_teacher_bitwidth
+
+    def get_best_teacher(self, x_student, input_teacher, teacher_weights, weight_scale, strategy="activation_min", student_weight = None):
+        """
+        Get the best teacher based on specified strategy.
+        
+        Args:
+            x_student: Student activation output
+            input_teacher: Teacher input
+            teacher_weights: Dictionary of teacher weights for different bitwidths
+            weight_scale: Weight normalization scale factor
+            strategy: Strategy to select best teacher ("activation_min" or "weight_min")
+            
+        Returns:
+            tuple: (best_teacher_activation, best_teacher_bitwidth)
+        """
+        activations = {}
+        min_diff = float("inf")
+        best_teacher_bitwidth = None
+        best_activation = None
+
+        if len(teacher_weights) == 0:
+            # No teachers available, return student activation
+            best_teacher_bitwidth = self.curr_bitwidth
+            best_activation = x_student
+        elif strategy == "activation_min":
+
+            # best_activation, best_teacher_bitwidth = self._activation_min_sequential(x_student, input_teacher, teacher_weights, teacher_bitwidths = list(teacher_weights.keys()))
+
+            best_activation, best_teacher_bitwidth = self._activation_min_parallel(x_student, input_teacher, teacher_weights, teacher_bitwidths = list(teacher_weights.keys()))
+
+            # try:
+            #     assert best_teacher_bitwidth == parallel_best_teacher_bitwidth, "Best teacher bitwidths do not match between sequential and parallel implementations"
+            #     assert torch.allclose(best_activation, parallel_best_activation, atol=1e-6), "Best activations do not match between sequential and parallel implementations"
+            #     assert parallel_best_activation.shape == best_activation.shape, "Best activations do not match in shape between sequential and parallel implementations"
+            # except AssertionError as e:
+            #     print(f"AssertionError: {e}")
+            #     breakpoint()
+            #     raise
+
+        elif strategy == "weight_min":
+            # Find teacher with minimum weight difference
+            # student_weight = self.quantize_w(self.weight, self.curr_bitwidth)
+            assert student_weight is not None, "student_weight is None, in QuanConv, get_best_teacher(), and teacher selection strategy is weight_min - you need to pass student_weight"
+            if weight_scale is not None:
+                student_weight = student_weight * weight_scale
+                
+            for teacher_bitwidth, weights in teacher_weights.items():
+                teacher_weight = weights['weight']
+                teacher_bias = weights['bias']
+                
+                weight_diff = student_weight - teacher_weight
+                msroot = torch.sqrt(torch.mean(weight_diff**2))
+                
+                if msroot < min_diff:
+                    min_diff = msroot
+                    best_teacher_bitwidth = teacher_bitwidth
+            
+            # Calculate activation for best weight teacher
+            if isinstance(self.quantize_a, PACT):
+                alpha = self.get_alpha(best_teacher_bitwidth)
+                x_teacher = self.quantize_a(input_teacher, best_teacher_bitwidth, alpha)
+            elif isinstance(self.quantize_a, DoReFaA):
+                x_teacher = self.quantize_a(input_teacher, best_teacher_bitwidth)
+                
+            x_teacher = nn.functional.conv2d(
+                x_teacher,
+                teacher_weights[best_teacher_bitwidth]['weight'],
+                teacher_weights[best_teacher_bitwidth]['bias'],
+                self.stride,
+                self.padding,
+                self.dilation,
+                self.groups,
+            )
+            best_activation = x_teacher
+
+        else:
+            raise ValueError(f"Unknown teacher selection strategy: {strategy}")
+
+        # Save best teacher info
+        self.best_teacher_bitwidth = best_teacher_bitwidth
+        self.best_teacher_activation = best_activation
+        try:
+            assert self.best_teacher_bitwidth is not None, "best_teacher_bitwidth is None in QuanConv, get_best_teacher()"
+            assert self.best_teacher_activation is not None, "best_teacher_activation is None in QuanConv, get_best_teacher()"
+        except AssertionError as e:
+            print(f"AssertionError: {e}")
+            breakpoint()
+            raise
+
+        return best_activation, best_teacher_bitwidth
+
+
+    def forward(self, inp, teacher_input = None):
         if not self.float_mode:
             assert self.alpha_setup_flag, "alpha not setup"
             assert self.curr_bitwidth is not None, "bitwidth is None"
@@ -227,6 +478,7 @@ class QuanConv(nn.Module):
 
             # idx_alpha = self.bitwidth_opts.index(self.curr_bitwidth)
             # alpha = torch.abs(self.alpha[idx_alpha])
+            weight_scale = None
 
             if self.curr_bitwidth <= 32:
                 w = self.quantize_w(self.weight, self.curr_bitwidth)
@@ -246,7 +498,7 @@ class QuanConv(nn.Module):
                     w = w * weight_scale
 
                     bias = bias * weight_scale if bias is not None else None
-                
+
                 if isinstance(self.quantize_a, PACT):
                     # alpha = self.alpha[self.bitwidth_opts.index(self.curr_bitwidth)]
                     alpha = self.get_alpha()
@@ -257,17 +509,43 @@ class QuanConv(nn.Module):
                     raise ValueError(
                         "Only PACT and DoReFaA implmented for activation quantization"
                     )
-
-                x = nn.functional.conv2d(
-                    x,
-                    w,
-                    bias,
-                    self.stride,
-                    self.padding,
-                    self.dilation,
-                    self.groups,
-                )
-                return x
+                # try:
+                    # print(f"Input shape: {x.shape}")
+                    # print(f"Weight shape: {w.shape}")
+                x_student = nn.functional.conv2d(
+                        x,
+                        w,
+                        bias,
+                        self.stride,
+                        self.padding,
+                        self.dilation,
+                        self.groups,
+                    )
+                self.recent_student_activation = x_student
+                if self.quantization_config["teacher_student"] and self.training:
+                    assert teacher_input is not None, "teacher_input is None in QuanConv, forward()"
+                    try:
+                        teacher_weights = self.get_weights_for_all_teachers(weight_scale)
+                        x_teacher, _ = self.get_best_teacher(
+                                            x_student,
+                                            teacher_input,
+                                            teacher_weights,
+                                            weight_scale,
+                                            strategy=self.quantization_config["teacher_selection_strategy"],
+                                            student_weight = w
+                                        )
+                        # breakpoint()
+                        return x_student, x_teacher
+                    except Exception as e:
+                        print(f"Error in QuanConv forward pass (teacher_student section): {e}")
+                        breakpoint()
+                        raise
+                else:
+                    return x_student
+                # except Exception as e:
+                #     print(f"Error in QuanConv forward pass: {e}")
+                #     breakpoint()
+                #     raise
             else:
                 raise ValueError(f"Invalid bitwidth {self.curr_bitwidth}")
         elif self.float_mode:
@@ -283,18 +561,6 @@ class QuanConv(nn.Module):
             return x
         else:
             raise ValueError(f"Invalid mode, self.float_mode is set to {self.float_mode} - should be either True or False")
-            # else:
-            #     assert self.curr_bitwidth == 32, "bitwidth is not 32"
-            #     x = nn.functional.conv2d(
-            #         inp,
-            #         self.weight,
-            #         self.bias,
-            #         self.stride,
-            #         self.padding,
-            #         self.dilation,
-            #         self.groups,
-            #     )
-            # return x
     
 
 class CustomBatchNorm(nn.Module):
@@ -367,30 +633,70 @@ class CustomBatchNorm(nn.Module):
         self.transitional = False
         self.floating_point = True
 
-    def forward(self, x):
+    def setup_quantize_funcs(self, args):
+        quantization_config = args.dataset_config["quantization"]
+        self.quantization_config = quantization_config
+        self.bitwidth_options = quantization_config["bitwidth_options"]
+        if quantization_config["bn_type"] == "float":
+            self.set_to_float()
+        elif quantization_config["bn_type"] == "transitional":
+            self.set_to_transitional(quantization_config["bitwidth_options"])
+        elif quantization_config["bn_type"] == "switch":
+            self.set_to_switchable(quantization_config["bitwidth_options"])
+        else:
+            raise ValueError("\
+                quantization_config['bn_type'] is not set as needed in the dataset config file. Valid options are float, transitional, switch.\
+            ")
+        
+        if self.quantization_config["teacher_student"]:
+            assert self.quantization_config["teacher_bn_type"] is not None, "teacher_bn_type not set in the quantization config, \
+            please update the yaml file with options teacher_bn_type: switchable or float"
+            if self.quantization_config["teacher_bn_type"] == "switchable":
+                self.bns = nn.ModuleDict({str(bitwidth): nn.BatchNorm2d(self.out_channels) for bitwidth in self.bitwidth_options})
+            elif self.quantization_config["teacher_bn_type"] == "float":
+                self.bn_float = nn.BatchNorm2d(self.out_channels)
+            else:
+                raise ValueError(f"Invalid teacher_bn_type: {self.quantization_config['teacher_bn_type']}")
+
+    def forward(self, x, teacher_input = None):
+        x_student = x
         if self.switchable:
             # Switchable BatchNorm (Used in CoQuant, and AnyPrecision)
             assert self.bitwidth_options is not None, "bitwidth options not set"
-            # assert self.input_conv is not None, "input conv not set"
             input_bitwidth = self.input_conv.curr_bitwidth if self.input_conv != None else 32
-            # idx_alpha = self.bitwidth_options.index(self.input_conv.curr_bitwidth)
-            # print(next(self.bns[str(input_bitwidth)].parameters()).device)
-            # print(x.device)
-            # breakpoint()
-            return self.bns[str(input_bitwidth)](x)
+            x_student = self.bns[str(input_bitwidth)](x)
         elif self.floating_point:
             # Traditional BatchNorm
-            return self.bn_float(x)
+            x_student = self.bn_float(x)
         elif self.transitional:
             # Transitional BatchNorm (Used in Bit-Mixer)
             assert self.input_conv is not None, "input conv not set for self.transitional == True"
             input_bitwidth = self.input_conv.curr_bitwidth if self.input_conv != None else 32
             output_bitwidth = self.output_conv.curr_bitwidth if self.output_conv!= None else 32
             key = f"{input_bitwidth}_{output_bitwidth}"
-            return self.bns[key](x)
+            x_student = self.bns[key](x)
         else:
             raise ValueError(f"Invalid BatchNorm type, valid options are switchable, "\
             "transitional, and floating_point. Make sure you have called either,\
             set_switchable, set_to_transitional, or set_to_float before running model inference. Currently "
             "self.floating_point is set to {self.floating_point},\
             self.switchable is set to {self.switchable}, and self.transitional is set to {self.transitional}")
+        
+        if teacher_input is not None:
+            # Training mode
+            # Two cases student teacher enabled and disabled
+            if self.quantization_config["teacher_bn_type"] == "float":
+                # If no teacher bitwidth is set, use floating point
+                x_teacher = self.bn_float(teacher_input)
+            elif self.quantization_config["teacher_bn_type"] == "switchable":
+                teacher_bitwidth = self.input_conv.best_teacher_bitwidth if self.input_conv is not None else 32
+                x_teacher = self.bns[str(teacher_bitwidth)](teacher_input)
+            else:
+                raise ValueError(f"Invalid teacher_bn_type: {self.quantization_config['teacher_bn_type']} \
+                                 - valid options are switchable, and float")
+            return x_student, x_teacher
+        else:
+            # Inference mode
+            return x_student
+
+            

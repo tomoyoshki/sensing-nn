@@ -60,6 +60,60 @@ def KurtosisLoss(model,target):
     return w_kurtosis_regularization
 
 
+class TeacherStudentLossCalc:
+    def __init__(self, classifier, strategy="activation_min"):
+        self.classifier = classifier
+        self.strategy = strategy
+        self.loss = 0.0
+        
+    def calculate_kl_divergence(self, student_activation, teacher_activation):
+        """Calculate KL divergence between student and teacher activations"""
+        # Add small epsilon to avoid log(0)
+        epsilon = 1e-10
+        
+        # Normalize activations to create probability distributions
+        student_prob = torch.nn.functional.softmax(student_activation.view(-1), dim=0) + epsilon
+        teacher_prob = torch.nn.functional.softmax(teacher_activation.view(-1), dim=0) + epsilon
+        
+        # Calculate KL divergence
+        kl_div = torch.sum(teacher_prob * torch.log(teacher_prob / student_prob))
+        return kl_div
+
+    def calculate_mse(self, student_activation, teacher_activation):
+        """Calculate mean square root difference between activations"""
+        diff = student_activation - teacher_activation
+        return torch.sqrt(torch.mean(diff**2))
+
+    def calculate_loss(self):
+        """Calculate loss based on strategy"""
+        total_loss = 0.0
+        num_layers = 0
+        
+        # Iterate through all QuanConv layers in classifier
+        for name, layer in self.classifier.named_modules():
+            if isinstance(layer, self.classifier.Conv):  # QuanConv layers
+                if layer.recent_student_activation is not None and layer.best_teacher_activation is not None:
+                    if self.strategy == "activation_min":
+                        layer_loss = self.calculate_kl_divergence(
+                            layer.recent_student_activation,
+                            layer.best_teacher_activation
+                        )
+                    elif self.strategy == "weight_min":
+                        layer_loss = self.calculate_mse(
+                            layer.recent_student_activation,
+                            layer.best_teacher_activation
+                        )
+                    else:
+                        raise ValueError(f"Unknown strategy: {self.strategy}")
+                    
+                    total_loss += layer_loss
+                    num_layers += 1
+
+        # Average loss across all layers
+        if num_layers > 0:
+            self.loss = total_loss / num_layers
+        return self.loss
+
 def single_epoch_train(
     args,
     classifier,
@@ -81,7 +135,7 @@ def single_epoch_train(
         # move to target device, FFT, and augmentations
         aug_freq_loc_inputs, labels = augmenter.forward("fixed", time_loc_inputs, labels)
         # forward pass
-        logits = classifier(aug_freq_loc_inputs)
+        logits, _ = classifier(aug_freq_loc_inputs)
         loss = loss_func(logits, labels)
 
         # back propagation
@@ -117,7 +171,22 @@ def single_epoch_joint_quantization(
     quantization_config = args.dataset_config["quantization"]
 
     for i, (time_loc_inputs, labels, _) in tqdm(enumerate(train_dataloader), total=num_batches):
-        # move to target device, FFT, and augmentations
+        # # move to target device, FFT, and augmentations
+        # if 'coherence' in time_loc_inputs:
+        #     coherence = time_loc_inputs['coherence']
+        # if 'energy' in time_loc_inputs:
+        #     energy = time_loc_inputs['energy']
+
+        # # if coherence is not None and energy is not None:
+        # #     if coherence.shape != energy.shape:
+        # #         raise ValueError("Coherence and Energy should be of same shape")
+            
+        # si_weights = get_si_weights(coherence, energy) # Get weights using coherence and energy <- si_weights is a dictionary of weights
+        # # for both modalities. si_weights = {'audio': audio_weight, 'seismic': seismic_weight}
+
+        # assert coherence is not None and energy is not None and coherence.shape == energy.shape, "Coherence and Energy should be of same shape"
+        # time_loc_inputs = time_loc_inputs['data']
+
         aug_freq_loc_inputs, labels = augmenter.forward("fixed", time_loc_inputs, labels)
         # forward pass
         accumulated_loss = 0.0
@@ -126,16 +195,16 @@ def single_epoch_joint_quantization(
             quantized_conv_class.set_random_bitwidth_all()
             # Accumulate Loss here
 
-            logits = classifier(aug_freq_loc_inputs)
-            current_loss = loss_func(logits, labels)
-
+            logits_student, logits_teacher = classifier(aug_freq_loc_inputs)
+            current_loss = loss_func(logits = logits_student,  targets =labels, teacher_logits = logits_teacher) # Labels are true values
             accumulated_loss += current_loss
 
         avg_loss = accumulated_loss / joint_quantization_batch_size
 
+        # TODO: Weight Regularization Loss too for neatness
         if quantization_config["enable"] and quantization_config["kurtosis_regularization"]:
             w_kurtosis_regularization = KurtosisLoss(classifier, quantization_config["kurtosis_target"])
-            avg_loss += quantization_config["kurtosis_weight"]*w_kurtosis_regularization
+            avg_loss += quantization_config["kurtosis_weight"]*w_kurtosis_regularization   
 
         # back propagation
         optimizer.zero_grad()
@@ -177,26 +246,12 @@ def supervised_train(
                 args
             ) # Setup queantization function, in case of PACT it will also setup switchable alpha
 
-            # if quantization_config["sat_weight_normalization"]:
-            #     layer.sat_weight_scaling = True
-            # else:
-            #     layer.sat_weight_scaling = False
-
         # Setup CustomBatchNorm Functions
         for layer_name, layer in classifier.bn.layer_registry.items():
-            if quantization_config["bn_type"] == "float":
-                layer.set_to_float()
-            elif quantization_config["bn_type"] == "transitional":
-                layer.set_to_transitional(quantization_config["bitwidth_options"])
-            elif quantization_config["bn_type"] == "switch":
-                layer.set_to_switchable(quantization_config["bitwidth_options"])
-            else:
-                raise ValueError("\
-                    quantization_config['bn_type'] is not set as needed in the dataset config file. Valid options are float, transitional, switch.\
-                ")
-        #  self.switchable = False
-        # self.transitional = False
-        # self.floating_point = True
+            layer.setup_quantize_funcs(
+                args
+            )
+           
         if quantization_config["bn_type"] == "float":
             verify_float = True
             for layer_name, layer in classifier.bn.layer_registry.items():
@@ -284,28 +339,6 @@ def supervised_train(
                     num_batches=num_batches,
                     train_loss_list=train_loss_list
                 )
-
-
-        # regularization configuration
-        # for i, (time_loc_inputs, labels, _) in tqdm(enumerate(train_dataloader), total=num_batches):
-        #     # move to target device, FFT, and augmentations
-        #     aug_freq_loc_inputs, labels = augmenter.forward("fixed", time_loc_inputs, labels)
-        #     # forward pass
-        #     logits = classifier(aug_freq_loc_inputs)
-        #     loss = loss_func(logits, labels)
-
-        #     # back propagation
-        #     optimizer.zero_grad()
-        #     loss.backward()
-
-        #     # clip gradient and update
-        #     # torch.nn.utils.clip_grad_norm(classifier.parameters(), classifier_config["optimizer"]["clip_grad"])
-        #     optimizer.step()
-        #     train_loss_list.append(loss.item())
-
-        #     # Write train log
-        #     if i % 200 == 0:
-        #         tb_writer.add_scalar("Train/Train loss", loss.item(), epoch * num_batches + i)
 
         end_time = time.time()
         logging.info(f"Epoch {epoch}, Train Loss: {train_loss_list[-1]}")

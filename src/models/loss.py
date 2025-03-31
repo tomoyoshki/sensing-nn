@@ -5,7 +5,42 @@ import torch.nn.functional as F
 import math
 
 from general_utils.tensor_utils import extract_non_diagonal_matrix
-from models.CMCV2Modules import split_features
+# from models.CMCV2Modules import split_features
+
+
+
+class CustomLoss(nn.Module):
+    def __init__(self, args):
+        super(CustomLoss, self).__init__()
+        self.args = args
+        self.quantization_config = args.dataset_config["quantization"]
+        self.model = self.args.classifier
+        self.loss_functions_to_use = self.quantization_config["loss_function_for_activation"]
+        self.ce_loss = nn.CrossEntropyLoss()
+
+    def kl_divergence(self, p, q):
+    # Add small epsilon to avoid log(0)
+        epsilon = 1e-8
+        p = p + epsilon
+        q = q + epsilon
+        
+        # Normalize inputs
+        p = F.softmax(p, dim=-1)
+        q = F.softmax(q, dim=-1)
+        
+        return torch.sum(p * torch.log(p/q))
+
+    def forward(self, logits, targets, teacher_logits = None):
+        total_loss = 0.0
+        for loss_func_str in self.loss_functions_to_use:
+            if loss_func_str == "ce_output_activation":
+                total_loss += self.ce_loss(logits, targets)
+            elif loss_func_str == "kl_divergence_st_output_activation":
+                total_loss += self.kl_divergence(logits, teacher_logits)
+            else:
+                raise NotImplementedError(f"Loss function {loss_func_str} is not implemented.")
+        return total_loss
+
 
 class WeightedMultiClassLoss(nn.Module):
     def __init__(self, class_weights=None, no_target_weight=1e-10):
@@ -33,6 +68,9 @@ class WeightedMultiClassLoss(nn.Module):
         
         # Return the average loss
         return total_loss.mean()
+    
+
+
 
 class MultiObjLoss(nn.Module):
     def __init__(self, args):
