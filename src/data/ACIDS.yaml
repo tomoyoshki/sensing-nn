@@ -63,19 +63,19 @@ seq_len: 4
 quantization:
         bn_type: "float" # switch, float, transitional are valid options
         enable: True # False will run everything in float
-        bitwidth_options: [4,8,12]
-        joint_quantization_batch_size: 1
+        bitwidth_options: [2,4,6,8,10,12,16]
+        joint_quantization_batch_size: 4
         joint_quantization: True
         activation_quantization: "pact"
         weight_quantization: "dorefa"
-        switchable_clipping: False
+        switchable_clipping: True
         sat_weight_normalization: False
-        test_and_val_average_bitwidths : [4,8,12]
+        test_and_val_average_bitwidths : [4, 6, 8, 10, 12]
         test_and_val_total_schemes : 4
         delta : 2
         teacher_student: True
         teacher_bn_type: "float" # other option is switchable
-        teacher_selection_strategy: "activation_min" # other options weight_min, activation_max, weight_max
+        teacher_selection_strategy: "weight_min" # other options weight_min, activation_max, weight_max
         kurtosis_regularization: False
         kurtosis_target: 1.8    
         kurtosis_weight: 0.1
@@ -107,7 +107,7 @@ ResNet:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 10
+                train_epochs: 50
                 start_epoch: 0
                 decay_epochs: 2
                 decay_rate: 0.2

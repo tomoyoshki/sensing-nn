@@ -377,6 +377,69 @@ class QuanConv(nn.Module):
                 best_activation = all_outputs[i]
         
         return best_activation, best_teacher_bitwidth
+    
+    def weight_min(self, student_weight, input_teacher, teacher_weights, teacher_bitwidths, weight_scale=None):
+        """
+        Batched implementation of weight_min strategy to find the teacher weight with minimum difference.
+        
+        Args:
+            student_weight: Quantized student weight
+            input_teacher: Teacher input tensor
+            teacher_weights: Dictionary of teacher weights for different bitwidths
+            teacher_bitwidths: List of teacher bitwidths to consider
+            weight_scale: Optional scaling factor for student weight
+            
+        Returns:
+            best_activation: Teacher activation using the best weight
+            best_teacher_bitwidth: Bitwidth with minimum weight difference
+        """
+        # Apply weight scale if provided
+        if weight_scale is not None:
+            student_weight = student_weight * weight_scale
+        
+        # Step 1: Get all teacher weights at once and compute differences in batch
+        all_teacher_weights = []
+        for bitwidth in teacher_bitwidths:
+            all_teacher_weights.append(teacher_weights[bitwidth]['weight'])
+        
+        # Step 2: Stack student weight for easier comparison
+        stacked_student_weight = student_weight.unsqueeze(0).expand(len(teacher_bitwidths), -1, -1, -1, -1)
+        
+        # Step 3: Stack all teacher weights
+        stacked_teacher_weights = torch.stack(all_teacher_weights, dim=0)
+        
+        # Step 4: Compute all weight differences in parallel
+        weight_diffs = stacked_student_weight - stacked_teacher_weights
+        
+        # Step 5: Compute RMSE for all weight differences at once
+        msroots = torch.sqrt(torch.mean(weight_diffs**2, dim=(1, 2, 3, 4)))
+        
+        # Step 6: Find minimum difference
+        min_diff_idx = torch.argmin(msroots)
+        min_diff = msroots[min_diff_idx]
+        best_teacher_bitwidth = teacher_bitwidths[min_diff_idx]
+        
+        # Step 7: Calculate activation for the best weight teacher
+        if isinstance(self.quantize_a, PACT):
+            alpha = self.get_alpha(best_teacher_bitwidth)
+            x_teacher = self.quantize_a(input_teacher, best_teacher_bitwidth, alpha)
+        elif isinstance(self.quantize_a, DoReFaA):
+            x_teacher = self.quantize_a(input_teacher, best_teacher_bitwidth)
+        else:
+            raise ValueError("Only PACT and DoReFaA implemented for activation quantization")
+        
+        # Step 8: Compute final teacher activation using the best weight
+        best_activation = nn.functional.conv2d(
+            x_teacher,
+            teacher_weights[best_teacher_bitwidth]['weight'],
+            teacher_weights[best_teacher_bitwidth]['bias'],
+            self.stride,
+            self.padding,
+            self.dilation,
+            self.groups,
+        )
+        
+        return best_activation, best_teacher_bitwidth
 
     def get_best_teacher(self, x_student, input_teacher, teacher_weights, weight_scale, strategy="activation_min", student_weight = None):
         """
@@ -417,40 +480,51 @@ class QuanConv(nn.Module):
             #     raise
 
         elif strategy == "weight_min":
+
+            # Get student weight
+            best_activation, best_teacher_bitwidth = self.weight_min(
+                student_weight,
+                input_teacher,
+                teacher_weights,
+                list(teacher_weights.keys()),
+                weight_scale
+            )
+
+
             # Find teacher with minimum weight difference
             # student_weight = self.quantize_w(self.weight, self.curr_bitwidth)
-            assert student_weight is not None, "student_weight is None, in QuanConv, get_best_teacher(), and teacher selection strategy is weight_min - you need to pass student_weight"
-            if weight_scale is not None:
-                student_weight = student_weight * weight_scale
+            # assert student_weight is not None, "student_weight is None, in QuanConv, get_best_teacher(), and teacher selection strategy is weight_min - you need to pass student_weight"
+            # if weight_scale is not None:
+            #     student_weight = student_weight * weight_scale
                 
-            for teacher_bitwidth, weights in teacher_weights.items():
-                teacher_weight = weights['weight']
-                teacher_bias = weights['bias']
+            # for teacher_bitwidth, weights in teacher_weights.items():
+            #     teacher_weight = weights['weight']
+            #     teacher_bias = weights['bias']
                 
-                weight_diff = student_weight - teacher_weight
-                msroot = torch.sqrt(torch.mean(weight_diff**2))
+            #     weight_diff = student_weight - teacher_weight
+            #     msroot = torch.sqrt(torch.mean(weight_diff**2))
                 
-                if msroot < min_diff:
-                    min_diff = msroot
-                    best_teacher_bitwidth = teacher_bitwidth
+            #     if msroot < min_diff:
+            #         min_diff = msroot
+            #         best_teacher_bitwidth = teacher_bitwidth
             
-            # Calculate activation for best weight teacher
-            if isinstance(self.quantize_a, PACT):
-                alpha = self.get_alpha(best_teacher_bitwidth)
-                x_teacher = self.quantize_a(input_teacher, best_teacher_bitwidth, alpha)
-            elif isinstance(self.quantize_a, DoReFaA):
-                x_teacher = self.quantize_a(input_teacher, best_teacher_bitwidth)
+            # # Calculate activation for best weight teacher
+            # if isinstance(self.quantize_a, PACT):
+            #     alpha = self.get_alpha(best_teacher_bitwidth)
+            #     x_teacher = self.quantize_a(input_teacher, best_teacher_bitwidth, alpha)
+            # elif isinstance(self.quantize_a, DoReFaA):
+            #     x_teacher = self.quantize_a(input_teacher, best_teacher_bitwidth)
                 
-            x_teacher = nn.functional.conv2d(
-                x_teacher,
-                teacher_weights[best_teacher_bitwidth]['weight'],
-                teacher_weights[best_teacher_bitwidth]['bias'],
-                self.stride,
-                self.padding,
-                self.dilation,
-                self.groups,
-            )
-            best_activation = x_teacher
+            # x_teacher = nn.functional.conv2d(
+            #     x_teacher,
+            #     teacher_weights[best_teacher_bitwidth]['weight'],
+            #     teacher_weights[best_teacher_bitwidth]['bias'],
+            #     self.stride,
+            #     self.padding,
+            #     self.dilation,
+            #     self.groups,
+            # )
+            # best_activation = x_teacher
 
         else:
             raise ValueError(f"Unknown teacher selection strategy: {strategy}")
