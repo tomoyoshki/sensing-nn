@@ -107,7 +107,8 @@ def get_random_quantizations_schemes_given_average(args, classifier):
     
     # For each target average bitwidth
     logging.info("-"*30 + "Started Generating Random Bitwidth Configurations" + "-"*30)
-    for target_avg_bw in tqdm(average_bitwidths):
+    for target_avg_bw in average_bitwidths:
+       
         # print("Target Average Bitwidth: ", target_avg_bw)
         # print(f"Number of Quantization Schemes: {number_of_quantization_schemes_per_avg_bw}")
         while len(quantization_schemes[target_avg_bw]) < number_of_quantization_schemes_per_avg_bw:
@@ -155,7 +156,7 @@ def get_random_quantizations_schemes_given_average(args, classifier):
                 # Add scheme if it's not already in the list
                 if scheme not in quantization_schemes[target_avg_bw]:
                     quantization_schemes[target_avg_bw].append(scheme)
-    
+        logging.info(f"Done: Target Average Bitwidth= {target_avg_bw}")
     return quantization_schemes
 
 
@@ -225,40 +226,6 @@ def eval_quantized_supervised_model(args, classifier, augmenter, dataloader, los
         all_predictions = np.concatenate(all_predictions, axis=0)
         all_labels = np.concatenate(all_labels, axis=0)
         metrics = eval_task_metrics(args, all_labels, all_predictions, regression=("regression" in args.task))
-                
-
-
-
-    #     for i, (time_loc_inputs, labels, index) in tqdm(enumerate(dataloader), total=num_batches):
-    #         # move to target device, FFT, and augmentations
-    #         freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
-
-    #         # forward pass
-    #         logits = classifier(freq_loc_inputs)
-    #         classifier_loss_list.append(loss_func(logits, labels).item())
-
-    #         if "regression" in args.task:
-    #             predictions = logits.squeeze()
-    #         else:
-    #             if args.multi_class:
-    #                 predictions = (logits > 0.5).float()
-    #             else:
-    #                 predictions = logits.argmax(dim=1, keepdim=False)
-    #                 labels = labels.argmax(dim=1, keepdim=False) if labels.dim() > 1 else labels
-
-    #         # for future computation of acc or F1 score
-    #         saved_predictions = predictions.cpu().numpy()
-    #         saved_labels = labels.cpu().numpy()
-    #         all_predictions.append(saved_predictions)
-    #         all_labels.append(saved_labels)
-
-    # # calculate mean loss
-    # mean_classifier_loss = np.mean(classifier_loss_list)
-    # all_predictions = np.concatenate(all_predictions, axis=0)
-    # all_labels = np.concatenate(all_labels, axis=0)
-
-    # # calculate the classification metrics
-    # metrics = eval_task_metrics(args, all_labels, all_predictions, regression=("regression" in args.task))
 
     return mean_classifier_loss, metrics
 
