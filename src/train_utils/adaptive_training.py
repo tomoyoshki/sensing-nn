@@ -59,6 +59,44 @@ def KurtosisLoss(model,target):
     w_kurtosis_regularization = w_kurtosis_loss
     return w_kurtosis_regularization
 
+def skewness(tensor):
+    mu = tensor.mean()
+    sigma = tensor.std(unbiased=False)
+    return torch.mean(((tensor - mu) / sigma) ** 3)
+
+def kurtosis(tensor):
+    mu = tensor.mean()
+    sigma = tensor.std(unbiased=False)
+    return torch.mean(((tensor - mu) / sigma) ** 4)
+
+def ElasticWDRLoss(model, target_kurtosis=1.8):
+    skew_kurt_losses = []
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear) or isinstance(m, model.Conv):
+            w = m.weight
+            skew = skewness(w)
+            kurt = kurtosis(w)
+            skew_loss = skew ** 2
+            kurt_loss = (kurt - target_kurtosis) ** 2
+            total = skew_loss + kurt_loss
+            skew_kurt_losses.append(total)
+    if len(skew_kurt_losses) > 1:
+        del skew_kurt_losses[0]  # optional: remove first (input) layer if needed
+    return sum(skew_kurt_losses) / len(skew_kurt_losses)
+
+def kl_divergence(p_logit, q_logit):
+    """KL(p || q): p is teacher (log_softmax), q is student (softmax)"""
+    p = F.log_softmax(p_logit, dim=1)
+    q = F.softmax(q_logit, dim=1)
+    return F.kl_div(p, q, reduction='batchmean')
+
+def group_progressive_loss(y, y_H, y_R, y_L, y_H_gt, y_L_gt, lambda_=0.5):
+    L_H = F.cross_entropy(y_H, y) + lambda_ * kl_divergence(y_H_gt, y_H)
+    L_L = F.cross_entropy(y_L, y) + lambda_ * kl_divergence(y_L, y_R)
+    L_R = F.cross_entropy(y_R, y) + lambda_ * kl_divergence(y_R, y_H_gt)
+    return L_H + L_R + L_L
+
+
 
 class TeacherStudentLossCalc:
     def __init__(self, classifier, strategy="activation_min"):
@@ -113,6 +151,80 @@ class TeacherStudentLossCalc:
         if num_layers > 0:
             self.loss = total_loss / num_layers
         return self.loss
+
+def single_epoch_elastic_quantization(
+    args,
+    classifier,
+    augmenter,
+    optimizer,
+    epoch,
+    train_dataloader,
+    tb_writer,
+    num_batches,
+    train_loss_list
+):
+    #breakpoint()
+    quantization_config = args.dataset_config["quantization"]
+    use_wdr = quantization_config.get("enable", False) and quantization_config.get("kurtosis_regularization", False)
+    use_gpg = quantization_config.get("enable", False) and quantization_config.get("group_progressive_guidance", False)
+
+    # QuanConv reference:
+    quantized_conv_class = classifier.Conv
+
+    for i, (time_loc_inputs, labels, _) in tqdm(enumerate(train_dataloader), total=num_batches):
+        # 1) Augmentation and device
+        aug_freq_loc_inputs, labels = augmenter.forward("fixed", time_loc_inputs, labels)
+
+        # 2) If using GPG, do 3 passes: H, R, L
+        if use_gpg:
+            # Highest bitwidth
+            quantized_conv_class.set_highest_bitwidth_all()
+            logits_H = classifier(aug_freq_loc_inputs)
+
+            # Random bitwidth
+            quantized_conv_class.set_random_bitwidth_all()
+            logits_R = classifier(aug_freq_loc_inputs)
+
+            # Lowest bitwidth
+            quantized_conv_class.set_lowest_bitwidth_all()
+            logits_L = classifier(aug_freq_loc_inputs)
+
+            # Group-progressive loss
+            loss_gpg = group_progressive_loss(
+                y=labels,
+                y_H=logits_H,
+                y_R=logits_R,
+                y_L=logits_L,
+                y_H_gt=logits_H.detach(),
+                y_L_gt=logits_L.detach(),
+                lambda_=quantization_config.get("lambda", 0.5),
+            )
+            total_loss = loss_gpg
+        else:
+            # If NOT using GPG, do a single random pass
+            quantized_conv_class.set_random_bitwidth_all()
+            logits_R = classifier(aug_freq_loc_inputs)
+            total_loss = F.cross_entropy(logits_R, labels)
+
+        # 3) Weight Distribution Regularization (WDR)
+        if use_wdr:
+            wdr_loss = ElasticWDRLoss(
+                model=classifier,
+                target_kurtosis=quantization_config.get("kurtosis_target", 1.8)
+            )
+            total_loss += quantization_config.get("kurtosis_weight", 0.01) * wdr_loss
+
+        # 4) Backprop
+        optimizer.zero_grad()
+        total_loss.backward()
+        optimizer.step()
+
+        # 5) Logging
+        train_loss_list.append(total_loss.item())
+        if i % 200 == 0:
+            tb_writer.add_scalar("Train/Train loss", total_loss.item(), epoch * num_batches + i)
+
+
 
 def single_epoch_train(
     args,
@@ -323,8 +435,21 @@ def supervised_train(
                 num_batches,
                 train_loss_list
             )
+
         elif quantization_config["enable"]:
-            if quantization_config["joint_quantization"]:
+            if quantization_config.get("elastic_quantization", False):  # Elastic Quantization
+                single_epoch_elastic_quantization(
+                    args,
+                    classifier,
+                    augmenter,
+                    optimizer,
+                    epoch,
+                    train_dataloader,
+                    tb_writer,
+                    num_batches,
+                    train_loss_list
+                )
+            elif quantization_config.get("joint_quantization", False):  # Joint Quantization
                 single_epoch_joint_quantization(
                     args,
                     classifier,
@@ -343,6 +468,7 @@ def supervised_train(
         end_time = time.time()
         logging.info(f"Epoch {epoch}, Train Loss: {train_loss_list[-1]}")
         logging.info(f"Epoch {epoch} takes {end_time - begin_time:.3f} s")
+
         # validation and logging
         if epoch % val_epochs == 0:
             train_loss = np.mean(train_loss_list)

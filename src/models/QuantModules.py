@@ -81,6 +81,72 @@ class PACT(nn.Module):
         input = torch.clamp(inp, min=0, max=alpha.item()) #
         input_val = quantize(input, nbit_a, alpha)
         return input_val
+
+class LSQQuantizer(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, step_size, nbit, is_activation=False):
+        qn = 0 if is_activation else -(2 ** (nbit - 1))
+        qp = 2 ** nbit - 1 if is_activation else 2 ** (nbit - 1) - 1
+
+        ctx.save_for_backward(x, step_size)
+        ctx.other = (qn, qp, is_activation)
+
+        step_size = step_size.to(x.device)
+        x = x / step_size
+        x_clipped = torch.clamp(x.round(), qn, qp)
+        return x_clipped * step_size
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, step_size = ctx.saved_tensors
+        qn, qp, is_activation = ctx.other
+
+        x_div = x / step_size
+        x_clipped = torch.clamp(x_div.round(), qn, qp)
+        mask = ((x_div >= qn) & (x_div <= qp)).float()
+
+        grad_x = grad_output * mask
+        grad_s = ((grad_output * (x_div - x_clipped)).sum()).view_as(step_size)
+        grad_s /= ((qp * x.numel()) ** 0.5)
+
+        return grad_x, grad_s, None, None
+
+class LSQ(nn.Module):
+    def __init__(self, is_activation=False, bitwidth=8, shape=1):
+        super().__init__()
+        self.is_activation = is_activation
+        self.bitwidth = bitwidth
+        self.step_size = nn.Parameter(torch.ones(shape))
+        self.initialized = False
+
+    def forward(self, x):
+        if not self.initialized:
+            self.step_size.data.copy_(
+                (2 * x.abs().mean() / (2 ** self.bitwidth - 1)).clamp(min=1e-6)
+            )
+            self.initialized = True
+
+        return LSQQuantizer.apply(x, self.step_size, self.bitwidth, self.is_activation)
+
+class LSQPlus(LSQ):
+    def __init__(self, is_activation=False, bitwidth=8, shape=1, zero_point=True):
+        super().__init__(is_activation, bitwidth, shape)
+        self.zero_point = zero_point
+        self.zp = nn.Parameter(torch.zeros(shape), requires_grad=zero_point)
+
+    def forward(self, x):
+        if not self.initialized:
+            self.step_size.data.copy_(
+                (2 * x.abs().mean() / (2 ** self.bitwidth - 1)).clamp(min=1e-6)
+            )
+            self.initialized = True
+        x_q = x / self.step_size + self.zp
+        qn = 0 if self.is_activation else -(2 ** (self.bitwidth - 1))
+        qp = 2 ** self.bitwidth - 1 if self.is_activation else 2 ** (self.bitwidth - 1) - 1
+        x_clipped = torch.clamp(x_q.round(), qn, qp)
+        return (x_clipped - self.zp) * self.step_size
+
+
     
 # TODO: Make QuanConv a geenral class which access all different kind of Quantizations - Maybe its a cleaner way of doing it.
 class QuanConv(nn.Module):
@@ -184,35 +250,44 @@ class QuanConv(nn.Module):
 
         
     def setup_quantize_funcs(self, args):
-        # classifier_config = args.dataset_config[args.model]
-        quantization_config = args.dataset_config["quantization"]
-        self.quantization_config = quantization_config
-        # quantization_config = args["quantization_config"]
-        weight_quantization = quantization_config["weight_quantization"]
-        activation_quantization = quantization_config["activation_quantization"]
-        self.bitwidth_opts = quantization_config["bitwidth_options"]
-        self.switchable_clipping = quantization_config["switchable_clipping"]
-        self.sat_weight_normalization = quantization_config["sat_weight_normalization"]
-        if weight_quantization == "dorefa":
-            self.quantize_w = DoReFaW()
+    quantization_config = args.dataset_config["quantization"]
+    self.quantization_config = quantization_config
+
+    weight_quantization = quantization_config["weight_quantization"]
+    activation_quantization = quantization_config["activation_quantization"]
+    self.bitwidth_opts = quantization_config["bitwidth_options"]
+    self.switchable_clipping = quantization_config["switchable_clipping"]
+    self.sat_weight_normalization = quantization_config["sat_weight_normalization"]
+
+    # Weight quantization
+    if weight_quantization == "dorefa":
+        self.quantize_w = DoReFaW()
+    elif weight_quantization == "lsq":
+        self.quantize_w = LSQ(is_activation=False, bitwidth=self.bitwidth_opts[0])
+    elif weight_quantization == "lsqplus":
+        self.quantize_w = LSQPlus(is_activation=False, bitwidth=self.bitwidth_opts[0])
+    else:
+        raise NotImplementedError(f"Weight Quantization '{weight_quantization}' not supported yet")
+
+    # Activation quantization
+    if activation_quantization == "dorefa":
+        self.quantize_a = DoReFaA()
+    elif activation_quantization == "pact":
+        self.quantize_a = PACT()
+        self.alpha_setup_flag = True
+        if self.switchable_clipping:
+            self.alpha = nn.Parameter(torch.ones(len(self.bitwidth_opts)), requires_grad=True)
         else:
-            raise NotImplementedError("Weight Quantization only with Dorefa")
-        if activation_quantization == "dorefa":
-            self.quantize_a = DoReFaA()
-        elif activation_quantization == "pact":
-            self.quantize_a = PACT()
-            # self.bitwidth_opts = bitwidth_opts
-            self.alpha_setup_flag = True
-            if self.switchable_clipping:
-                self.alpha = nn.Parameter(
-                    torch.ones(len(self.bitwidth_opts)), requires_grad=True
-                )
-                # nn.init.constant_(self.alpha, 10)
-            else:
-                self.alpha = nn.Parameter(
-                    torch.ones(1), requires_grad=True
-                )
-            # self.alpha_setup(bitwidth_opts)
+            self.alpha = nn.Parameter(torch.ones(1), requires_grad=True)
+    elif activation_quantization == "lsq":
+        self.quantize_a = LSQ(is_activation=True, bitwidth=self.bitwidth_opts[0])
+        self.alpha_setup_flag = False
+    elif activation_quantization == "lsqplus":
+        self.quantize_a = LSQPlus(is_activation=True, bitwidth=self.bitwidth_opts[0])
+        self.alpha_setup_flag = False
+    else:
+        raise NotImplementedError(f"Activation Quantization '{activation_quantization}' not supported yet")
+
 
     def get_alpha(self, bitwidth = None):
         # assert self.args is not None, "args not set in QuanConv"
@@ -555,7 +630,12 @@ class QuanConv(nn.Module):
             weight_scale = None
 
             if self.curr_bitwidth <= 32:
-                w = self.quantize_w(self.weight, self.curr_bitwidth)
+                if isinstance(self.quantize_w, (LSQ, LSQPlus)):
+                    self.quantize_w.bitwidth = self.curr_bitwidth
+                    w = self.quantize_w(self.weight)
+                else:
+                    w = self.quantize_w(self.weight, self.curr_bitwidth)
+
                 bias = self.bias
                 # Adabits method of scaling weights I think may or maynot use it.
                 if self.sat_weight_normalization:
@@ -574,15 +654,16 @@ class QuanConv(nn.Module):
                     bias = bias * weight_scale if bias is not None else None
 
                 if isinstance(self.quantize_a, PACT):
-                    # alpha = self.alpha[self.bitwidth_opts.index(self.curr_bitwidth)]
                     alpha = self.get_alpha()
                     x = self.quantize_a(inp, self.curr_bitwidth, alpha)
                 elif isinstance(self.quantize_a, DoReFaA):
                     x = self.quantize_a(inp, self.curr_bitwidth)
+                elif isinstance(self.quantize_a, (LSQ, LSQPlus)):
+                    self.quantize_a.bitwidth = self.curr_bitwidth
+                    x = self.quantize_a(inp)
                 else:
-                    raise ValueError(
-                        "Only PACT and DoReFaA implmented for activation quantization"
-                    )
+                    raise ValueError("Unsupported activation quantization type. Use PACT, DoReFaA, LSQ, or LSQPlus.")
+
                 # try:
                     # print(f"Input shape: {x.shape}")
                     # print(f"Weight shape: {w.shape}")

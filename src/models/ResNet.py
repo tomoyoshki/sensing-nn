@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from models.FusionModules import MeanFusionBlock
-from models.QuantModules import QuanConv, CustomBatchNorm, DoReFaA, PACT
+from models.QuantModules import QuanConv, CustomBatchNorm, DoReFaA, PACT, LSQ, LSQPlus
 
 class CustomSequential(nn.Sequential):
     def forward(self, x, teacher_input=None):
@@ -192,15 +192,19 @@ class ResNetBackbone(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 
         #Activation Quantization Function
-        if self.quantization_config["enable"]:
-            if self.quantization_config["activation_quantization"] == "dorefa":
-                self.activation_quant = DoReFaA()
-            elif self.quantization_config["activation_quantization"] == "pact":
-                self.activation_quant = PACT()
-            else:
-                raise ValueError(f"Invalid activation quantization function: {self.quantization_config['activation_quantization']}, \
-                                correct options are 'dorefa' or 'pact'. \
-                                Please add them to the dataset config (YAML) file.")
+        act_q = self.quantization_config["activation_quantization"]
+        if act_q == "dorefa":
+            self.activation_quant = DoReFaA()
+        elif act_q == "pact":
+            self.activation_quant = PACT()
+        elif act_q == "lsq":
+            self.activation_quant = LSQ(is_activation=True, bitwidth=self.quantization_config["bitwidth_options"][0])
+        elif act_q == "lsqplus":
+            self.activation_quant = LSQPlus(is_activation=True, bitwidth=self.quantization_config["bitwidth_options"][0])
+        else:
+            raise ValueError(f"Invalid activation quantization function: {act_q}, \
+                            valid options are ['dorefa', 'pact', 'lsq', 'lsqplus']")
+
             
         self.nbit_first_layer = 16
 
@@ -225,7 +229,6 @@ class ResNetBackbone(nn.Module):
 
     def forward(self, x):
         if not self.quantization_config["enable"]:
-            # x = x.float()
             x = F.relu(self.bn1(self.conv1(x)))
             x = self.maxpool(x)
             x = self.layer1(x)
@@ -236,10 +239,12 @@ class ResNetBackbone(nn.Module):
             x = torch.flatten(x, 1)
             return x
         elif self.quantization_config["enable"]:
-            x = self.bn1(self.conv1(x))
+            x = self.conv1(x)
+            x = self.activation_quant(x)  # <-- INSERTED HERE
+            x = self.bn1(x)
             x = self.maxpool(x)
+            
             if not self.training or not self.quantization_config["teacher_student"]:
-            # Testing mode - only student forward pass
                 x = self.layer1(x)
                 x = self.layer2(x)
                 x = self.layer3(x)
@@ -248,15 +253,8 @@ class ResNetBackbone(nn.Module):
                 x = torch.flatten(x, 1)
                 return x
             else:
-                # Training mode - both student and teacher forward passes
-                # print(f"Before layer1 - Input shape: {x.shape}")
                 x_student, x_teacher = self.layer1(x, x)
-                # print(f"After layer1 - Student features shape: {x_student.shape}")
-                # print(f"After layer1 - Teacher features shape: {x_teacher.shape}")
-                
                 x_student, x_teacher = self.layer2(x_student, x_teacher)
-                # print(f"After layer2 - Student features shape: {x_student.shape}")
-                # print(f"After layer2 - Teacher features shape: {x_teacher.shape}")
                 x_student, x_teacher = self.layer3(x_student, x_teacher)
                 x_student, x_teacher = self.layer4(x_student, x_teacher)
 
@@ -267,7 +265,7 @@ class ResNetBackbone(nn.Module):
                 x_teacher = torch.flatten(x_teacher, 1)
 
                 return x_student, x_teacher
-         
+
 
 
 class ResNet(nn.Module):
