@@ -72,16 +72,16 @@ quantization:
         sat_weight_normalization: False
         test_and_val_average_bitwidths : [4, 6, 8, 10, 12]
         test_and_val_total_schemes : 4
-        delta : 2
+        delta : 1
         teacher_student: True
         teacher_bn_type: "float" # other option is switchable
-        teacher_selection_strategy: "weight_min" # other options weight_min, activation_max, weight_max
+        teacher_selection_strategy: "activation_min" # other options weight_min, activation_max, weight_max, activation_min
         kurtosis_regularization: False
         kurtosis_target: 1.8    
         kurtosis_weight: 0.1
         coherence_weight: 0.3
         energy_weight: 0.5
-        loss_function_for_activation: ["ce_output_activation"] # other options that can be added to list kl_divergence_st_output_activaation, kl_all_hidden_activations
+        loss_function_for_activation: ["ce_output_activation", "kl_divergence_st_output_activation"] # other options that can be added to list kl_divergence_st_output_activaation, kl_all_hidden_activations
 
                 
 ResNet:

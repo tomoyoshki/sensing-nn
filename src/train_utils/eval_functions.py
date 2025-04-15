@@ -176,12 +176,16 @@ def eval_quantized_supervised_model(args, classifier, augmenter, dataloader, los
 
     # iterate over all batches
     num_batches = len(dataloader)
-    classifier_loss_list = []
-    all_predictions = []
-    all_labels = []
+    # classifier_loss_list = []
+    # all_predictions = []
+    # all_labels = []
+    metrics_per_bitwidth = {}
     with torch.no_grad():
-        for avg_bitwidth, schemes in quantization_schemes.items():
+        for avg_bitwidth, schemes in tqdm(quantization_schemes.items(), total=len(quantization_schemes)):
             scheme_metrics = []
+            classifier_loss_list = []
+            all_predictions = []
+            all_labels = []
 
             for scheme in schemes:
                 for layer_name, bitwidth in scheme.items():
@@ -192,7 +196,7 @@ def eval_quantized_supervised_model(args, classifier, augmenter, dataloader, los
                 classifier_loss_list = []
                 # final_predictions_curr_scheme = []
                 # final_labels_curr_scheme = []
-                for i, (time_loc_inputs, labels, index) in tqdm(enumerate(dataloader), total=num_batches):
+                for i, (time_loc_inputs, labels, index) in enumerate(dataloader):
                     # Move to target device, FFT, and augmentations
                     freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
        
@@ -221,13 +225,31 @@ def eval_quantized_supervised_model(args, classifier, augmenter, dataloader, los
                     all_predictions.append(saved_predictions)
                     all_labels.append(saved_labels)
                 
-        # Calculate mean loss
-        mean_classifier_loss = np.mean(classifier_loss_list)
-        all_predictions = np.concatenate(all_predictions, axis=0)
-        all_labels = np.concatenate(all_labels, axis=0)
-        metrics = eval_task_metrics(args, all_labels, all_predictions, regression=("regression" in args.task))
+            # Calculate mean loss
+            mean_classifier_loss = np.mean(classifier_loss_list)
+            all_predictions = np.concatenate(all_predictions, axis=0)
+            all_labels = np.concatenate(all_labels, axis=0)
+            metrics = eval_task_metrics(args, all_labels, all_predictions, regression=("regression" in args.task))
+            metrics_dict = {"mean_acc": metrics[0], "mean_f1": metrics[1], "confusion_matrix": metrics[2]}
+            # Store metrics for current bitwidth
+            metrics_per_bitwidth[avg_bitwidth] = {
+                'loss': mean_classifier_loss,
+                'metrics': metrics
+            }
 
-    return mean_classifier_loss, metrics
+            # Log metrics for current bitwidth
+            logging.info(f"\nMetrics for average bitwidth {avg_bitwidth}:")
+            logging.info(f"Loss: {mean_classifier_loss:.4f}")
+            for metric_name, metric_value in metrics_dict.items():
+                if metric_name == "confusion_matrix":
+                    # Convert to integers and disable scientific notation
+                    np.set_printoptions(suppress=True)
+                    confusion_matrix_int = metric_value.astype(int)
+                    logging.info(f"{metric_name}:\n{confusion_matrix_int}")
+                else:
+                    logging.info(f"{metric_name}: {metric_value:.4f}")
+
+    return metrics_per_bitwidth
 
 def val_and_logging(
     args,
@@ -258,9 +280,35 @@ def val_and_logging(
         val_loss, val_metrics = eval_supervised_model(args, model, augmenter, val_loader, loss_func)
         test_loss, test_metrics = eval_supervised_model(args, model, augmenter, test_loader, loss_func)
     else:
-        val_loss, val_metrics = eval_quantized_supervised_model(args, model, augmenter, val_loader, loss_func)
-        test_loss, test_metrics = eval_quantized_supervised_model(args, model, augmenter, test_loader, loss_func)
+        val_metrics_dict = eval_quantized_supervised_model(args, model, augmenter, val_loader, loss_func)
+        test_metrics_dict = eval_quantized_supervised_model(args, model, augmenter, test_loader, loss_func)
+    # Calculate average metrics across all bitwidths
+    val_loss = np.mean([metrics['loss'] for metrics in val_metrics_dict.values()])
+    test_loss = np.mean([metrics['loss'] for metrics in test_metrics_dict.values()])
+    
+    # For other metrics, we need to average the values from metrics['metrics']
+    if "regression" in args.task:
+        val_metrics = [np.mean([m['metrics'][0] for m in val_metrics_dict.values()])]
+        test_metrics = [np.mean([m['metrics'][0] for m in test_metrics_dict.values()])]
+    else:
 
+         # Average the confusion matrices properly
+        val_confusion_matrices = [m['metrics'][2] for m in val_metrics_dict.values()]
+        test_confusion_matrices = [m['metrics'][2] for m in test_metrics_dict.values()]
+        
+        val_avg_conf_matrix = np.mean(val_confusion_matrices, axis=0)
+        test_avg_conf_matrix = np.mean(test_confusion_matrices, axis=0)
+
+        val_metrics = [
+            np.mean([m['metrics'][0] for m in val_metrics_dict.values()]),  # accuracy
+            np.mean([m['metrics'][1] for m in val_metrics_dict.values()]),  # f1
+            val_avg_conf_matrix
+        ]
+        test_metrics = [
+            np.mean([m['metrics'][0] for m in test_metrics_dict.values()]),  # accuracy
+            np.mean([m['metrics'][1] for m in test_metrics_dict.values()]),  # f1
+            test_avg_conf_matrix  # confusion matrix (taking first one)
+        ]
     if "regression" in args.task:
         logging.info(f"Val loss: {val_loss: .5f}, val mae: {val_metrics[0]: .5f}")
         logging.info(f"Test loss: {test_loss: .5f}, test mae: {test_metrics[0]: .5f}")

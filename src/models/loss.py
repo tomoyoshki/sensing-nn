@@ -32,13 +32,18 @@ class CustomLoss(nn.Module):
 
     def forward(self, logits, targets, teacher_logits = None):
         total_loss = 0.0
-        for loss_func_str in self.loss_functions_to_use:
-            if loss_func_str == "ce_output_activation":
-                total_loss += self.ce_loss(logits, targets)
-            elif loss_func_str == "kl_divergence_st_output_activation":
-                total_loss += self.kl_divergence(logits, teacher_logits)
-            else:
-                raise NotImplementedError(f"Loss function {loss_func_str} is not implemented.")
+        if self.model.training:
+            for loss_func_str in self.loss_functions_to_use:
+                if loss_func_str == "ce_output_activation":
+                    total_loss += self.ce_loss(logits, targets)
+                elif loss_func_str == "kl_divergence_st_output_activation":
+                    total_loss += self.kl_divergence(logits, teacher_logits)
+                else:
+                    raise NotImplementedError(f"Loss function {loss_func_str} is not implemented.")
+        else:
+            # For inference, we only use the CE loss
+            assert teacher_logits is None, "Teacher logits should not be provided during inference."
+            total_loss = self.ce_loss(logits, targets)
         return total_loss
 
 
