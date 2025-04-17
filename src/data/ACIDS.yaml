@@ -65,7 +65,8 @@ quantization:
         enable: True # False will run everything in float
         bitwidth_options: [2,4,6,8,10,12,16]
         joint_quantization_batch_size: 4
-        joint_quantization: True
+        # joint_quantization: False
+        training_type: "joint_quantization"
         activation_quantization: "pact"
         weight_quantization: "dorefa"
         switchable_clipping: True
@@ -73,7 +74,7 @@ quantization:
         test_and_val_average_bitwidths : [4, 6, 8, 10, 12]
         test_and_val_total_schemes : 4
         delta : 1
-        teacher_student: True
+        teacher_student: False
         teacher_bn_type: "float" # other option is switchable
         teacher_selection_strategy: "activation_min" # other options weight_min, activation_max, weight_max, activation_min
         kurtosis_regularization: False
@@ -81,8 +82,10 @@ quantization:
         kurtosis_weight: 0.1
         coherence_weight: 0.3
         energy_weight: 0.5
-        loss_function_for_activation: ["ce_output_activation", "kl_divergence_st_output_activation"] # other options that can be added to list kl_divergence_st_output_activaation, kl_all_hidden_activations
-
+        loss_function_for_activation: ["ce_output_activation"] # other options that can be added to list kl_divergence_st_output_activaation, kl_all_hidden_activations
+        tile_mode: True
+        scale_importance_vector: False
+        number_of_tiles: 4
                 
 ResNet:
         # Architecture settings

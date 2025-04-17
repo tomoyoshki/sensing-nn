@@ -276,7 +276,7 @@ def val_and_logging(
     """
     """Supervised training or fine-tuning"""
     quantization_config = args.dataset_config["quantization"]
-    if not quantization_config["enable"]:
+    if not quantization_config["enable"] or quantization_config["training_type"] == "vanilla":
         val_loss, val_metrics = eval_supervised_model(args, model, augmenter, val_loader, loss_func)
         test_loss, test_metrics = eval_supervised_model(args, model, augmenter, test_loader, loss_func)
     else:

@@ -324,7 +324,7 @@ def supervised_train(
                 train_loss_list
             )
         elif quantization_config["enable"]:
-            if quantization_config["joint_quantization"]:
+            if quantization_config["training_type"] == "joint_quantization":
                 single_epoch_joint_quantization(
                     args,
                     classifier,
@@ -339,6 +339,21 @@ def supervised_train(
                     num_batches=num_batches,
                     train_loss_list=train_loss_list
                 )
+            elif quantization_config["training_type"] == "vanilla":
+                single_epoch_train(
+                    args,
+                    classifier,
+                    augmenter,
+                    optimizer,
+                    epoch,
+                    train_dataloader,
+                    loss_func,
+                    tb_writer,
+                    num_batches,
+                    train_loss_list
+                )
+            else:
+                raise ValueError(f"Unknown training type: {quantization_config['training_type']}")
 
         end_time = time.time()
         logging.info(f"Epoch {epoch}, Train Loss: {train_loss_list[-1]}")

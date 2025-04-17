@@ -3,6 +3,109 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.autograd
 
+class TileImportanceVector:
+    """Manages importance vectors for tile-based quantization of a convolutional layer"""
+    
+    def __init__(self, num_tiles, bitwidth_options, temperature=1.0):
+        """
+        Args:
+            num_tiles (int): Number of tiles in the conv layer
+            bitwidth_options (list): Available bitwidth options
+            temperature (float): Temperature parameter for Gumbel Softmax
+        """
+        self.num_tiles = num_tiles
+        self.bitwidth_options = bitwidth_options
+        self.num_options = len(bitwidth_options)
+        self.temperature = temperature
+        
+        # Create importance vectors for each tile
+        self.importance_logits = nn.Parameter(
+            torch.zeros(num_tiles, self.num_options),
+            requires_grad=True
+        )
+        
+        # Initialize with uniform probabilities
+        nn.init.uniform_(self.importance_logits, -0.1, 0.1)
+        
+        # Keep track of sampled bitwidths for each tile
+        self.current_samples = None
+        
+    def sample_bitwidths(self, scaling_vector=None, hard=True):
+        """
+        Sample new bitwidths for all tiles using Gumbel Softmax
+        
+        Args:
+            scaling_vector (Tensor, optional): Vector to scale importance logits before sampling
+            hard (bool): If True, use hard sampling (one-hot), else soft sampling
+            
+        Returns:
+            Tensor: Sampled probabilities for each tile's bitwidth
+        """
+        if scaling_vector is not None:
+            # Ensure scaling_vector is on the same device as importance_logits
+            scaling_vector = scaling_vector.to(self.importance_logits.device)
+            
+            # Handle both per-option and per-tile-per-option scaling
+            if scaling_vector.dim() == 1:
+                # Broadcast scaling_vector to match importance_logits shape
+                scaling_vector = scaling_vector.expand(self.num_tiles, -1)
+            
+            # Apply scaling
+            scaled_logits = self.importance_logits * scaling_vector
+        else:
+            scaled_logits = self.importance_logits
+
+        samples = F.gumbel_softmax(
+            scaled_logits,
+            tau=self.temperature,
+            hard=hard,
+            dim=-1
+        )
+        
+        return samples
+    
+    def get_tile_bitwidths(self, scaling_vector=None):
+        """
+        Sample new bitwidth values for each tile
+        
+        Args:
+            scaling_vector (Tensor, optional): Vector to scale importance logits before sampling
+            
+        Returns:
+            Tensor: Sampled bitwidth values for each tile
+        """
+        # Always sample new bitwidths
+        samples = self.sample_bitwidths(scaling_vector)
+        # breakpoint()
+        # Convert one-hot samples to actual bitwidth values
+        bitwidth_tensor = torch.tensor(self.bitwidth_options).to(samples.device).to(samples.dtype)
+        tile_bitwidths = torch.matmul(samples, bitwidth_tensor)
+        
+        return tile_bitwidths
+    
+    def update_temperature(self, epoch, max_epochs, min_temp=0.1):
+        """
+        Anneal the temperature parameter
+        
+        Args:
+            epoch (int): Current epoch
+            max_epochs (int): Maximum number of epochs
+            min_temp (float): Minimum temperature value
+        """
+        self.temperature = max(
+            min_temp,
+            1.0 * (1 - epoch / max_epochs)
+        )
+
+    def get_probabilities(self):
+        """
+        Get the current probabilities for each tile's bitwidth
+        
+        Returns:
+            Tensor: Current probabilities
+        """
+        return F.softmax(self.importance_logits, dim=-1)
+
 
 def generate_random_bitwidth(bitwidth_options):
     return bitwidth_options[torch.randint(0, len(bitwidth_options), (1,))]
@@ -213,6 +316,20 @@ class QuanConv(nn.Module):
                     torch.ones(1), requires_grad=True
                 )
             # self.alpha_setup(bitwidth_opts)
+
+        self.number_of_tiles = quantization_config["number_of_tiles"]
+        assert self.number_of_tiles%2 == 0, "number_of_tiles should be even"
+        self.tile_importance = TileImportanceVector(
+            num_tiles=self.number_of_tiles,
+            bitwidth_options=self.bitwidth_opts
+        )
+
+        self.tile_mode = quantization_config["tile_mode"]
+        if self.tile_mode:
+            self.current_bitwidths_tile = []
+        
+
+
 
     def get_alpha(self, bitwidth = None):
         # assert self.args is not None, "args not set in QuanConv"
@@ -543,85 +660,292 @@ class QuanConv(nn.Module):
         return best_activation, best_teacher_bitwidth
 
 
-    def forward(self, inp, teacher_input = None):
-        if not self.float_mode:
-            assert self.alpha_setup_flag, "alpha not setup"
-            assert self.curr_bitwidth is not None, "bitwidth is None"
-            assert self.quantize_w is not None, "quantize_w is None"
-            assert self.quantize_a is not None, "quantize_a is None"
+    def forward_vanilla_and_distillation(self, inp, teacher_input = None):
+        assert self.alpha_setup_flag, "alpha not setup"
+        assert self.curr_bitwidth is not None, "bitwidth is None"
+        assert self.quantize_w is not None, "quantize_w is None"
+        assert self.quantize_a is not None, "quantize_a is None"
 
-            # idx_alpha = self.bitwidth_opts.index(self.curr_bitwidth)
-            # alpha = torch.abs(self.alpha[idx_alpha])
-            weight_scale = None
+        # idx_alpha = self.bitwidth_opts.index(self.curr_bitwidth)
+        # alpha = torch.abs(self.alpha[idx_alpha])
+        weight_scale = None
 
-            if self.curr_bitwidth <= 32:
-                w = self.quantize_w(self.weight, self.curr_bitwidth)
-                bias = self.bias
-                # Adabits method of scaling weights I think may or maynot use it.
-                if self.sat_weight_normalization:
-                    weight_scale = (  
-                        1.0
-                        / (
-                            self.out_channels
-                            * self.kernel_size[0]
-                            * self.kernel_size[1]
-                        )
-                        ** 0.5
+        if self.curr_bitwidth <= 32:
+            w = self.quantize_w(self.weight, self.curr_bitwidth)
+            bias = self.bias
+            # Adabits method of scaling weights I think may or maynot use it.
+            if self.sat_weight_normalization:
+                weight_scale = (  
+                    1.0
+                    / (
+                        self.out_channels
+                        * self.kernel_size[0]
+                        * self.kernel_size[1]
                     )
+                    ** 0.5
+                )
+                weight_scale = weight_scale / torch.std(w.detach())
+                w = w * weight_scale
+
+                bias = bias * weight_scale if bias is not None else None
+
+            if isinstance(self.quantize_a, PACT):
+                # alpha = self.alpha[self.bitwidth_opts.index(self.curr_bitwidth)]
+                alpha = self.get_alpha()
+                x = self.quantize_a(inp, self.curr_bitwidth, alpha)
+            elif isinstance(self.quantize_a, DoReFaA):
+                x = self.quantize_a(inp, self.curr_bitwidth)
+            else:
+                raise ValueError(
+                    "Only PACT and DoReFaA implmented for activation quantization"
+                )
+            # try:
+                # print(f"Input shape: {x.shape}")
+                # print(f"Weight shape: {w.shape}")
+            x_student = nn.functional.conv2d(
+                    x,
+                    w,
+                    bias,
+                    self.stride,
+                    self.padding,
+                    self.dilation,
+                    self.groups,
+                )
+            self.recent_student_activation = x_student
+            if self.quantization_config["teacher_student"] and self.training:
+                assert teacher_input is not None, "teacher_input is None in QuanConv, forward()"
+                try:
+                    teacher_weights = self.get_weights_for_all_teachers(weight_scale)
+                    x_teacher, _ = self.get_best_teacher(
+                                        x_student,
+                                        teacher_input,
+                                        teacher_weights,
+                                        weight_scale,
+                                        strategy=self.quantization_config["teacher_selection_strategy"],
+                                        student_weight = w
+                                    )
+                    # breakpoint()
+                    return x_student, x_teacher
+                except Exception as e:
+                    print(f"Error in QuanConv forward pass (teacher_student section): {e}")
+                    breakpoint()
+                    raise
+            else:
+                return x_student, None
+            # except Exception as e:
+            #     print(f"Error in QuanConv forward pass: {e}")
+            #     breakpoint()
+            #     raise
+        else:
+            raise ValueError(f"Invalid bitwidth {self.curr_bitwidth}")
+
+
+    def forward_tiled(self, inp):
+        batch_size, in_channels, height, width = inp.shape
+
+        # if self.training:
+        self.tile_bitwidths = self.tile_importance.get_tile_bitwidths()  # Shape: [num_tiles]
+        unique_bitwidths = torch.unique(self.tile_bitwidths)
+        tile_bitwidths = self.tile_bitwidths
+        # breakpoint()
+        # Step 2: Create tile masks
+        
+
+        quantized_outputs = {}
+
+        # First quantize activations for each unique bitwidth
+        x_quantized = {}
+        for bitwidth_tensor in unique_bitwidths:
+            bitwidth = int(bitwidth_tensor.item())
+            if isinstance(self.quantize_a, PACT):
+                alpha = self.get_alpha(bitwidth)
+                x_quantized[bitwidth] = self.quantize_a(inp, bitwidth, alpha)
+            elif isinstance(self.quantize_a, DoReFaA):
+                x_quantized[bitwidth] = self.quantize_a(inp, bitwidth)
+
+
+
+        if self.groups > 1:
+            for bitwidth in unique_bitwidths:
+                # Quantize weights for this bitwidth
+                w = self.quantize_w(self.weight, bitwidth)
+                if self.sat_weight_normalization:
+                    weight_scale = (1.0 / (self.out_channels * self.kernel_size[0] * self.kernel_size[1])) ** 0.5
                     weight_scale = weight_scale / torch.std(w.detach())
                     w = w * weight_scale
-
-                    bias = bias * weight_scale if bias is not None else None
-
-                if isinstance(self.quantize_a, PACT):
-                    # alpha = self.alpha[self.bitwidth_opts.index(self.curr_bitwidth)]
-                    alpha = self.get_alpha()
-                    x = self.quantize_a(inp, self.curr_bitwidth, alpha)
-                elif isinstance(self.quantize_a, DoReFaA):
-                    x = self.quantize_a(inp, self.curr_bitwidth)
+                    bias = self.bias * weight_scale if self.bias is not None else None
                 else:
-                    raise ValueError(
-                        "Only PACT and DoReFaA implmented for activation quantization"
-                    )
-                # try:
-                    # print(f"Input shape: {x.shape}")
-                    # print(f"Weight shape: {w.shape}")
-                x_student = nn.functional.conv2d(
-                        x,
-                        w,
-                        bias,
-                        self.stride,
-                        self.padding,
-                        self.dilation,
-                        self.groups,
-                    )
-                self.recent_student_activation = x_student
-                if self.quantization_config["teacher_student"] and self.training:
-                    assert teacher_input is not None, "teacher_input is None in QuanConv, forward()"
-                    try:
-                        teacher_weights = self.get_weights_for_all_teachers(weight_scale)
-                        x_teacher, _ = self.get_best_teacher(
-                                            x_student,
-                                            teacher_input,
-                                            teacher_weights,
-                                            weight_scale,
-                                            strategy=self.quantization_config["teacher_selection_strategy"],
-                                            student_weight = w
-                                        )
-                        # breakpoint()
-                        return x_student, x_teacher
-                    except Exception as e:
-                        print(f"Error in QuanConv forward pass (teacher_student section): {e}")
-                        breakpoint()
-                        raise
+                    bias = self.bias
+                    
+                # Perform convolution
+                output = nn.functional.conv2d(
+                    x_quantized[bitwidth],
+                    w,
+                    bias,
+                    self.stride,
+                    self.padding,
+                    self.dilation,
+                    self.groups
+                )
+                quantized_outputs[bitwidth] = output
+        else:
+            # Standard convolutions can be processed in parallel
+            all_weights = []
+            all_activations = []
+            all_biases = []
+            
+            for bitwidth in unique_bitwidths:
+                bitwidth = int(bitwidth.item())
+                # Quantize weights
+                w = self.quantize_w(self.weight, bitwidth)
+                if self.sat_weight_normalization:
+                    weight_scale = (1.0 / (self.out_channels * self.kernel_size[0] * self.kernel_size[1])) ** 0.5
+                    weight_scale = weight_scale / torch.std(w.detach())
+                    w = w * weight_scale
+                    bias = self.bias * weight_scale if self.bias is not None else None
+                else:
+                    bias = self.bias
+                    
+                all_weights.append(w)
+                # breakpoint()
+                try:
+                    all_activations.append(x_quantized[bitwidth])
+                except:
+                    print(f"Error: x_quantized[bitwidth] not found for bitwidth {bitwidth}")
+                    breakpoint()
+                    raise
+                all_biases.append(bias if bias is not None else torch.zeros(self.out_channels).to(inp.device))
+            
+            # Stack tensors for parallel processing
+            stacked_weights = torch.stack(all_weights)
+            stacked_activations = torch.stack(all_activations)
+            stacked_biases = torch.stack(all_biases)
+            # breakpoint()
+            
+            # Reshape for batch convolution
+            # Make corrections in these two lines
+            N, B, C, H, W = stacked_activations.shape
+            N, out_channels, in_channels, kernel_h, kernel_w = stacked_weights.shape
+            # stacked_activations = stacked_activations.reshape(N*B, C, H, W)
+
+            stacked_activations_reshaped = stacked_activations.permute(1, 0, 2, 3, 4).reshape(B, N * C, H, W)
+
+            # Also reshape weights properly for grouped convolution
+            # Each group processes its own set of channels
+            stacked_weights_reshaped = stacked_weights.reshape(N * out_channels, in_channels, kernel_h, kernel_w)
+
+            # Flatten biases
+            stacked_biases_reshaped = stacked_biases.reshape(-1)
+
+
+            
+            # Perform batched convolution
+            # outputs = nn.functional.conv2d(
+            #     stacked_activations_reshaped
+            #     stacked_weights.reshape(-1, *stacked_weights.shape[2:]),
+            #     stacked_biases.reshape(-1),
+            #     self.stride,
+            #     self.padding,
+            #     self.dilation,
+            #     groups=len(unique_bitwidths)  # Each conv operates independently
+            # )
+
+            outputs = nn.functional.conv2d(
+                stacked_activations_reshaped,
+                stacked_weights_reshaped,
+                stacked_biases_reshaped,
+                self.stride,
+                self.padding,
+                self.dilation,
+                groups=N  # Each bitwidth is a separate group
+            )
+            
+            # Reshape outputs and store in dictionary
+            # _, C_out, H_out, W_out = outputs.shape
+            # outputs = outputs.reshape(len(unique_bitwidths), batch_size, C_out, H_out, W_out)
+            
+            # for i, bitwidth in enumerate(unique_bitwidths):
+            #     quantized_outputs[bitwidth] = outputs[i]
+
+            # Reshape outputs back to separate by bitwidth
+            _, _, H_out, W_out = outputs.shape
+            outputs_reshaped = outputs.reshape(B, N, out_channels, H_out, W_out).permute(1, 0, 2, 3, 4)
+
+            # Store in dictionary
+            for i, bitwidth in enumerate(unique_bitwidths):
+                bitwidth = int(bitwidth.item())
+                quantized_outputs[bitwidth] = outputs_reshaped[i]
+
+        # Step 4: Apply masks and combine outputs
+        # breakpoint()
+        final_output = torch.zeros_like(quantized_outputs[int(unique_bitwidths[0])])
+        height, width = final_output.shape[2], final_output.shape[3]
+
+        tile_masks = self._create_tile_masks(height, width)
+        
+        for tile_idx, bitwidth in enumerate(tile_bitwidths):
+
+            mask = tile_masks[tile_idx].to(inp.device)
+            # try:
+            mask_reshape = mask.unsqueeze(1)
+            bitwidth = int(bitwidth.item())
+            final_output += quantized_outputs[bitwidth] * mask_reshape
+            # except:
+                # print(f"Error: quantized_outputs[bitwidth] not found for bitwidth {bitwidth}")
+                # breakpoint()
+                # raise
+        return final_output
+    
+    def _create_tile_masks(self, height, width):
+        """
+        Creates binary masks for each tile
+        """
+        masks = []
+        if self.number_of_tiles == 1:
+            masks = [torch.ones((height, width))]
+        elif self.number_of_tiles == 2:
+            # Horizontal split
+            h_mid = height // 2
+            masks = [
+                torch.tensor([[1 if i < h_mid else 0 for i in range(height)] for _ in range(width)]),  # Top
+                torch.tensor([[1 if i >= h_mid else 0 for i in range(height)] for _ in range(width)])  # Bottom
+            ]
+        elif self.number_of_tiles == 4:
+            # Quadrants
+            h_mid = height // 2
+            w_mid = width // 2
+            masks = [
+                torch.tensor([[1 if i < h_mid and j < w_mid else 0 for j in range(width)] for i in range(height)]),  # TopLeft
+                torch.tensor([[1 if i < h_mid and j >= w_mid else 0 for j in range(width)] for i in range(height)]),  # TopRight
+                torch.tensor([[1 if i >= h_mid and j < w_mid else 0 for j in range(width)] for i in range(height)]),  # BottomLeft
+                torch.tensor([[1 if i >= h_mid and j >= w_mid else 0 for j in range(width)] for i in range(height)])   # BottomRight
+            ]
+        else:
+            # Horizontal strips
+            h_strip = height // self.number_of_tiles
+            for i in range(self.number_of_tiles):
+                start = i * h_strip
+                end = start + h_strip if i < self.number_of_tiles - 1 else height
+                mask = torch.tensor([[1 if start <= idx < end else 0 for idx in range(height)] for _ in range(width)])
+                masks.append(mask)
+        
+        # Add channel dimension and convert to proper shape [num_tiles, 1, H, W]
+        masks = torch.stack(masks).unsqueeze(1).float()
+        return masks
+
+
+    def forward(self, inp, teacher_input = None):
+        if not self.float_mode:
+            if not self.tile_mode:
+                x_student, x_teacher = self.forward_vanilla_and_distillation(inp, teacher_input)
+                if x_teacher is not None:
+                    return x_student, x_teacher
                 else:
                     return x_student
-                # except Exception as e:
-                #     print(f"Error in QuanConv forward pass: {e}")
-                #     breakpoint()
-                #     raise
-            else:
-                raise ValueError(f"Invalid bitwidth {self.curr_bitwidth}")
+            elif self.tile_mode:
+                x_student = self.forward_tiled(inp)
+                return x_student
+        
         elif self.float_mode:
             x = nn.functional.conv2d(
                 inp,
