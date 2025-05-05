@@ -223,6 +223,12 @@ def parse_base_args(option="train"):
         help="Specify the modality to use.",
     )
 
+    parser.add_argument(
+        "-seq_dataset",
+        default="false",
+        help="Whether to use sequence dataset.",
+    )
+
     args = parser.parse_args()
 
     # set option first

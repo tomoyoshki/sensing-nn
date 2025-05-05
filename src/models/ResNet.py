@@ -341,6 +341,7 @@ class ResNet(nn.Module):
         for loc in self.locations:
             loc_mod_features[loc] = []
             for mod in self.modalities:
+                # breakpoint()
                 features = self.mod_loc_backbones[loc][mod](freq_x[loc][mod])
                 loc_mod_features[loc].append(features)
             loc_mod_features[loc] = torch.stack(loc_mod_features[loc], dim=1)
@@ -434,6 +435,7 @@ class ResNet(nn.Module):
             if self.quantization_config["teacher_student"]:
                 forward_func = self.forward_distillation
             else:
+                # breakpoint()
                 forward_func = self.forward_vanilla
 
         return forward_func(freq_x, class_head=class_head)

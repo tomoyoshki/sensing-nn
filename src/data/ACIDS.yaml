@@ -63,15 +63,15 @@ seq_len: 4
 quantization:
         bn_type: "float" # switch, float, transitional are valid options
         enable: True # False will run everything in float
-        bitwidth_options: [2,4,6,8,10,12,16]
+        bitwidth_options: [2,4,6,8,10,12,16,32]
         joint_quantization_batch_size: 4
         # joint_quantization: False
-        training_type: "joint_quantization"
+        training_type: "joint_quantization" # joint_quantization, vanilla
         activation_quantization: "pact"
         weight_quantization: "dorefa"
         switchable_clipping: True
         sat_weight_normalization: False
-        test_and_val_average_bitwidths : [4, 6, 8, 10, 12]
+        test_and_val_average_bitwidths : [4, 6, 8, 10, 12,32]
         test_and_val_total_schemes : 4
         delta : 1
         teacher_student: False
@@ -86,6 +86,11 @@ quantization:
         tile_mode: True
         scale_importance_vector: False
         number_of_tiles: 4
+        importance_vector_scaling_function: "none" # energy, none
+        testing_type: "model_self_selection_per_test" # model_self_selection_per_test, mean_mixed_precision
+        enable_grad_scaling: True
+        grad_scaling_function: "energy"
+        # training_type: "vanilla"
                 
 ResNet:
         # Architecture settings

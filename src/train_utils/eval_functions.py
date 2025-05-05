@@ -41,58 +41,90 @@ def eval_task_metrics(args, labels, predictions, regression=False):
                 conf_matrix = confusion_matrix(labels, predictions)
             except ValueError:
                 conf_matrix = []
-
+        # breakpoint()
         return mean_acc, mean_f1, conf_matrix
 
 
-def eval_supervised_model(args, classifier, augmenter, dataloader, loss_func):
+def eval_supervised_model_float(args, classifier, augmenter, dataloader, loss_func):
     """Evaluate the performance on the given dataloader.
 
     Args:
-        model (_type_): _description_
-        dataloader (_type_): _description_
+        args: Runtime arguments
+        classifier: The classifier model
+        augmenter: Data augmentation module
+        dataloader: Data loader for evaluation
+        loss_func: Loss function
     """
-    # set both the classifier and augmenter to eval mode
+    # set classifier to eval mode
     classifier.eval()
 
     # iterate over all batches
-    num_batches = len(dataloader)
     classifier_loss_list = []
     all_predictions = []
     all_labels = []
+    
     with torch.no_grad():
-        for i, (time_loc_inputs, labels, index) in tqdm(enumerate(dataloader), total=num_batches):
+        for i, (time_loc_inputs, labels, index) in tqdm(enumerate(dataloader), total=len(dataloader)):
             # move to target device, FFT, and augmentations
             freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
 
             # forward pass
-            logits, _ = classifier(freq_loc_inputs)
+            logits = classifier(freq_loc_inputs)
             classifier_loss_list.append(loss_func(logits, labels).item())
 
             if "regression" in args.task:
                 predictions = logits.squeeze()
+                # Take the maximum prediction across time dimension if needed
+                if predictions.dim() > 1:
+                    predictions = torch.max(predictions, dim=1)[0]
             else:
                 if args.multi_class:
                     predictions = (logits > 0.5).float()
+                    # Take the maximum prediction across time dimension if needed
+                    if predictions.dim() > 2:
+                        predictions = torch.max(predictions, dim=1)[0]
                 else:
-                    predictions = logits.argmax(dim=1, keepdim=False)
-                    labels = labels.argmax(dim=1, keepdim=False) if labels.dim() > 1 else labels
+                    predictions = logits.argmax(dim=1)
+                    if labels.dim() > 1:
+                        labels = labels.argmax(dim=1)
 
-            # for future computation of acc or F1 score
+            # for future computation of metrics
             saved_predictions = predictions.cpu().numpy()
             saved_labels = labels.cpu().numpy()
             all_predictions.append(saved_predictions)
             all_labels.append(saved_labels)
 
-    # calculate mean loss
+    # calculate mean loss and combine predictions
     mean_classifier_loss = np.mean(classifier_loss_list)
     all_predictions = np.concatenate(all_predictions, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
 
-    # calculate the classification metrics
+    # calculate the metrics
     metrics = eval_task_metrics(args, all_labels, all_predictions, regression=("regression" in args.task))
+    
+    # Create metrics dictionary similar to quantized version
+    if "regression" in args.task:
+        metrics_dict = {"mean_mae": metrics[0]}
+    else:
+        metrics_dict = {
+            "mean_acc": metrics[0],
+            "mean_f1": metrics[1],
+            "confusion_matrix": metrics[2]
+        }
+    # Log metrics
+    logging.info(f"\nMetrics for full precision model:")
+    logging.info(f"Loss: {mean_classifier_loss:.4f}")
+    for metric_name, metric_value in metrics_dict.items():
+        if metric_name == "confusion_matrix":
+            # Convert to integers and disable scientific notation
+            np.set_printoptions(suppress=True)
+            confusion_matrix_int = metric_value.astype(int)
+            logging.info(f"{metric_name}:\n{confusion_matrix_int}")
+        else:
+            logging.info(f"{metric_name}: {metric_value:.4f}")
 
-    return mean_classifier_loss, metrics
+    # return metrics_per_bitwidth
+    return metrics_dict[0], mean_classifier_loss # Accuracy, Loss
 
 def get_random_quantizations_schemes_given_average(args, classifier):
     quantization_config = args.dataset_config["quantization"]
@@ -163,12 +195,14 @@ def get_random_quantizations_schemes_given_average(args, classifier):
 
 
 
-def eval_quantized_supervised_model(args, classifier, augmenter, dataloader, loss_func):
+def eval_quantized_supervised_model(args, classifier, augmenter, dataloader, loss_func, loss_type = "Validation", return_metric_type = "mean"):
+
     """Evaluate the performance on the given dataloader.
 
     Args:
         model (_type_): _description_
         dataloader (_type_): _description_
+        return_metric_type (_type_): Can be "mean" or "best
     """
     # set both the classifier and augmenter to eval mode
     quantization_schemes = get_random_quantizations_schemes_given_average(args, classifier)
@@ -230,12 +264,9 @@ def eval_quantized_supervised_model(args, classifier, augmenter, dataloader, los
             all_predictions = np.concatenate(all_predictions, axis=0)
             all_labels = np.concatenate(all_labels, axis=0)
             metrics = eval_task_metrics(args, all_labels, all_predictions, regression=("regression" in args.task))
-            metrics_dict = {"mean_acc": metrics[0], "mean_f1": metrics[1], "confusion_matrix": metrics[2]}
+            metrics_dict = {"mean_acc": metrics[0], "mean_f1": metrics[1], "confusion_matrix": metrics[2], "mean_loss": mean_classifier_loss}
             # Store metrics for current bitwidth
-            metrics_per_bitwidth[avg_bitwidth] = {
-                'loss': mean_classifier_loss,
-                'metrics': metrics
-            }
+            metrics_per_bitwidth[avg_bitwidth] = metrics_dict
 
             # Log metrics for current bitwidth
             logging.info(f"\nMetrics for average bitwidth {avg_bitwidth}:")
@@ -249,7 +280,229 @@ def eval_quantized_supervised_model(args, classifier, augmenter, dataloader, los
                 else:
                     logging.info(f"{metric_name}: {metric_value:.4f}")
 
-    return metrics_per_bitwidth
+
+    # Calculate and Log average metrics across all schemes for each bitwidth
+
+    if "regression" in args.task:
+        metrics = [np.mean([m['metrics'][0] for m in metrics_per_bitwidth.values()])]
+        # test_metrics = [np.mean([m['metrics'][0] for m in metrics_per_bitwidth.values()])]
+    else:
+        # Average the confusion matrices properly
+        val_confusion_matrices = [m["confusion_matrix"] for m in metrics_per_bitwidth.values()]
+        # test_confusion_matrices = [m['metrics'][2] for m in test_metrics_dict.values()]
+        
+        val_avg_conf_matrix = np.mean(val_confusion_matrices, axis=0)
+        # test_avg_conf_matrix = np.mean(test_confusion_matrices, axis=0)
+
+        average_metrics = {
+            "mean_acc": np.mean([m["mean_acc"] for m in metrics_per_bitwidth.values()]),  # accuracy
+            "mean_f1": np.mean([m["mean_f1"] for m in metrics_per_bitwidth.values()]),  # f1
+            "mean_loss": np.mean([m["mean_loss"] for m in metrics_per_bitwidth.values()]),  # loss
+            "confusion_matrix": val_avg_conf_matrix
+        }
+        
+        logging.info(f"\nAverage metrics across all schemes for each bitwidth:")
+        for metric_name, metric_value in average_metrics.items():
+            if metric_name == "confusion_matrix":
+                # Convert to integers and disable scientific notation
+                np.set_printoptions(suppress=True)
+                confusion_matrix_int = metric_value.astype(int)
+                logging.info(f"Average {metric_name}:\n{confusion_matrix_int}")
+            else:
+                logging.info(f"Average {metric_name}: {metric_value:.4f}")
+
+        logging.info(f"Bitwidths with best metrics:")
+
+        best_bitwidth = max(metrics_per_bitwidth.items(), 
+                       key=lambda x: x[1]['mean_acc'])  # using mean_acc from metrics_dict
+        logging.info(f"\nBest performing bitwidth: {best_bitwidth[0]} with accuracy: {best_bitwidth[1]['mean_acc']:.4f}")
+
+        best_bitwidth_lowest_loss = min(metrics_per_bitwidth.items(),
+                       key=lambda x: x[1]['mean_loss'])
+        logging.info(f"\nBest performing bitwidth with lowest loss: {best_bitwidth_lowest_loss[0]} with loss: {best_bitwidth_lowest_loss[1]['mean_loss']:.4f}")
+
+        if return_metric_type == "best":
+            return best_bitwidth[1]['mean_acc'], best_bitwidth_lowest_loss[1]['mean_loss']
+        elif return_metric_type == "mean":
+            return average_metrics["mean_acc"], average_metrics["mean_loss"]
+
+
+def eval_quantized_supervised_model_self_selection(args, classifier, augmenter, dataloader, loss_func, loss_type = "Validation"):
+    """Evaluate the performance on the given dataloader.
+
+    Args:
+        args: Runtime arguments
+        classifier: The classifier model
+        augmenter: Data augmentation module
+        dataloader: Data loader for evaluation
+        loss_func: Loss function
+    """
+    # set classifier to eval mode
+    classifier.eval()
+
+    # iterate over all batches
+    classifier_loss_list = []
+    all_predictions = []
+    all_labels = []
+    
+    with torch.no_grad():
+        for i, (time_loc_inputs, labels, index) in tqdm(enumerate(dataloader), total=len(dataloader)):
+            # move to target device, FFT, and augmentations
+            freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
+
+            # forward pass
+            try:
+                logits,_ = classifier(freq_loc_inputs)
+                # breakpoint()
+                classifier_loss_list.append(loss_func(logits, labels).item())
+            except Exception as e:
+                logging.error(f"Error during forward pass: {e}")
+                breakpoint()
+                raise
+            if "regression" in args.task:
+                predictions = logits.squeeze()
+                # Take the maximum prediction across time dimension if needed
+                if predictions.dim() > 1:
+                    predictions = torch.max(predictions, dim=1)[0]
+            else:
+                if args.multi_class:
+                    predictions = (logits > 0.5).float()
+                    # Take the maximum prediction across time dimension if needed
+                    if predictions.dim() > 2:
+                        predictions = torch.max(predictions, dim=1)[0]
+                else:
+                    predictions = logits.argmax(dim=1)
+                    if labels.dim() > 1:
+                        labels = labels.argmax(dim=1)
+
+            # for future computation of metrics
+            saved_predictions = predictions.cpu().numpy()
+            saved_labels = labels.cpu().numpy()
+            all_predictions.append(saved_predictions)
+            all_labels.append(saved_labels)
+
+    # calculate mean loss and combine predictions
+    mean_classifier_loss = np.mean(classifier_loss_list)
+    all_predictions = np.concatenate(all_predictions, axis=0)
+    all_labels = np.concatenate(all_labels, axis=0)
+
+    # calculate the metrics
+    metrics = eval_task_metrics(args, all_labels, all_predictions, regression=("regression" in args.task))
+    
+    # Create metrics dictionary similar to quantized version
+    if "regression" in args.task:
+        metrics_dict = {"mean_mae": metrics[0]}
+    else:
+        metrics_dict = {
+            "mean_acc": metrics[0],
+            "mean_f1": metrics[1],
+            "confusion_matrix": metrics[2],
+            "mean_loss": mean_classifier_loss
+        }
+    # Log metrics
+    logging.info(f"\nMetrics for model with self-selection bitwidth using Gumbal Softmax Sampling:")
+    logging.info(f"{loss_type} Loss: {mean_classifier_loss:.4f}")
+    for metric_name, metric_value in metrics_dict.items():
+        if metric_name == "confusion_matrix":
+            # Convert to integers and disable scientific notation
+            np.set_printoptions(suppress=True)
+            confusion_matrix_int = metric_value.astype(int)
+            logging.info(f"{metric_name}:\n{confusion_matrix_int}")
+        else:
+            logging.info(f"{metric_name}: {metric_value:.4f}")
+
+    # return metrics_per_bitwidth
+    return metrics_dict["mean_acc"], mean_classifier_loss # Accuracy, Loss
+
+
+def eval_quantized_supervised_model_self_selection_per_test(args, classifier, augmenter, dataloader, loss_func, loss_type = "Validation"):
+    """Evaluate the performance on the given dataloader.
+
+    Args:
+        args: Runtime arguments
+        classifier: The classifier model
+        augmenter: Data augmentation module
+        dataloader: Data loader for evaluation
+        loss_func: Loss function
+    """
+    # set classifier to eval mode
+    classifier.eval()
+
+    # iterate over all batches
+    classifier_loss_list = []
+    all_predictions = []
+    all_labels = []
+    
+    with torch.no_grad():
+        conv_classifier = classifier.Conv
+        conv_classifier.set_fixed_tiled_bitwidths()
+        for i, (time_loc_inputs, labels, index) in tqdm(enumerate(dataloader), total=len(dataloader)):
+            # move to target device, FFT, and augmentations
+            freq_loc_inputs, labels = augmenter.forward("no", time_loc_inputs, labels)
+
+            # forward pass
+            try:
+                logits,_ = classifier(freq_loc_inputs)
+                # breakpoint()
+                classifier_loss_list.append(loss_func(logits, labels).item())
+            except Exception as e:
+                logging.error(f"Error during forward pass: {e}")
+                breakpoint()
+                raise
+            if "regression" in args.task:
+                predictions = logits.squeeze()
+                # Take the maximum prediction across time dimension if needed
+                if predictions.dim() > 1:
+                    predictions = torch.max(predictions, dim=1)[0]
+            else:
+                if args.multi_class:
+                    predictions = (logits > 0.5).float()
+                    # Take the maximum prediction across time dimension if needed
+                    if predictions.dim() > 2:
+                        predictions = torch.max(predictions, dim=1)[0]
+                else:
+                    predictions = logits.argmax(dim=1)
+                    if labels.dim() > 1:
+                        labels = labels.argmax(dim=1)
+
+            # for future computation of metrics
+            saved_predictions = predictions.cpu().numpy()
+            saved_labels = labels.cpu().numpy()
+            all_predictions.append(saved_predictions)
+            all_labels.append(saved_labels)
+
+    # calculate mean loss and combine predictions
+    mean_classifier_loss = np.mean(classifier_loss_list)
+    all_predictions = np.concatenate(all_predictions, axis=0)
+    all_labels = np.concatenate(all_labels, axis=0)
+
+    # calculate the metrics
+    metrics = eval_task_metrics(args, all_labels, all_predictions, regression=("regression" in args.task))
+    
+    # Create metrics dictionary similar to quantized version
+    if "regression" in args.task:
+        metrics_dict = {"mean_mae": metrics[0]}
+    else:
+        metrics_dict = {
+            "mean_acc": metrics[0],
+            "mean_f1": metrics[1],
+            "confusion_matrix": metrics[2],
+            "mean_loss": mean_classifier_loss
+        }
+    # Log metrics
+    logging.info(f"\nMetrics for model with self-selection bitwidth using Gumbal Softmax Sampling:")
+    logging.info(f"{loss_type} Loss: {mean_classifier_loss:.4f}")
+    for metric_name, metric_value in metrics_dict.items():
+        if metric_name == "confusion_matrix":
+            # Convert to integers and disable scientific notation
+            np.set_printoptions(suppress=True)
+            confusion_matrix_int = metric_value.astype(int)
+            logging.info(f"{metric_name}:\n{confusion_matrix_int}")
+        else:
+            logging.info(f"{metric_name}: {metric_value:.4f}")
+
+    # return metrics_per_bitwidth
+    return metrics_dict["mean_acc"], mean_classifier_loss # Accuracy, Loss
 
 def val_and_logging(
     args,
@@ -276,61 +529,42 @@ def val_and_logging(
     """
     """Supervised training or fine-tuning"""
     quantization_config = args.dataset_config["quantization"]
-    if not quantization_config["enable"] or quantization_config["training_type"] == "vanilla":
-        val_loss, val_metrics = eval_supervised_model(args, model, augmenter, val_loader, loss_func)
-        test_loss, test_metrics = eval_supervised_model(args, model, augmenter, test_loader, loss_func)
-    else:
-        val_metrics_dict = eval_quantized_supervised_model(args, model, augmenter, val_loader, loss_func)
-        test_metrics_dict = eval_quantized_supervised_model(args, model, augmenter, test_loader, loss_func)
-    # Calculate average metrics across all bitwidths
-    val_loss = np.mean([metrics['loss'] for metrics in val_metrics_dict.values()])
-    test_loss = np.mean([metrics['loss'] for metrics in test_metrics_dict.values()])
-    
-    # For other metrics, we need to average the values from metrics['metrics']
-    if "regression" in args.task:
-        val_metrics = [np.mean([m['metrics'][0] for m in val_metrics_dict.values()])]
-        test_metrics = [np.mean([m['metrics'][0] for m in test_metrics_dict.values()])]
-    else:
 
-         # Average the confusion matrices properly
-        val_confusion_matrices = [m['metrics'][2] for m in val_metrics_dict.values()]
-        test_confusion_matrices = [m['metrics'][2] for m in test_metrics_dict.values()]
-        
-        val_avg_conf_matrix = np.mean(val_confusion_matrices, axis=0)
-        test_avg_conf_matrix = np.mean(test_confusion_matrices, axis=0)
-
-        val_metrics = [
-            np.mean([m['metrics'][0] for m in val_metrics_dict.values()]),  # accuracy
-            np.mean([m['metrics'][1] for m in val_metrics_dict.values()]),  # f1
-            val_avg_conf_matrix
-        ]
-        test_metrics = [
-            np.mean([m['metrics'][0] for m in test_metrics_dict.values()]),  # accuracy
-            np.mean([m['metrics'][1] for m in test_metrics_dict.values()]),  # f1
-            test_avg_conf_matrix  # confusion matrix (taking first one)
-        ]
-    if "regression" in args.task:
-        logging.info(f"Val loss: {val_loss: .5f}, val mae: {val_metrics[0]: .5f}")
-        logging.info(f"Test loss: {test_loss: .5f}, test mae: {test_metrics[0]: .5f}")
-    else:
-        logging.info(f"Val loss: {val_loss: .5f}")
-        logging.info(f"Val acc: {val_metrics[0]: .5f}, val f1: {val_metrics[1]: .5f}")
-        logging.info(f"Val confusion matrix:\n {val_metrics[2]} \n")
-        logging.info(f"Test loss: {test_loss: .5f}")
-        logging.info(f"Test acc: {test_metrics[0]: .5f}, test f1: {test_metrics[1]: .5f}")
-        logging.info(f"Test confusion matrix:\n {test_metrics[2]} \n")
-
-    # write tensorboard train log
-    if tensorboard_logging:
-        tb_writer.add_scalar("Validation/Val loss", val_loss, epoch)
-        tb_writer.add_scalar("Evaluation/Test loss", test_loss, epoch)
-        if "regression" in args.task:
-            tb_writer.add_scalar("Validation/Val mae", val_metrics[0], epoch)
-            tb_writer.add_scalar("Evaluation/Test mae", test_metrics[0], epoch)
+    if not quantization_config["enable"]:
+        logging.info("Evaluating full precision model - Float32")
+        val_acc, val_loss = eval_supervised_model_float(args, model, augmenter, val_loader, loss_func)
+        test_loss, test_metrics = eval_supervised_model_float(args, model, augmenter, test_loader, loss_func)
+    elif quantization_config["enable"]:
+        logging.info("Evaluating quantized model")
+        # Check if the model is quantized
+        if quantization_config["testing_type"] == "mean_mixed_precision":
+            # Use the quantized model for evaluation
+            val_acc, val_loss = eval_quantized_supervised_model(args, model, augmenter, val_loader, loss_func)
+            test_loss, test_metrics = eval_quantized_supervised_model(args, model, augmenter, test_loader, loss_func)
+        elif quantization_config["testing_type"] == "model_self_selection_per_forward_pass":
+            logging.info("Evaluating model with self-selection bitwidth using Gumbal Softmax Sampling")
+            val_acc, val_loss = eval_quantized_supervised_model_self_selection(args, model, augmenter, val_loader, loss_func)
+            test_loss, test_metrics = eval_quantized_supervised_model_self_selection(args, model, augmenter, test_loader, loss_func, loss_type="Test")
+        elif quantization_config["testing_type"] == "model_self_selection_per_test":
+            logging.info("Evaluating model with self-selection bitwidth only sampling once per test using Gumbal Softmax Sampling")
+            val_acc, val_loss = eval_quantized_supervised_model_self_selection_per_test(args, model, augmenter, val_loader, loss_func)
+            test_loss, test_metrics = eval_quantized_supervised_model_self_selection_per_test(args, model, augmenter, test_loader, loss_func, loss_type="Test")
         else:
-            tb_writer.add_scalar("Validation/Val accuracy", val_metrics[0], epoch)
-            tb_writer.add_scalar("Validation/Val F1 score", val_metrics[1], epoch)
-            tb_writer.add_scalar("Evaluation/Test accuracy", test_metrics[0], epoch)
-            tb_writer.add_scalar("Evaluation/Test F1 score", test_metrics[1], epoch)
+            raise ValueError(f"Error in val_and_logging: No valid condition given for evaluation")
+    else:
+        raise ValueError(f"Error in val_and_logging: No valid condition given for evaluation")
+    
+    #  # write tensorboard train log
+    #     if tensorboard_logging:
+    #         tb_writer.add_scalar("Validation/Val loss", val_loss, epoch)
+    #         tb_writer.add_scalar("Evaluation/Test loss", test_loss, epoch)
+    #         if "regression" in args.task:
+    #             tb_writer.add_scalar("Validation/Val mae", val_metrics[0], epoch)
+    #             tb_writer.add_scalar("Evaluation/Test mae", test_metrics[0], epoch)
+    #         else:
+    #             tb_writer.add_scalar("Validation/Val accuracy", val_metrics[0], epoch)
+    #             tb_writer.add_scalar("Validation/Val F1 score", val_metrics[1], epoch)
+    #             tb_writer.add_scalar("Evaluation/Test accuracy", test_metrics[0], epoch)
+    #             tb_writer.add_scalar("Evaluation/Test F1 score", test_metrics[1], epoch)
 
-    return val_metrics[0], val_loss
+    return val_acc, val_loss

@@ -2,11 +2,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.autograd
+import logging
+
+
+class StatTracker:
+    def __init__(self):
+        pass
 
 class TileImportanceVector:
     """Manages importance vectors for tile-based quantization of a convolutional layer"""
     
-    def __init__(self, num_tiles, bitwidth_options, temperature=1.0):
+    def __init__(self, num_tiles, bitwidth_options, temperature=1.0, enable_grad_scaling=True):
         """
         Args:
             num_tiles (int): Number of tiles in the conv layer
@@ -17,18 +23,59 @@ class TileImportanceVector:
         self.bitwidth_options = bitwidth_options
         self.num_options = len(bitwidth_options)
         self.temperature = temperature
-        
-        # Create importance vectors for each tile
+                # Create importance vectors for each tile
         self.importance_logits = nn.Parameter(
             torch.zeros(num_tiles, self.num_options),
             requires_grad=True
         )
+        self.enable_grad_scaling = enable_grad_scaling
         
         # Initialize with uniform probabilities
         nn.init.uniform_(self.importance_logits, -0.1, 0.1)
         
         # Keep track of sampled bitwidths for each tile
         self.current_samples = None
+
+        if self.enable_grad_scaling:
+            self.importance_logits.register_hook(self._gradient_scaling_hook)
+
+        self.grad_scaling_vector = None
+        self.batch_grad_scaling = None
+        self.target_device = None
+
+    def set_batch_gradient_scaling(self, scaling_vector):
+        """
+        Set gradient scaling vector for current batch
+        
+        Args:
+            scaling_vector (Tensor): Gradient scaling vector for current batch
+                Shape can be [batch_size, num_tiles, num_options]
+        """
+        self.batch_grad_scaling = scaling_vector
+        
+    def _gradient_scaling_hook(self, grad):
+        """
+        Hook function to scale gradients during backward pass
+        Now handles batch-specific scaling vectors
+        
+        Args:
+            grad (Tensor): Original gradient [num_tiles, num_options]
+            
+        Returns:
+            Tensor: Scaled gradient
+        """
+        if not self.enable_grad_scaling or self.batch_grad_scaling is None:
+            return grad
+            
+        # Calculate mean gradient scaling across batch dimension
+        # breakpoint()
+        # grad = grad.to(self.target_device)
+        mean_scaling = self.batch_grad_scaling.mean(dim=0).cpu()  # [num_tiles, num_options]
+        
+        # Scale the gradients using the mean scaling vector
+        # breakpoint()
+        scaled_grad = grad * mean_scaling
+        return scaled_grad
         
     def sample_bitwidths(self, scaling_vector=None, hard=True):
         """
@@ -42,6 +89,7 @@ class TileImportanceVector:
             Tensor: Sampled probabilities for each tile's bitwidth
         """
         if scaling_vector is not None:
+            # breakpoint()
             # Ensure scaling_vector is on the same device as importance_logits
             scaling_vector = scaling_vector.to(self.importance_logits.device)
             
@@ -51,6 +99,7 @@ class TileImportanceVector:
                 scaling_vector = scaling_vector.expand(self.num_tiles, -1)
             
             # Apply scaling
+            # breakpoint()
             scaled_logits = self.importance_logits * scaling_vector
         else:
             scaled_logits = self.importance_logits
@@ -64,22 +113,76 @@ class TileImportanceVector:
         
         return samples
     
+    def to(self, device):
+        """
+        Explicitly move importance_logits to the specified device
+        """
+        self.target_device = device
+        self.importance_logits = self.importance_logits.to(device)
+        return self
+
+    # def get_tile_bitwidths(self, scaling_vector=None):
+    #     """
+    #     Sample new bitwidth values for each tile
+        
+    #     Args:
+    #         scaling_vector (Tensor, optional): Vector to scale importance logits before sampling
+            
+    #     Returns:
+    #         Tensor: Sampled bitwidth values for each tile
+    #     """
+    #     # Always sample new bitwidths
+    #     samples = self.sample_bitwidths(scaling_vector)
+    #     # breakpoint()
+    #     # Convert one-hot samples to actual bitwidth values
+    #     bitwidth_tensor = torch.tensor(self.bitwidth_options).to(samples.device).to(samples.dtype)
+    #     tile_bitwidths = torch.matmul(samples, bitwidth_tensor)
+        
+    #     return tile_bitwidths
+    
     def get_tile_bitwidths(self, scaling_vector=None):
         """
-        Sample new bitwidth values for each tile
+        Sample new bitwidth values for each tile for each sample in the batch
         
         Args:
-            scaling_vector (Tensor, optional): Vector to scale importance logits before sampling
-            
+            scaling_vector: Tensor of shape [batch_size, num_tiles, num_options] to scale importance logits
+                
         Returns:
-            Tensor: Sampled bitwidth values for each tile
+            Tensor: Sampled bitwidth values for each tile for each sample [batch_size, num_tiles]
         """
-        # Always sample new bitwidths
-        samples = self.sample_bitwidths(scaling_vector)
+        # Check if we have batch-specific scaling vectors
         # breakpoint()
-        # Convert one-hot samples to actual bitwidth values
-        bitwidth_tensor = torch.tensor(self.bitwidth_options).to(samples.device).to(samples.dtype)
-        tile_bitwidths = torch.matmul(samples, bitwidth_tensor)
+        if scaling_vector is not None and scaling_vector.dim() == 3:
+            batch_size = scaling_vector.shape[0]
+            
+            # Process each sample in the batch separately
+            all_tile_bitwidths = []
+            
+            for sample_idx in range(batch_size):
+                # Get the scaling vector for this sample
+                sample_scaling = scaling_vector[sample_idx]
+                
+                # Sample bitwidths using Gumbel softmax
+                samples = self.sample_bitwidths(sample_scaling)
+                
+                # Convert one-hot samples to actual bitwidth values
+                # bitwidth_tensor = torch.tensor(self.bitwidth_options).to(samples.device).to(samples.dtype)
+                # sample_tile_bitwidths = torch.matmul(samples, bitwidth_tensor)
+                
+                all_tile_bitwidths.append(samples)
+            
+            # Stack the results for all samples
+            # Shape: [batch_size, num_tiles]
+            tile_bitwidths = torch.stack(all_tile_bitwidths, dim=0)
+            # breakpoint()
+            
+        else:
+            # Without batch-specific scaling, use the original implementation
+            tile_bitwidths = self.sample_bitwidths(scaling_vector)
+            # breakpoint()
+            # Convert one-hot samples to actual bitwidth values
+            # bitwidth_tensor = torch.tensor(self.bitwidth_options).to(samples.device).to(samples.dtype)
+            # tile_bitwidths = torch.matmul(samples, bitwidth_tensor)
         
         return tile_bitwidths
     
@@ -158,6 +261,10 @@ class DoReFaW(nn.Module):
 
     def forward(self, inp, nbit_w, *args, **kwargs):
         """forward pass"""
+
+        if nbit_w == 32:
+            return inp
+
         w = torch.tanh(inp)
         maxv = torch.abs(w).max()
         w = w / (2 * maxv) + 0.5 # This is the quantization step in DoreFa
@@ -181,6 +288,8 @@ class PACT(nn.Module):
 
     def forward(self, inp, nbit_a, alpha, *args, **kwargs):
         """forward pass"""
+        if nbit_a == 32:
+            return inp
         input = torch.clamp(inp, min=0, max=alpha.item()) #
         input_val = quantize(input, nbit_a, alpha)
         return input_val
@@ -244,6 +353,13 @@ class QuanConv(nn.Module):
         self.best_teacher_bitwidth = None
         self.best_teacher_activation = None
         self.recent_student_activation = None
+        self.sequence_length = None
+
+        self.tile_bitwidths = None
+        self.fixed_tiled_bitwidths = False
+        self.tile_mode = False
+
+
     def set_bitwidth(self, bitwidth):
         assert bitwidth <=32 and bitwidth > 1, "bitwidth should be between 2 and 32"
         self.curr_bitwidth = bitwidth
@@ -276,6 +392,19 @@ class QuanConv(nn.Module):
         for layer_name, layer in cls.layer_registry.items():
             layer.set_random_bitwidth()
 
+    def set_bitwidth_with_importance_vector(cls):
+        logging.info(f"Setting bitwidth using tile importance vector")
+        for layer_name, layer in cls.layer_registry.items():
+            if layer.tile_mode:
+                # Get the tile importance vector
+                tile_importance_vector = layer.tile_importance.get_tile_bitwidths(scaling_vector = None)
+                
+                # Set the bitwidth for each tile
+                layer.tile_bitwidths = tile_importance_vector
+            else:
+                # If not using tiles, set a single bitwidth
+                layer.set_random_bitwidth()
+
 
     @classmethod
     def get_average_bitwidth(cls):
@@ -290,6 +419,7 @@ class QuanConv(nn.Module):
         # classifier_config = args.dataset_config[args.model]
         quantization_config = args.dataset_config["quantization"]
         self.quantization_config = quantization_config
+        self.sequence_length = args.dataset_config["seq_len"]
         # quantization_config = args["quantization_config"]
         weight_quantization = quantization_config["weight_quantization"]
         activation_quantization = quantization_config["activation_quantization"]
@@ -321,13 +451,28 @@ class QuanConv(nn.Module):
         assert self.number_of_tiles%2 == 0, "number_of_tiles should be even"
         self.tile_importance = TileImportanceVector(
             num_tiles=self.number_of_tiles,
-            bitwidth_options=self.bitwidth_opts
+            bitwidth_options=self.bitwidth_opts,
+            enable_grad_scaling=quantization_config["enable_grad_scaling"]
         )
 
         self.tile_mode = quantization_config["tile_mode"]
         if self.tile_mode:
             self.current_bitwidths_tile = []
         
+
+    @classmethod
+    def move_tile_importance_to_device(cls, device):
+        """
+        Move tile importance vector to the specified device
+        """
+        for layer_name, layer in cls.layer_registry.items():
+            assert layer.tile_importance is not None, f"Tile importance vector is None for layer {layer_name}"
+            layer.tile_importance.to(device)
+
+
+        
+
+
 
 
 
@@ -740,198 +885,582 @@ class QuanConv(nn.Module):
             raise ValueError(f"Invalid bitwidth {self.curr_bitwidth}")
 
 
-    def forward_tiled(self, inp):
+    def get_tile_dimensions(self, inp):
+        num_tiles = self.number_of_tiles
+        assert num_tiles % 2 == 0, "Number of tiles should be even"
+        
+        batch_size, in_channels, height, width = inp.shape
+        
+        # Handle cases where dimensions are smaller than requested tiles
+        height_tiles = min(2 if num_tiles > 1 else 1, height)
+        width_tiles = min(num_tiles // height_tiles, width)
+        
+        # Calculate tile dimensions
+        tile_height = height // height_tiles
+        tile_width = width // width_tiles
+        
+        # Create a dictionary containing all necessary information for tiling
+        tile_info = {
+            'tile_height': tile_height,
+            'tile_width': tile_width,
+            'height_tiles': height_tiles,
+            'width_tiles': width_tiles,
+            # Add slicing indices for easy tensor operations
+            'height_indices': torch.arange(height_tiles) * tile_height,
+            'width_indices': torch.arange(width_tiles) * tile_width
+        }
+        
+        return tile_info
+
+
+
+    def get_scaling_vectors(self, input_tiles, tile_info=None):
+        """
+        Calculate scaling vectors for tile importance based on tile characteristics
+        
+        Args:
+            input_tiles: List of input tiles, each with shape [batch_size, channels, height, tile_width]
+            tile_info: Optional dictionary with tile information
+            
+        Returns:
+            Scaling vectors of shape [batch_size, num_tiles, num_bitwidth_options]
+        """
+        function_type = self.quantization_config["importance_vector_scaling_function"]
+        if function_type == "none":
+            return None
+        
+        # Get batch size from first tile
+        batch_size = input_tiles[0].shape[0]
+        num_tiles = len(input_tiles)
+        
+        if function_type == "energy":
+            # Calculate energy of each tile and normalize
+            gamma = 1.0  # Hyperparameter
+            
+            # Get min and max bitwidths from config
+            min_bits = min(self.quantization_config["bitwidth_options"])
+            max_bits = max(self.quantization_config["bitwidth_options"])
+            bit_options = torch.tensor(self.quantization_config["bitwidth_options"], 
+                                    device=input_tiles[0].device)
+            
+            # Calculate energy for each tile for each sample in the batch
+            tile_energies = []
+            total_energy = 0
+            
+            for tile in input_tiles:
+                # Calculate energy (sum of squares)
+                # Shape: [batch_size]
+                energy = torch.sum(tile**2, dim=[1, 2, 3])
+                tile_energies.append(energy)
+                total_energy += energy
+            
+            # Stack tile energies
+            # Shape: [batch_size, num_tiles]
+            tile_energies = torch.stack(tile_energies, dim=1)
+            
+            # Shape: [batch_size, 1]
+            total_energy = total_energy.unsqueeze(1)
+            
+            # Normalize tile energies
+            # Shape: [batch_size, num_tiles]
+            normalized_energies = tile_energies / (total_energy + 1e-8)  # Add small epsilon for numerical stability
+            
+            # Prepare bitwidth scaling term
+            # Shape: [num_bitwidth_options]
+            bitwidth_scale = 2 * (bit_options - min_bits) / (max_bits - min_bits + 1e-8) - 1
+            
+            # Calculate scaling vectors
+            # Shape: [batch_size, num_tiles, num_bitwidth_options]
+            energy_term = 2 * normalized_energies - 1
+            
+            # Expand dimensions for broadcasting
+            # Shape: [batch_size, num_tiles, 1]
+            energy_term = energy_term.unsqueeze(-1)
+            
+            # Shape: [1, 1, num_bitwidth_options]
+            bitwidth_scale = bitwidth_scale.view(1, 1, -1)
+            
+            # Final scaling vectors
+            # Shape: [batch_size, num_tiles, num_bitwidth_options]
+            scaling_vectors = torch.exp(gamma * energy_term * bitwidth_scale)
+            
+            return scaling_vectors
+        else:
+            raise NotImplementedError(f"Scaling function {function_type} not implemented")
+
+    # def get_scaling_vectors(self, input_tiles, tile_info=None):
+    #     """
+    #     Calculate scaling vectors for tile importance based on input characteristics
+        
+    #     Args:
+    #         inp: Input tensor of shape [batch_size, channels, height, width]
+    #         tile_info: Optional dictionary with tile information
+            
+    #     Returns:
+    #         Scaling vectors of shape [batch_size, num_tiles, num_bitwidth_options]
+    #     """
+    #     function_type = self.quantization_config["importance_vector_scaling_function"]
+    #     if function_type  == "none":
+    #         return None
+        
+    #     # batch_size, channels, height, width = inp.shape
+    #     num_tiles = self.number_of_tiles
+    #     target_device = input_tiles[0].device
+        
+    #     # If tile_info is not provided, calculate it
+    #     # if tile_info is None:
+    #     #     _, tile_info = self.split_input_into_tiles(inp)
+        
+    #     if function_type == "energy":
+    #         # Calculate energy of each tile and normalize
+    #         gamma = 1.0  # Hyperparameter
+            
+    #         # Get min and max bitwidths from config
+    #         min_bits = min(self.quantization_config["bitwidth_options"])
+    #         max_bits = max(self.quantization_config["bitwidth_options"])
+    #         bit_options = torch.tensor(self.quantization_config["bitwidth_options"], 
+    #                                 device=target_device)
+            
+    #         # Calculate energy for each tile for each sample in the batch
+    #         tile_energies = []
+            
+    #         for tile in input_tiles:
+    #             # Extract the current tile boundaries
+    #             # start_idx = tile_info['start_indices'][tile_idx]
+    #             # end_idx = tile_info['end_indices'][tile_idx]
+                    
+    #             # # Extract the current tile
+    #             # tile = inp[:, :, :, start_idx:end_idx]
+                
+    #             # Calculate energy (sum of squares)
+    #             # Shape: [batch_size]
+    #             energy = torch.sum(tile**2, dim=[1, 2, 3])
+    #             tile_energies.append(energy)
+            
+    #         # Stack tile energies
+    #         # Shape: [batch_size, num_tiles]
+    #         tile_energies = torch.stack(tile_energies, dim=1)
+            
+    #         # Calculate total energy per sample
+    #         # Shape: [batch_size, 1]
+    #         total_energy = torch.sum(inp**2, dim=[1, 2, 3]).unsqueeze(1)
+            
+    #         # Normalize tile energies
+    #         # Shape: [batch_size, num_tiles]
+    #         normalized_energies = tile_energies / (total_energy + 1e-8)  # Add small epsilon for numerical stability
+            
+    #         # Prepare bitwidth scaling term
+    #         # Shape: [num_bitwidth_options]
+    #         bitwidth_scale = 2 * (bit_options - min_bits) / (max_bits - min_bits + 1e-8) - 1
+            
+    #         # Calculate scaling vectors
+    #         # Shape: [batch_size, num_tiles, num_bitwidth_options]
+    #         energy_term = 2 * normalized_energies - 1
+            
+    #         # Expand dimensions for broadcasting
+    #         # Shape: [batch_size, num_tiles, 1]
+    #         energy_term = energy_term.unsqueeze(-1)
+            
+    #         # Shape: [1, 1, num_bitwidth_options]
+    #         bitwidth_scale = bitwidth_scale.view(1, 1, -1)
+            
+    #         # Final scaling vectors
+    #         # Shape: [batch_size, num_tiles, num_bitwidth_options]
+    #         scaling_vectors = torch.exp(gamma * energy_term * bitwidth_scale)
+            
+    #         return scaling_vectors
+    #     else:
+    #         raise NotImplementedError(f"Scaling function {function_type} not implemented")
+
+
+
+    def get_scaling_vectors_grad(self, input_tiles, tile_info=None):
+        """
+        Calculate scaling vectors for tile importance based on tile characteristics
+        
+        Args:
+            input_tiles: List of input tiles, each with shape [batch_size, channels, height, tile_width]
+            tile_info: Optional dictionary with tile information
+            
+        Returns:
+            Scaling vectors of shape [batch_size, num_tiles, num_bitwidth_options]
+        """
+        function_type = self.quantization_config["importance_vector_scaling_function"]
+        if function_type == "none":
+            return None
+        
+        # Get batch size from first tile
+        batch_size = input_tiles[0].shape[0]
+        num_tiles = len(input_tiles)
+        
+        if function_type == "energy":
+            # Calculate energy of each tile and normalize
+            gamma = 1.0  # Hyperparameter
+            
+            # Get min and max bitwidths from config
+            min_bits = min(self.quantization_config["bitwidth_options"])
+            max_bits = max(self.quantization_config["bitwidth_options"])
+            bit_options = torch.tensor(self.quantization_config["bitwidth_options"], 
+                                    device=input_tiles[0].device)
+            
+            # Calculate energy for each tile for each sample in the batch
+            tile_energies = []
+            total_energy = 0
+            
+            for tile in input_tiles:
+                # Calculate energy (sum of squares)
+                # Shape: [batch_size]
+                energy = torch.sum(tile**2, dim=[1, 2, 3])
+                tile_energies.append(energy)
+                total_energy += energy
+            
+            # Stack tile energies
+            # Shape: [batch_size, num_tiles]
+            tile_energies = torch.stack(tile_energies, dim=1)
+            
+            # Shape: [batch_size, 1]
+            total_energy = total_energy.unsqueeze(1)
+            
+            # Normalize tile energies
+            # Shape: [batch_size, num_tiles]
+            normalized_energies = tile_energies / (total_energy + 1e-8)  # Add small epsilon for numerical stability
+            
+            # Prepare bitwidth scaling term
+            # Shape: [num_bitwidth_options]
+            bitwidth_scale = 2 * (bit_options - min_bits) / (max_bits - min_bits + 1e-8) - 1
+            
+            # Calculate scaling vectors
+            # Shape: [batch_size, num_tiles, num_bitwidth_options]
+            energy_term = 2 * normalized_energies - 1
+            
+            # Expand dimensions for broadcasting
+            # Shape: [batch_size, num_tiles, 1]
+            energy_term = energy_term.unsqueeze(-1)
+            
+            # Shape: [1, 1, num_bitwidth_options]
+            bitwidth_scale = bitwidth_scale.view(1, 1, -1)
+            
+            # Final scaling vectors
+            # Shape: [batch_size, num_tiles, num_bitwidth_options]
+            scaling_vectors = torch.exp(gamma * energy_term * bitwidth_scale)
+            
+            return scaling_vectors
+        else:
+            raise NotImplementedError(f"Scaling function {function_type} not implemented")
+
+
+    def split_input_into_tiles(self, inp):
+        """
+        Split input tensor into tiles along the width dimension
+        
+        Args:
+            inp: Input tensor of shape [batch_size, channels, height, width]
+            
+        Returns:
+            List of tiles, each with shape [batch_size, channels, height, tile_width]
+            Dictionary with tile information
+        """
+        batch_size, in_channels, height, width = inp.shape
+        num_tiles = self.number_of_tiles
+        
+        # Calculate base tile width and remainder
+        tile_width = width // num_tiles
+        remainder = width % num_tiles
+        
+        # List to store tiles
+        tiles = []
+        
+        # Dictionary to store tile info
+        tile_info = {
+            'tile_widths': [],
+            'start_indices': [],
+            'end_indices': []
+        }
+        
+        # Split input into tiles
+        start_idx = 0
+        for tile_idx in range(num_tiles):
+            # Add 1 extra column to tiles that handle remainder
+            current_tile_width = tile_width + (1 if tile_idx < remainder else 0)
+            
+            # Extract current tile
+            end_idx = start_idx + current_tile_width
+            tile = inp[:, :, :, start_idx:end_idx]
+            
+            # Store tile and information
+            tiles.append(tile)
+            tile_info['tile_widths'].append(current_tile_width)
+            tile_info['start_indices'].append(start_idx)
+            tile_info['end_indices'].append(end_idx)
+            
+            # Update starting index for next tile
+            start_idx = end_idx
+        
+        return tiles, tile_info
+    
+
+    def sample_bitwidth_allocations(self, input_tiles, tile_info):
+        """
+        Sample bitwidth allocations for each tile in each sample
+        
+        Args:
+            inp: Input tensor of shape [batch_size, channels, height, width]
+            tile_info: Dictionary with tile information
+            
+        Returns:
+            Tensor of bitwidth allocations with shape [batch_size, num_tiles]
+        """
+    
+        # batch_size = inp.shape[0]
+        num_tiles = self.number_of_tiles
+        
+        # Calculate scaling vectors based on tile importance
+
+        scaling_vectors = self.get_scaling_vectors(input_tiles, tile_info)
+
+        if self.quantization_config["enable_grad_scaling"]:
+            scaling_vectors_grad = self.get_scaling_vectors_grad(input_tiles, tile_info)
+            # Combine scaling vectors and gradients
+            self.tile_importance.set_batch_gradient_scaling(scaling_vector=scaling_vectors_grad)
+        
+        # Get per-sample, per-tile bitwidth allocations
+        # Shape: [batch_size, num_tiles]
+        tile_bitwidths = self.tile_importance.get_tile_bitwidths(scaling_vector=scaling_vectors)
+        
+        return tile_bitwidths
+
+    def get_quantized_weights(self, bitwidth):
+        """
+        Get quantized weights for a specific bitwidth
+        
+        Args:
+            bitwidth: Bitwidth to quantize weights
+            
+        Returns:
+            Quantized weights
+        """
+
+
+        w = self.quantize_w(self.weight, bitwidth)
+        if self.sat_weight_normalization:
+            weight_scale = (1.0 / (self.out_channels * self.kernel_size[0] * self.kernel_size[1])) ** 0.5
+            weight_scale = weight_scale / torch.std(w.detach())
+            w = w * weight_scale
+            bias = self.bias * weight_scale if self.bias is not None else None
+        else:
+            bias = self.bias
+            
+        return w, bias
+    
+
+    def check_if_reshaping_is_correct(self, stacked_activations, stacked_activation_dict, batch_size, num_tiles, num_bitwidths, in_channels, height, tile_width):
+        """
+        Verify that the reshaping of stacked activations maintains the correct order.
+        
+        Args:
+            stacked_activations: Tensor of shape [batch_size, num_tiles*num_bitwidths*in_channels, height, tile_width]
+            stacked_activation_dict: Dictionary of tensors {tile_idx: {bitwidth: tensor}}
+            batch_size: Batch size
+            num_tiles: Number of tiles
+            num_bitwidths: Number of bitwidths
+            in_channels: Number of input channels
+            height: Height of each tile
+            tile_width: Width of each tile
+            
+        Returns:
+            bool: True if reshaping is correct, False otherwise
+        """
+
+        bitwidth_options = self.bitwidth_opts
+
+        for tile_idx in range(num_tiles):
+            for bitwidth_idx, bitwidth in enumerate(bitwidth_options):
+                # Get the tensor from the dictionary
+                tensor = stacked_activation_dict[tile_idx][bitwidth]
+                # Calculate the expected index in the reshaped tensor
+                expected_index = (
+                    tile_idx * num_bitwidths * in_channels
+                    + bitwidth_idx * in_channels
+                )
+
+                # Check if the reshaped tensor matches the original tensor
+                reshaped_tensor = stacked_activations[:, expected_index:expected_index + in_channels, :, :]
+                if not torch.allclose(tensor, reshaped_tensor):
+                    print(f"Mismatch at tile {tile_idx}, bitwidth {bitwidth}, expected index {expected_index}")
+                    return False
+        
+        # print("Reshaping is correct!")
+        return True
+
+
+    @classmethod
+    def set_fixed_tiled_bitwidths(cls):
+        """
+        Set fixed bitwidths for all registered QuanConv layers.
+        
+        This method is called to set the bitwidths for all layers in the model.
+        """
+        logging.info("Setting fixed bitwidths for all registered QuanConv layers.")
+        for layer_name, layer in cls.layer_registry.items():
+            if layer.tile_mode:
+                layer.tile_bitwidths = layer.tile_importance.get_tile_bitwidths(scaling_vector=None)
+                layer.fixed_tiled_bitwidths = True
+                # print(f"Layer {layer_name} fixed bitwidths set to {layer.current_bitwidths_tile}")
+            else:
+                raise ValueError("Tile mode is not enabled for this layer.")
+
+    def forward_tiled_parallel(self, inp):
         batch_size, in_channels, height, width = inp.shape
 
-        # if self.training:
-        self.tile_bitwidths = self.tile_importance.get_tile_bitwidths()  # Shape: [num_tiles]
-        unique_bitwidths = torch.unique(self.tile_bitwidths)
-        tile_bitwidths = self.tile_bitwidths
+        # this can be optimized if number of tiles is always divisible to widht
+        input_tiles, tile_info = self.split_input_into_tiles(inp)
+
+        tile_widths = tile_info['tile_widths']
+        # all tile_width need to be same
+        assert len(set(tile_widths)) == 1, "All tile widths should be the same"
+        tile_width = tile_widths[0]
+
+        num_tiles = len(input_tiles)
         # breakpoint()
-        # Step 2: Create tile masks
-        
+        # Step 2: Sample bitwidth allocations for each tile in each sample
+        if self.training:
+            tile_bitwidth_allocation = self.sample_bitwidth_allocations(input_tiles, tile_info) #TODO: We should just be directly passing tiles not the whole input
+            self.tile_bitwidths = tile_bitwidth_allocation
+        else:
+            if not self.fixed_tiled_bitwidths:
+                tile_bitwidth_allocation = self.tile_importance.get_tile_bitwidths(scaling_vector=None)
+        # Save for reference
+                self.tile_bitwidths = tile_bitwidth_allocation
+            else:
+                assert self.tile_bitwidths is not None, "tile_bitwidths is None, in QuanConv, forward_tiled_parallel()"
+        # breakpoint()
+        # Step 3: Process all tiles in parallel with their bitwidth allocations
+        batch_size, in_channels, height, _ = inp.shape
 
-        quantized_outputs = {}
+        unique_bitwidths = torch.tensor(self.bitwidth_opts, device=inp.device)
+        num_bitwidths = len(self.bitwidth_opts)
 
-        # First quantize activations for each unique bitwidth
+        total_number_of_groups = self.groups * num_bitwidths * self.number_of_tiles
+
         x_quantized = {}
-        for bitwidth_tensor in unique_bitwidths:
-            bitwidth = int(bitwidth_tensor.item())
-            if isinstance(self.quantize_a, PACT):
-                alpha = self.get_alpha(bitwidth)
-                x_quantized[bitwidth] = self.quantize_a(inp, bitwidth, alpha)
-            elif isinstance(self.quantize_a, DoReFaA):
-                x_quantized[bitwidth] = self.quantize_a(inp, bitwidth)
-
-
-
-        if self.groups > 1:
-            for bitwidth in unique_bitwidths:
-                # Quantize weights for this bitwidth
-                w = self.quantize_w(self.weight, bitwidth)
-                if self.sat_weight_normalization:
-                    weight_scale = (1.0 / (self.out_channels * self.kernel_size[0] * self.kernel_size[1])) ** 0.5
-                    weight_scale = weight_scale / torch.std(w.detach())
-                    w = w * weight_scale
-                    bias = self.bias * weight_scale if self.bias is not None else None
+        for i, tile in enumerate(input_tiles):
+            tile_quanitized = {}
+            for bitwidth in self.bitwidth_opts:
+                if isinstance(self.quantize_a, PACT):
+                    alpha = self.get_alpha(bitwidth)
+                    tile_quanitized[bitwidth] = self.quantize_a(tile, bitwidth, alpha)
+                elif isinstance(self.quantize_a, DoReFaA):
+                    tile_quanitized[bitwidth] = self.quantize_a(tile, bitwidth)
                 else:
-                    bias = self.bias
-                    
-                # Perform convolution
-                output = nn.functional.conv2d(
-                    x_quantized[bitwidth],
-                    w,
-                    bias,
-                    self.stride,
-                    self.padding,
-                    self.dilation,
-                    self.groups
-                )
-                quantized_outputs[bitwidth] = output
-        else:
-            # Standard convolutions can be processed in parallel
-            all_weights = []
-            all_activations = []
-            all_biases = []
-            
-            for bitwidth in unique_bitwidths:
-                bitwidth = int(bitwidth.item())
-                # Quantize weights
-                w = self.quantize_w(self.weight, bitwidth)
-                if self.sat_weight_normalization:
-                    weight_scale = (1.0 / (self.out_channels * self.kernel_size[0] * self.kernel_size[1])) ** 0.5
-                    weight_scale = weight_scale / torch.std(w.detach())
-                    w = w * weight_scale
-                    bias = self.bias * weight_scale if self.bias is not None else None
-                else:
-                    bias = self.bias
-                    
-                all_weights.append(w)
-                # breakpoint()
-                try:
-                    all_activations.append(x_quantized[bitwidth])
-                except:
-                    print(f"Error: x_quantized[bitwidth] not found for bitwidth {bitwidth}")
-                    breakpoint()
-                    raise
-                all_biases.append(bias if bias is not None else torch.zeros(self.out_channels).to(inp.device))
-            
-            # Stack tensors for parallel processing
-            stacked_weights = torch.stack(all_weights)
-            stacked_activations = torch.stack(all_activations)
-            stacked_biases = torch.stack(all_biases)
-            # breakpoint()
-            
-            # Reshape for batch convolution
-            # Make corrections in these two lines
-            N, B, C, H, W = stacked_activations.shape
-            N, out_channels, in_channels, kernel_h, kernel_w = stacked_weights.shape
-            # stacked_activations = stacked_activations.reshape(N*B, C, H, W)
+                    raise ValueError("Only PACT and DoReFaA implemented for activation quantization")
+            x_quantized[i] = tile_quanitized
 
-            stacked_activations_reshaped = stacked_activations.permute(1, 0, 2, 3, 4).reshape(B, N * C, H, W)
-
-            # Also reshape weights properly for grouped convolution
-            # Each group processes its own set of channels
-            stacked_weights_reshaped = stacked_weights.reshape(N * out_channels, in_channels, kernel_h, kernel_w)
-
-            # Flatten biases
-            stacked_biases_reshaped = stacked_biases.reshape(-1)
-
+        w_quantized = {}
+        b_quantized = {}
+        for bitwidth in self.bitwidth_opts:
+            w, bias = self.get_quantized_weights(bitwidth)
+            w_quantized[bitwidth] = w
+            if bias is not None:
+                b_quantized[bitwidth] = bias
 
             
-            # Perform batched convolution
-            # outputs = nn.functional.conv2d(
-            #     stacked_activations_reshaped
-            #     stacked_weights.reshape(-1, *stacked_weights.shape[2:]),
-            #     stacked_biases.reshape(-1),
-            #     self.stride,
-            #     self.padding,
-            #     self.dilation,
-            #     groups=len(unique_bitwidths)  # Each conv operates independently
-            # )
 
-            outputs = nn.functional.conv2d(
-                stacked_activations_reshaped,
-                stacked_weights_reshaped,
-                stacked_biases_reshaped,
-                self.stride,
-                self.padding,
-                self.dilation,
-                groups=N  # Each bitwidth is a separate group
-            )
-            
-            # Reshape outputs and store in dictionary
-            # _, C_out, H_out, W_out = outputs.shape
-            # outputs = outputs.reshape(len(unique_bitwidths), batch_size, C_out, H_out, W_out)
-            
-            # for i, bitwidth in enumerate(unique_bitwidths):
-            #     quantized_outputs[bitwidth] = outputs[i]
+        channels_per_group = in_channels // self.groups
 
-            # Reshape outputs back to separate by bitwidth
-            _, _, H_out, W_out = outputs.shape
-            outputs_reshaped = outputs.reshape(B, N, out_channels, H_out, W_out).permute(1, 0, 2, 3, 4)
+        out_channels_per_group = self.out_channels // self.groups
 
-            # Store in dictionary
-            for i, bitwidth in enumerate(unique_bitwidths):
-                bitwidth = int(bitwidth.item())
-                quantized_outputs[bitwidth] = outputs_reshaped[i]
+        stacked_activations = []
+        stacked_activation_dict = {}
+        for tile_idx in range(len(input_tiles)):
+            stacked_activation_dict[tile_idx] = {}
+            for bitwidth in self.bitwidth_opts:
+                stacked_activations.append(x_quantized[tile_idx][bitwidth])
+                stacked_activation_dict[tile_idx][bitwidth] = x_quantized[tile_idx][bitwidth]
 
-        # Step 4: Apply masks and combine outputs
+        # shape: [batch_size, num_tiles*num_bitwidths*in_channels, height, width]
+        stacked_activations = torch.stack(stacked_activations, dim=1)
         # breakpoint()
-        final_output = torch.zeros_like(quantized_outputs[int(unique_bitwidths[0])])
-        height, width = final_output.shape[2], final_output.shape[3]
-
-        tile_masks = self._create_tile_masks(height, width)
+        stacked_activations = stacked_activations.reshape(
+            batch_size,
+            num_tiles * num_bitwidths * in_channels,
+            height,
+            tile_width,
+        )
+        # self.check_if_reshaping_is_correct(stacked_activations, stacked_activation_dict, batch_size, \
+        #                               num_tiles, num_bitwidths, in_channels, height, tile_width)
         
-        for tile_idx, bitwidth in enumerate(tile_bitwidths):
+        # breakpoint()
+        stacked_weights = []
 
-            mask = tile_masks[tile_idx].to(inp.device)
-            # try:
-            mask_reshape = mask.unsqueeze(1)
-            bitwidth = int(bitwidth.item())
-            final_output += quantized_outputs[bitwidth] * mask_reshape
-            # except:
-                # print(f"Error: quantized_outputs[bitwidth] not found for bitwidth {bitwidth}")
-                # breakpoint()
-                # raise
+        # Stack in the same order as activations: tile 0 bitwidth 0, tile 0 bitwidth 1, etc.
+        for tile_idx in range(num_tiles):
+            for bitwidth in self.bitwidth_opts:
+                stacked_weights.append(w_quantized[bitwidth])
+
+        # Concat all weights
+        # Shape: [num_tiles*num_bitwidths*out_channels, in_channels/self.groups, kernel_h, kernel_w]
+        stacked_weights = torch.cat(stacked_weights, dim=0)
+
+        # Reshape weights to maintain group correspondence
+        stacked_weights = stacked_weights.reshape(
+            num_tiles * num_bitwidths * self.groups,  # New number of groups
+            self.out_channels // self.groups,         # Original out channels per group
+            in_channels // self.groups,               # Original in channels per group
+            self.kernel_size[0],                      # kernel height
+            self.kernel_size[1]                       # kernel width
+        ).reshape(
+            -1,                                       # Combined groups and out channels
+            in_channels // self.groups,               # In channels per group
+            self.kernel_size[0],                      # kernel height
+            self.kernel_size[1]                       # kernel width
+        )
+        # breakpoint()
+
+        # Stack all biases in the same order
+        if self.bias is not None:
+            stacked_biases = []
+            for tile_idx in range(num_tiles):
+                for bitwidth in self.bitwidth_opts:
+                    stacked_biases.append(b_quantized[bitwidth])
+
+        # Concat all biases
+        # Shape: [num_tiles*num_bitwidths*out_channels]
+            stacked_biases = torch.cat(stacked_biases, dim=0)
+
+        output = F.conv2d(
+            stacked_activations,
+            stacked_weights,
+            bias=stacked_biases if self.bias is not None else None,
+            stride=self.stride,
+            padding=self.padding,
+            dilation=self.dilation,
+            groups=total_number_of_groups
+        )
+        
+        output_batch_size, out_channels, output_height, output_tile_width = output.shape
+
+        output = output.reshape(
+            batch_size,
+            num_tiles,
+            num_bitwidths,
+            self.out_channels // self.groups,
+            output_height,
+            output_tile_width
+        )
+
+        if self.tile_bitwidths.ndim == 2:
+            mask = self.tile_bitwidths.unsqueeze(0).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).to(inp.device)
+        elif self.tile_bitwidths.ndim == 3:
+            mask = self.tile_bitwidths.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).to(inp.device)
+
+        # Apply mask to zero out unwanted precision outputs
+        masked_output = output * mask
+        # Sum along the bitwidth dimension (dim=2)
+        summed_output = masked_output.sum(dim=2)
+
+        final_output = summed_output.permute(0, 2, 3, 1, 4).reshape(batch_size, self.out_channels, output_height, output_tile_width*num_tiles)
+
         return final_output
-    
-    def _create_tile_masks(self, height, width):
-        """
-        Creates binary masks for each tile
-        """
-        masks = []
-        if self.number_of_tiles == 1:
-            masks = [torch.ones((height, width))]
-        elif self.number_of_tiles == 2:
-            # Horizontal split
-            h_mid = height // 2
-            masks = [
-                torch.tensor([[1 if i < h_mid else 0 for i in range(height)] for _ in range(width)]),  # Top
-                torch.tensor([[1 if i >= h_mid else 0 for i in range(height)] for _ in range(width)])  # Bottom
-            ]
-        elif self.number_of_tiles == 4:
-            # Quadrants
-            h_mid = height // 2
-            w_mid = width // 2
-            masks = [
-                torch.tensor([[1 if i < h_mid and j < w_mid else 0 for j in range(width)] for i in range(height)]),  # TopLeft
-                torch.tensor([[1 if i < h_mid and j >= w_mid else 0 for j in range(width)] for i in range(height)]),  # TopRight
-                torch.tensor([[1 if i >= h_mid and j < w_mid else 0 for j in range(width)] for i in range(height)]),  # BottomLeft
-                torch.tensor([[1 if i >= h_mid and j >= w_mid else 0 for j in range(width)] for i in range(height)])   # BottomRight
-            ]
-        else:
-            # Horizontal strips
-            h_strip = height // self.number_of_tiles
-            for i in range(self.number_of_tiles):
-                start = i * h_strip
-                end = start + h_strip if i < self.number_of_tiles - 1 else height
-                mask = torch.tensor([[1 if start <= idx < end else 0 for idx in range(height)] for _ in range(width)])
-                masks.append(mask)
-        
-        # Add channel dimension and convert to proper shape [num_tiles, 1, H, W]
-        masks = torch.stack(masks).unsqueeze(1).float()
-        return masks
 
 
     def forward(self, inp, teacher_input = None):
@@ -943,10 +1472,11 @@ class QuanConv(nn.Module):
                 else:
                     return x_student
             elif self.tile_mode:
-                x_student = self.forward_tiled(inp)
+                x_student = self.forward_tiled_parallel(inp)
                 return x_student
         
         elif self.float_mode:
+            # print("Shape of input tensor: ", inp.shape) 
             x = nn.functional.conv2d(
                 inp,
                 self.weight,
@@ -956,6 +1486,7 @@ class QuanConv(nn.Module):
                 self.dilation,
                 self.groups,
             )
+            # print("Shape of output tensor: ", x.shape)
             return x
         else:
             raise ValueError(f"Invalid mode, self.float_mode is set to {self.float_mode} - should be either True or False")

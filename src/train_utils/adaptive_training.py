@@ -135,7 +135,9 @@ def single_epoch_train(
         # move to target device, FFT, and augmentations
         aug_freq_loc_inputs, labels = augmenter.forward("fixed", time_loc_inputs, labels)
         # forward pass
+        # breakpoint()
         logits, _ = classifier(aug_freq_loc_inputs)
+        breakpoint()
         loss = loss_func(logits, labels)
 
         # back propagation
@@ -192,7 +194,9 @@ def single_epoch_joint_quantization(
         accumulated_loss = 0.0
         # joint quantization
         for j in range(joint_quantization_batch_size):
-            quantized_conv_class.set_random_bitwidth_all()
+            if not quantization_config["tile_mode"]:
+                quantized_conv_class.set_random_bitwidth_all()
+
             # Accumulate Loss here
 
             logits_student, logits_teacher = classifier(aug_freq_loc_inputs)
@@ -274,7 +278,13 @@ def supervised_train(
     #Move classifier to device
     target_device = args.device
     classifier.to(target_device)
+    classifier.Conv.move_tile_importance_to_device(target_device)
     logging.info(f"=\tClassifier moved to {target_device} after setting up BatchNorm and Conv layers")
+
+    # if quantization_config['enable_grad_scaling']:
+    #     # Enable gradient scaling for quantization
+    #     for layer_name, layer in classifier.Conv.layer_registry.items():
+    #         layer.enable_grad_scaling()
     # breakpoint()
     # Define the optimizer and learning rate scheduler
     optimizer = define_optimizer(args, classifier.parameters())
