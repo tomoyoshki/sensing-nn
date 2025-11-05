@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.autograd
 import logging
-
+import random
 
 class StatTracker:
     def __init__(self):
@@ -1307,7 +1307,8 @@ class QuanConv(nn.Module):
                 layer.fixed_tiled_bitwidths = True
                 # print(f"Layer {layer_name} fixed bitwidths set to {layer.current_bitwidths_tile}")
             else:
-                raise ValueError("Tile mode is not enabled for this layer.")
+                # pick random bitwidth from layer.bitwidth_opts
+                layer.curr_bitwidth = random.choice(layer.bitwidth_opts)
 
     def forward_tiled_parallel(self, inp):
         batch_size, in_channels, height, width = inp.shape

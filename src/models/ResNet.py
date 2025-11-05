@@ -336,6 +336,7 @@ class ResNet(nn.Module):
             Forward Pass for testing or training without distillation, you can run either quantized or non-quantized forward pass
         """
         loc_mod_features = {}
+        breakpoint()
         # testing = not self.training
         # if testing or not self.quantization_config["teacher_student"]:
         for loc in self.locations:
