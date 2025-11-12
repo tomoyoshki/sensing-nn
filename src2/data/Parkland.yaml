@@ -9,6 +9,9 @@ vehicle_classification:
 
 repetition: 3
 
+batch_size: 128
+num_workers: 4
+use_balanced_sampling: True
 
 # Segments
 num_segments: 10
