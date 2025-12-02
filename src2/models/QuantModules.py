@@ -50,9 +50,10 @@ def quantize(x, nbit, alpha=None):
                 lower_bound = x < 0
                 upper_bound = x > alpha
                 x_range = ~(lower_bound | upper_bound)
-                grad_alpha = torch.sum(
-                    grad_output * torch.ge(x, alpha).float()
-                ).view(-1)
+                # Fix alpha gradient: alpha is tensor shape [len(bitwidths), 1, 1, 1]
+                # Correct STE for PACT: y = clamp(x, 0, α), so α gets gradient only where x > α
+                # Sum over batch, channels, height, width dimensions, keep bitwidth dimension
+                grad_alpha = (grad_output * (x > alpha).float()).sum(dim=(0, 1, 2, 3), keepdim=True)
                 return grad_output * x_range.float(), None, grad_alpha
     
     return DynamicQuantizer.apply(x, nbit, alpha)
@@ -96,11 +97,19 @@ class LSQ(nn.Module):
         self.step_size = nn.Parameter(torch.ones(shape))
         self.initialized = False
 
+    def update_bitwidth(self, bw):
+        """Update bitwidth dynamically"""
+        self.bitwidth = bw
+
     def forward(self, x):
         if not self.initialized:
-            self.step_size.data.copy_(
-                (2 * x.abs().mean() / (2 ** self.bitwidth - 1)).clamp(min=1e-6)
-            )
+            if self.is_activation:
+                # Activations: scale = E(|x|) / (2^(b-1) - 1)
+                scale = x.abs().mean() / (2 ** (self.bitwidth - 1) - 1)
+            else:
+                # Weights: scale = 2·E(|w|) / (2^(b-1) - 1)
+                scale = 2 * x.abs().mean() / (2 ** (self.bitwidth - 1) - 1)
+            self.step_size.data.copy_(scale.clamp(min=1e-6))
             self.initialized = True
         return LSQQuantizer.apply(x, self.step_size, self.bitwidth, self.is_activation)
 
@@ -111,17 +120,25 @@ class LSQPlus(LSQ):
         self.zero_point = zero_point
         self.zp = nn.Parameter(torch.zeros(shape), requires_grad=zero_point)
 
+    def update_bitwidth(self, bw):
+        """Update bitwidth dynamically"""
+        self.bitwidth = bw
+
     def forward(self, x):
         if not self.initialized:
-            self.step_size.data.copy_(
-                (2 * x.abs().mean() / (2 ** self.bitwidth - 1)).clamp(min=1e-6)
-            )
+            if self.is_activation:
+                # Activations: scale = E(|x|) / (2^(b-1) - 1)
+                scale = x.abs().mean() / (2 ** (self.bitwidth - 1) - 1)
+            else:
+                # Weights: scale = 2·E(|w|) / (2^(b-1) - 1)
+                scale = 2 * x.abs().mean() / (2 ** (self.bitwidth - 1) - 1)
+            self.step_size.data.copy_(scale.clamp(min=1e-6))
             self.initialized = True
-        x_q = x / self.step_size + self.zp
-        qn = 0 if self.is_activation else -(2 ** (self.bitwidth - 1))
-        qp = 2 ** self.bitwidth - 1 if self.is_activation else 2 ** (self.bitwidth - 1) - 1
-        x_clipped = torch.clamp(x_q.round(), qn, qp)
-        return (x_clipped - self.zp) * self.step_size
+        # LSQPlus with zero-point: compute quantized integer first, then clamp, then dequantize
+        qn = 0
+        qp = 2 ** self.bitwidth - 1
+        x_int = torch.clamp((x / self.step_size + self.zp).round(), qn, qp)
+        return (x_int - self.zp) * self.step_size
 
 
 class DoReFaW(nn.Module):
@@ -263,9 +280,11 @@ class QuanConv(nn.Module):
         if activation_quantization == "pact":
             self.alpha_setup_flag = True
             if self.switchable_clipping:
-                self.alpha = nn.Parameter(torch.ones(len(self.bitwidth_opts)), requires_grad=True)
+                # Alpha shape: [len(bitwidth_opts), 1, 1, 1]
+                self.alpha = nn.Parameter(torch.ones(len(self.bitwidth_opts), 1, 1, 1), requires_grad=True)
             else:
-                self.alpha = nn.Parameter(torch.ones(1), requires_grad=True)
+                # Single alpha with shape [1, 1, 1, 1]
+                self.alpha = nn.Parameter(torch.ones(1, 1, 1, 1), requires_grad=True)
             nn.init.constant_(self.alpha, 10.0)
         elif activation_quantization in ["lsq", "lsqplus"]:
             self.alpha_setup_flag = False  # LSQ doesn't use alpha the same way
@@ -311,13 +330,15 @@ class QuanConv(nn.Module):
         self.bitwidth_opts = bitwidth_opts
         self.alpha_setup_flag = True
         if switchable:
+            # Alpha shape: [len(bitwidth_opts), 1, 1, 1]
             self.alpha = nn.Parameter(
-                torch.ones(len(bitwidth_opts)), requires_grad=True
+                torch.ones(len(bitwidth_opts), 1, 1, 1), requires_grad=True
             )
             nn.init.constant_(self.alpha, 10.0)
         else:
+            # Single alpha with shape [1, 1, 1, 1]
             self.alpha = nn.Parameter(
-                torch.ones(1), requires_grad=True
+                torch.ones(1, 1, 1, 1), requires_grad=True
             )
             nn.init.constant_(self.alpha, 10.0)
     
@@ -335,7 +356,8 @@ class QuanConv(nn.Module):
         bitwidth = self.curr_bitwidth if bitwidth is None else bitwidth
         if self.switchable_clipping:
             if bitwidth in self.bitwidth_opts:
-                return self.alpha[self.bitwidth_opts.index(bitwidth)]
+                idx = self.bitwidth_opts.index(bitwidth)
+                return self.alpha[idx]
             else:
                 # If bitwidth not in options, return first alpha
                 return self.alpha[0]
@@ -355,6 +377,12 @@ class QuanConv(nn.Module):
                 f"bitwidth {bitwidth} not in bitwidth_options {self.bitwidth_opts}"
             )
         self.curr_bitwidth = bitwidth
+        
+        # Update LSQ/LSQPlus bitwidth dynamically (only for quantized modes)
+        if bitwidth != 32 and isinstance(self.quantize_w, (LSQ, LSQPlus)):
+            self.quantize_w.update_bitwidth(bitwidth)
+        if bitwidth != 32 and isinstance(self.quantize_a, (LSQ, LSQPlus)):
+            self.quantize_a.update_bitwidth(bitwidth)
     
     def get_bitwidth(self):
         """Get the current bitwidth"""
@@ -363,7 +391,8 @@ class QuanConv(nn.Module):
     def set_random_bitwidth(self):
         """Randomly select a bitwidth from available options"""
         assert self.bitwidth_opts is not None, "bitwidth options not set"
-        self.curr_bitwidth = self.bitwidth_opts[torch.randint(0, len(self.bitwidth_opts), (1,)).item()]
+        bw = self.bitwidth_opts[torch.randint(0, len(self.bitwidth_opts), (1,)).item()]
+        self.set_bitwidth(bw)
     
     def set_highest_bitwidth(self):
         """Set bitwidth to the maximum available option"""
@@ -423,7 +452,6 @@ class QuanConv(nn.Module):
         # Quantized mode
         # Quantize weights
         if isinstance(self.quantize_w, (LSQ, LSQPlus)):
-            self.quantize_w.bitwidth = self.curr_bitwidth
             w = self.quantize_w(self.weight)
         else:
             w = self.quantize_w(self.weight, self.curr_bitwidth)
@@ -432,18 +460,9 @@ class QuanConv(nn.Module):
         
         # Weight normalization (optional)
         if self.sat_weight_normalization:
-            weight_scale = (
-                1.0
-                / (
-                    self.out_channels
-                    * self.kernel_size[0]
-                    * self.kernel_size[1]
-                )
-                ** 0.5
-            )
-            weight_scale = weight_scale / (torch.std(w.detach()) + 1e-8)  # Add epsilon to prevent division by zero
-            w = w * weight_scale
-            bias = bias * weight_scale if bias is not None else None
+            std = w.detach().std()
+            if std > 0:
+                w = w / std
         
         # Quantize activations
         if isinstance(self.quantize_a, PACT):
@@ -452,7 +471,6 @@ class QuanConv(nn.Module):
         elif isinstance(self.quantize_a, DoReFaA):
             x = self.quantize_a(inp, self.curr_bitwidth)
         elif isinstance(self.quantize_a, (LSQ, LSQPlus)):
-            self.quantize_a.bitwidth = self.curr_bitwidth
             x = self.quantize_a(inp)
         else:
             raise ValueError(
@@ -472,3 +490,210 @@ class QuanConv(nn.Module):
         
         return output
 
+
+class DynamicQuanConv(nn.Module):
+    """
+    Clean dynamic quantization convolution layer.
+    Supports:
+      - DoReFa / LSQ / LSQPlus for weight quantization
+      - DoReFa / PACT / LSQ / LSQPlus for activation quantization
+      - Dynamic per-forward bitwidth selection
+      - Switchable PACT α per-bitwidth
+      - Optional weight normalization
+    """
+
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=1,
+        padding=0,
+        dilation=1,
+        groups=1,
+        bias=True,
+        weight_quantization="dorefa",     # "dorefa", "lsq", "lsqplus"
+        activation_quantization="pact",    # "dorefa", "pact", "lsq", "lsqplus"
+        bitwidth_options=[4, 6, 8],
+        switchable_clipping=True,
+        sat_weight_normalization=True,
+    ):
+        super(DynamicQuanConv, self).__init__()
+
+        # ------------------------------
+        # convolution parameters
+        # ------------------------------
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.groups = groups
+        self.dilation = dilation
+
+        # raw conv parameters
+        self.weight = nn.Parameter(
+            torch.Tensor(out_channels, in_channels // groups, *self.kernel_size)
+        )
+        nn.init.kaiming_uniform_(self.weight, mode="fan_out", nonlinearity="relu")
+
+        self.bias = nn.Parameter(torch.zeros(out_channels)) if bias else None
+
+        # ------------------------------
+        # quantization settings
+        # ------------------------------
+        self.weight_quantization = weight_quantization
+        self.activation_quantization = activation_quantization
+        self.bitwidth_opts = bitwidth_options
+        self.switchable_clipping = switchable_clipping
+        self.sat_weight_normalization = sat_weight_normalization
+
+        # dynamic bitwidth
+        self.curr_bitwidth = 32    # default full-precision
+
+        # quantizers
+        self.quantize_w = None
+        self.quantize_a = None
+
+        # PACT α
+        self.alpha_setup_flag = False
+        self.alpha = None
+
+        # setup quantizers
+        self._setup_quantizers()
+
+        # setup α for PACT
+        if self.activation_quantization == "pact":
+            self._setup_alpha(self.bitwidth_opts, self.switchable_clipping)
+
+    # ------------------------------------------------------------------
+    # Setup quantizers
+    # ------------------------------------------------------------------
+    def _setup_quantizers(self):
+
+        # weight quantizers
+        if self.weight_quantization == "dorefa":
+            self.quantize_w = DoReFaW()
+        elif self.weight_quantization == "lsq":
+            self.quantize_w = LSQ(is_activation=False, bitwidth=self.bitwidth_opts[0])
+        elif self.weight_quantization == "lsqplus":
+            self.quantize_w = LSQPlus(is_activation=False, bitwidth=self.bitwidth_opts[0])
+        else:
+            raise ValueError(f"Unsupported weight quantization: {self.weight_quantization}")
+
+        # activation quantizers
+        if self.activation_quantization == "dorefa":
+            self.quantize_a = DoReFaA()
+        elif self.activation_quantization == "pact":
+            self.quantize_a = PACT()
+        elif self.activation_quantization == "lsq":
+            self.quantize_a = LSQ(is_activation=True, bitwidth=self.bitwidth_opts[0])
+        elif self.activation_quantization == "lsqplus":
+            self.quantize_a = LSQPlus(is_activation=True, bitwidth=self.bitwidth_opts[0])
+        else:
+            raise ValueError(f"Unsupported activation quantization: {self.activation_quantization}")
+
+    # ------------------------------------------------------------------
+    # Setup PACT α
+    # ------------------------------------------------------------------
+    def _setup_alpha(self, bitwidth_opts, switchable):
+        self.alpha_setup_flag = True
+
+        if switchable:
+            # α per-bitwidth (shape = [num_bw, 1,1,1])
+            self.alpha = nn.Parameter(torch.ones(len(bitwidth_opts), 1, 1, 1), requires_grad=True)
+        else:
+            # single α (shape = [1,1,1,1])
+            self.alpha = nn.Parameter(torch.ones(1, 1, 1, 1), requires_grad=True)
+
+        nn.init.constant_(self.alpha, 10.0)
+
+    # ------------------------------------------------------------------
+    # PACT alpha getter
+    # ------------------------------------------------------------------
+    def get_alpha(self, bitwidth):
+
+        if not self.alpha_setup_flag:
+            raise RuntimeError("PACT alpha not initialized!")
+
+        if self.switchable_clipping:
+            if bitwidth in self.bitwidth_opts:
+                idx = self.bitwidth_opts.index(bitwidth)
+                return self.alpha[idx]
+            return self.alpha[0]  # fallback
+        else:
+            return self.alpha[0]
+
+    # ------------------------------------------------------------------
+    # Bitwidth control
+    # ------------------------------------------------------------------
+    def set_bitwidth(self, bitwidth):
+        assert 2 <= bitwidth <= 32
+        if bitwidth != 32:
+            assert bitwidth in self.bitwidth_opts
+
+        self.curr_bitwidth = bitwidth
+
+        # update LSQ/LSQPlus quantizers (only for quantized modes)
+        if bitwidth != 32:
+            if isinstance(self.quantize_w, (LSQ, LSQPlus)):
+                self.quantize_w.update_bitwidth(bitwidth)
+
+            if isinstance(self.quantize_a, (LSQ, LSQPlus)):
+                self.quantize_a.update_bitwidth(bitwidth)
+
+    def set_random_bitwidth(self):
+        bw = self.bitwidth_opts[torch.randint(0, len(self.bitwidth_opts), (1,)).item()]
+        self.set_bitwidth(bw)
+
+    # ------------------------------------------------------------------
+    # Forward pass
+    # ------------------------------------------------------------------
+    def forward(self, inp, bitwidth=None):
+
+        # dynamic bitwidth override
+        if bitwidth is not None:
+            self.set_bitwidth(bitwidth)
+
+        bw = self.curr_bitwidth
+
+        # -----------------------------------------
+        # FP32 mode
+        # -----------------------------------------
+        if bw == 32:
+            return nn.functional.conv2d(
+                inp, self.weight, self.bias, self.stride,
+                self.padding, self.dilation, self.groups
+            )
+
+        # -----------------------------------------
+        # Quantized mode
+        # -----------------------------------------
+
+        # ---- quantize weights
+        if isinstance(self.quantize_w, (LSQ, LSQPlus)):
+            w = self.quantize_w(self.weight)
+        else:
+            # DoReFa: needs (tensor, nbit)
+            w = self.quantize_w(self.weight, bw)
+
+        # ---- optional weight normalization
+        if self.sat_weight_normalization:
+            std = w.detach().std()
+            if std > 0:
+                w = w / std
+
+        # ---- quantize activations
+        if isinstance(self.quantize_a, PACT):
+            alpha = self.get_alpha(bw)
+            x = self.quantize_a(inp, bw, alpha)
+        elif isinstance(self.quantize_a, DoReFaA):
+            x = self.quantize_a(inp, bw)
+        else:
+            x = self.quantize_a(inp)
+
+        # ---- conv
+        return nn.functional.conv2d(
+            x, w, self.bias, self.stride,
+            self.padding, self.dilation, self.groups
+        )
