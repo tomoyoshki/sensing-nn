@@ -58,6 +58,14 @@ def parse_args():
         help='GPU to use'
     )
     
+    parser.add_argument(
+        '--quantization_method',
+        type=str,
+        default='dorefa',
+        required=False,
+        help='Quantization method to use (e.g., dorefa, any_precision). Only used if quantization is enabled in config.'
+    )
+    
     return parser.parse_args()
 
 
@@ -110,5 +118,6 @@ def get_config():
     config['device'] = f'cuda:{args.gpu}'
     config['model_variant'] = args.model_variant
     config['loss_name'] = args.loss
+    config['quantization_method'] = args.quantization_method
     return config
 

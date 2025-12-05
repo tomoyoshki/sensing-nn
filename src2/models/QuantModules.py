@@ -372,7 +372,7 @@ class QuanConv(nn.Module):
             bitwidth: Target bitwidth (must be in bitwidth_opts or 32 for full precision)
         """
         assert bitwidth <= 32 and bitwidth > 1, "bitwidth should be between 2 and 32"
-        if bitwidth != 32:
+        if bitwidth != 32 and self.bitwidth_opts is not None:
             assert bitwidth in self.bitwidth_opts, (
                 f"bitwidth {bitwidth} not in bitwidth_options {self.bitwidth_opts}"
             )

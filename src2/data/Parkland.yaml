@@ -57,37 +57,39 @@ loc_mod_spectrum_len:
 # For sequence-based contrastive learning 
 seq_len: 4
 
+
 quantization:
-        bn_type: "float" # switch, float, transitional are valid options
-        enable: True # False will run everything in float
-        bitwidth_options: [8,16,32]
-        joint_quantization_batch_size: 1
-        # joint_quantization: False
-        training_type: "joint_quantization" # joint_quantization, vanilla
-        activation_quantization: "pact"
-        weight_quantization: "dorefa"
-        switchable_clipping: True
-        sat_weight_normalization: False
-        test_and_val_average_bitwidths : [8,16,32]
-        test_and_val_total_schemes : 4
-        delta : 1
-        teacher_student: False
-        teacher_bn_type: "float" # other option is switchable
-        teacher_selection_strategy: "activation_min" # other options weight_min, activation_max, weight_max, activation_min
-        kurtosis_regularization: False
-        kurtosis_target: 1.8    
-        kurtosis_weight: 0.1
-        coherence_weight: 0.3
-        energy_weight: 0.5
-        loss_function_for_activation: ["ce_output_activation"] # other options that can be added to list kl_divergence_st_output_activaation, kl_all_hidden_activations
-        tile_mode: False
-        scale_importance_vector: False
-        number_of_tiles: 4
-        importance_vector_scaling_function: "none" # energy, none
-        testing_type: "model_self_selection_per_test" # model_self_selection_per_test, mean_mixed_precision
-        enable_grad_scaling: True
-        grad_scaling_function: "energy"
-        # training_type: "vanilla"
+        enable: True
+        Conv: "QuanConv"
+        random_bitwidhts:
+                num_bitwidths: 3
+                bitwidth_options: [8,16,32]
+                name: "random_bitwidths"
+                number_of_configs: 4
+        joint_quantization:
+                joint_quantization_batch_size: 2
+                every_epoch_new_bitwidth_config: True
+        vanilla_single_precision_training:
+                bitwidth_options: [8]
+        any_precision:
+                joint_quantization_batch_size: 2
+                bitwidth_options: [8,16,32]
+                weight_quantization: "dorefa"
+                activation_quantization: "dorefa"
+                validation_function: "random_bitwidths"
+                training_method: "joint_quantization"
+                switchable_clipping: True
+                sat_weight_normalization: False
+        dorefa:
+                bitwidth_options: [8]
+                bitwidht_allocation: "random"
+                weight_quantization: "dorefa"
+                activation_quantization: "dorefa"
+                validation_function: "simple_validation"
+                training_method: "vanilla_single_precision_training"
+                switchable_clipping: True
+                sat_weight_normalization: False
+
                 
 ResNet:
         # Architecture settings

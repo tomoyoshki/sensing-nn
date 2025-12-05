@@ -194,6 +194,41 @@ def main():
     experiment_dir, tensorboard_dir = setup_experiment_dir(config)
     
     # ========================================================================
+    # 5b. Setup File Logging (as early as possible after experiment dir)
+    # ========================================================================
+    from pathlib import Path
+    logs_dir = Path(experiment_dir) / "logs"
+    
+    # Determine log file name based on whether quantization is enabled
+    quantization_enabled = config.get("quantization", {}).get("enable", False)
+    log_filename = "train_quantization.log" if quantization_enabled else "train.log"
+    log_file = logs_dir / log_filename
+    
+    # Add file handler to root logger so all logging goes to file
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logging.getLogger().addHandler(file_handler)
+    
+    logging.info(f"Logging to file: {log_file}")
+    
+    # Now log the command line (after file logging is set up)
+    import sys
+    command_line = " ".join(sys.argv)
+    logging.info("")
+    logging.info("Command line used to run this script:")
+    logging.info(f"  {command_line}")
+    
+    # Display TensorBoard command (after file logging is set up)
+    logging.info("")
+    logging.info("=" * 80)
+    logging.info("TENSORBOARD")
+    logging.info("=" * 80)
+    logging.info("To monitor training in real-time, run this command in a separate terminal:")
+    logging.info(f"  tensorboard --logdir={tensorboard_dir}")
+    logging.info("=" * 80)
+    
+    # ========================================================================
     # 6. Setup Training Components
     # ========================================================================
     logging.info("\nSetting up training components...")
@@ -214,20 +249,50 @@ def main():
     logging.info("STARTING TRAINING")
     logging.info("=" * 80 + "\n")
     
+    # Check if quantization is enabled
+    quantization_enabled = config.get("quantization", {}).get("enable", False)
+    
     try:
-        model, train_history = train(
-            model=model,
-            train_loader=train_loader,
-            val_loader=val_loader,
-            config=config,
-            experiment_dir=experiment_dir,
-            loss_fn=loss_fn,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            val_fn=None,  # Use default validation
-            augmenter=augmenter,
-            apply_augmentation_fn=apply_augmentation
-        )
+        if quantization_enabled:
+            # Use quantization-aware training
+            from train_test.quantization_train_test_utils import train_with_quantization
+            
+            quantization_method = config.get("quantization_method")
+            if quantization_method not in config.get("quantization", {}):
+                raise ValueError(f"Quantization method '{quantization_method}' not found in config. "
+                               f"Available methods: {list(config.get('quantization', {}).keys())}")
+            
+            logging.info(f"Using quantization-aware training with method: {quantization_method}")
+            
+            model, train_history = train_with_quantization(
+                model=model,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                config=config,
+                experiment_dir=experiment_dir,
+                loss_fn=loss_fn,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                augmenter=augmenter,
+                apply_augmentation_fn=apply_augmentation
+            )
+        else:
+            # Use standard training
+            logging.info("Using standard training (quantization disabled)")
+            
+            model, train_history = train(
+                model=model,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                config=config,
+                experiment_dir=experiment_dir,
+                loss_fn=loss_fn,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                val_fn=None,  # Use default validation
+                augmenter=augmenter,
+                apply_augmentation_fn=apply_augmentation
+            )
         
         logging.info("\n" + "=" * 80)
         logging.info("TRAINING COMPLETED SUCCESSFULLY!")
@@ -242,6 +307,11 @@ def main():
         logging.info("\n" + "=" * 80)
         logging.warning("Training interrupted by user")
         logging.info("=" * 80)
+        logging.info(f"Experiment directory: {experiment_dir}")
+        logging.info(f"TensorBoard logs: {tensorboard_dir}")
+        logging.info("\nTo view partial training logs in TensorBoard, run:")
+        logging.info(f"  tensorboard --logdir={tensorboard_dir}")
+        logging.info("=" * 80)
         sys.exit(0)
     
     except Exception as e:
@@ -249,6 +319,9 @@ def main():
         logging.error("ERROR DURING TRAINING")
         logging.error("=" * 80)
         logging.error(f"Error: {e}")
+        logging.error(f"\nCommand that failed:")
+        command_line = " ".join(sys.argv)
+        logging.error(f"  {command_line}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

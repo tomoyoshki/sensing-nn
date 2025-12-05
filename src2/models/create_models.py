@@ -45,6 +45,26 @@ def create_model(config):
     logging.info(f"  FC dimension: {fc_dim}")
     logging.info(f"  Dropout ratio: {dropout_ratio}")
     
+    # Check if quantization is enabled
+    Conv = None
+    BatchNorm = None
+    quantization_enabled = config.get("quantization", {}).get("enable", False)
+    
+    if quantization_enabled:
+        # Import quantization modules
+        conv_class_name = config["quantization"].get("Conv", "QuanConv")
+        quantization_method = config.get("quantization_method", "dorefa")
+        
+        logging.info(f"Quantization enabled:")
+        logging.info(f"  Conv class: {conv_class_name}")
+        logging.info(f"  Quantization method: {quantization_method}")
+        
+        # Import QuanConv
+        from models.QuantModules import QuanConv
+        Conv = QuanConv
+    else:
+        logging.info("Quantization disabled - using standard Conv2d layers")
+    
     # Create model
     model = build_multimodal_resnet(
         model_name=model_variant if model_variant else model_name,
@@ -54,7 +74,9 @@ def create_model(config):
         num_classes=num_classes,
         fc_dim=fc_dim,
         dropout_ratio=dropout_ratio,
-        use_standard_first_layer=True
+        use_standard_first_layer=True,
+        Conv=Conv,
+        BatchNorm=BatchNorm
     )
     
     # Count parameters
