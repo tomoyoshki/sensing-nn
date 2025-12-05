@@ -136,3 +136,13 @@ weights*
 .vscode/
 scripts/*.csv
 *.sh
+
+# PyTorch model files
+*.pth
+*.pt
+*.ckpt
+
+# Experiment outputs
+src2/experiments/**/models/
+src2/experiments/**/tensorboard/
+src2/experiments/**/logs/*.png

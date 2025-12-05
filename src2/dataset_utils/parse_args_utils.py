@@ -20,6 +20,21 @@ def parse_args():
         required=True,
         help='Model name (e.g., ResNet, DeepSense, TransformerV4)'
     )
+
+    parser.add_argument(
+        '--model_variant',
+        type=str,
+        required=False,
+        help='Model variant (e.g., resnet18, resnet34, resnet50, resnet101, resnet152)'
+    )
+
+    parser.add_argument(
+        '--loss',
+        type=str,
+        required=False,
+        default='cross_entropy',
+        help='Loss function (e.g., cross_entropy)'
+    )
     
     parser.add_argument(
         '--dataset',
@@ -93,6 +108,7 @@ def get_config():
     config['model'] = args.model
     config['yaml_path'] = args.yaml_path
     config['device'] = f'cuda:{args.gpu}'
-    
+    config['model_variant'] = args.model_variant
+    config['loss_name'] = args.loss
     return config
 

@@ -7,6 +7,17 @@ vehicle_classification:
         val_index_file: /home/tkimura4/data/datasets/MOD/Parkland/time_data_partition/val_index.txt  
         test_index_file: /home/tkimura4/data/datasets/MOD/Parkland/time_data_partition/test_index.txt 
 
+base_experiment_dir: /home/misra8/sensing-nn/src2/experiments
+
+cross_entropy:
+        name: "cross_entropy"
+
+label_smoothing_ce:
+        name: "label_smoothing_ce"
+        label_smoothing: 0.1
+
+loss_name: "cross_entropy"
+
 repetition: 3
 
 batch_size: 128
@@ -80,6 +91,7 @@ quantization:
                 
 ResNet:
         # Architecture settings
+        model_name: "resnet18"  # Options: resnet18, resnet34, resnet50, resnet101, resnet152
         block_type: "basic"  # "basic" for ResNet18/34, "bottleneck" for ResNet50+
         layers: [2, 2, 2, 2]  # ResNet18
         # layers: [3, 4, 6, 3]  # ResNet34
