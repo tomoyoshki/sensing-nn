@@ -142,7 +142,7 @@ scripts/*.csv
 *.pt
 *.ckpt
 
-# Experiment outputs
-src2/experiments/**/models/
-src2/experiments/**/tensorboard/
-src2/experiments/**/logs/*.png
+# Experiment outputs - ignore everything under experiments directory
+src2/experiments/*
+# But track the directory itself (if you want to keep the empty directory in git)
+!src2/experiments/.gitkeep

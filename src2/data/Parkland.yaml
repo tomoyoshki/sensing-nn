@@ -24,6 +24,17 @@ batch_size: 128
 num_workers: 4
 use_balanced_sampling: True
 
+# Normalization
+# Options: "standard", "minmax", "maxabs", "none"
+# for DynamicQuantization only use "minmax" because it supports unsigned quantization, 
+# so negative values are not supported
+normalization:
+        # method: "standard"  # Use StandardScaler (mean=0, std=1)
+        method: "minmax"  # Use MinMaxScaler (scale to range)
+        minmax_range: [0, 1]  # Only used when method is "minmax"
+        # method: "maxabs"  # Use MaxAbsScaler (scale to [-1, 1] by max absolute value)
+        # method: "none"  # No normalization
+
 # Segments
 num_segments: 10
 
@@ -61,11 +72,11 @@ seq_len: 4
 quantization:
         enable: True
         Conv: "QuanConv"
-        random_bitwidhts:
-                num_bitwidths: 3
-                bitwidth_options: [8,16,32]
+        random_bitwidths:
+                bitwidth_options: [4,8]
                 name: "random_bitwidths"
-                number_of_configs: 4
+                number_of_configs: 8
+                bin_tolerance: 0.5
         joint_quantization:
                 joint_quantization_batch_size: 2
                 every_epoch_new_bitwidth_config: True
@@ -81,14 +92,14 @@ quantization:
                 switchable_clipping: True
                 sat_weight_normalization: False
         dorefa:
-                bitwidth_options: [8]
+                bitwidth_options: [4,8]
                 bitwidht_allocation: "random"
                 weight_quantization: "dorefa"
                 activation_quantization: "dorefa"
-                validation_function: "simple_validation"
-                training_method: "vanilla_single_precision_training"
+                validation_function: "random_bitwidths" # simple_validation, random_bitwidths
+                training_method: "joint_quantization" # joint_quantization, vanilla_single_precision_training
                 switchable_clipping: True
-                sat_weight_normalization: False
+                sat_weight_normalization: True
 
                 
 ResNet:

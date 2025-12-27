@@ -145,7 +145,7 @@ The infrastructure includes a built-in `validate()` function that handles standa
 from train_test.train_test_utils import validate
 
 # Use the default validation function directly
-val_results = validate(model, val_loader, loss_fn, device, config)
+val_results = validate(model, val_loader, loss_fn, device)
 print(f"Validation accuracy: {val_results['accuracy']:.4f}")
 ```
 
@@ -154,7 +154,7 @@ print(f"Validation accuracy: {val_results['accuracy']:.4f}")
 You can provide custom validation functions that follow the same signature:
 
 ```python
-def my_custom_validation(model, val_loader, loss_fn, device, config):
+def my_custom_validation(model, val_loader, loss_fn, device):
     """
     Custom validation function.
     

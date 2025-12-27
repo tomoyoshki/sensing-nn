@@ -12,6 +12,7 @@ This script orchestrates the training process:
 
 import sys
 import logging
+import yaml
 import torch
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from data_augmenter import create_augmenter, apply_augmentation
 from models.create_models import create_model
 from train_test.loss import get_loss_function
 from train_test.train_test_utils import setup_experiment_dir, train
+from train_test.normalize import setup_normalization
 
 # Configure logging
 logging.basicConfig(
@@ -170,6 +172,15 @@ def main():
     logging.info("  Test batches: {}".format(len(test_loader)))
     
     # ========================================================================
+    # 2b. Setup Normalization
+    # ========================================================================
+    logging.info("\nSetting up normalization...")
+    train_loader, val_loader, test_loader = setup_normalization(
+        train_loader, val_loader, test_loader, config
+    )
+    logging.info("Normalization setup complete")
+    
+    # ========================================================================
     # 3. Create Augmenter
     # ========================================================================
     logging.info("\nCreating augmenter...")
@@ -243,14 +254,59 @@ def main():
     scheduler = setup_scheduler(optimizer, config)
     
     # ========================================================================
-    # 7. Train Model
+    # 7. Log Hyperparameters to TensorBoard
+    # ========================================================================
+    from torch.utils.tensorboard import SummaryWriter
+    writer = SummaryWriter(str(tensorboard_dir))
+    
+    # Prepare hyperparameters for logging
+    hparams = {
+        'model': config.get('model', 'Unknown'),
+        'model_variant': config.get('model_variant', 'None'),
+        'dataset': Path(config.get('yaml_path', 'Unknown')).stem,
+        'batch_size': config.get('batch_size', 'Unknown'),
+        'learning_rate': optimizer.param_groups[0]['lr'],
+        'weight_decay': config.get(model_name, {}).get('optimizer', {}).get('weight_decay', 0.0),
+        'optimizer': config.get(model_name, {}).get('optimizer', {}).get('name', 'Unknown'),
+        'scheduler': config.get(model_name, {}).get('lr_scheduler', {}).get('name', 'Unknown'),
+        'loss_function': config.get('loss_name', 'cross_entropy'),
+        'num_epochs': config.get(model_name, {}).get('lr_scheduler', {}).get('train_epochs', 50),
+    }
+    
+    # Add quantization info if enabled
+    quantization_enabled = config.get("quantization", {}).get("enable", False)
+    if quantization_enabled:
+        quantization_method = config.get('quantization_method', 'Unknown')
+        quant_config = config.get('quantization', {}).get(quantization_method, {})
+        
+        hparams['quantization_enabled'] = 'True'
+        hparams['quantization_method'] = quantization_method
+        
+        # Get bitwidth options from the quantization method config
+        bitwidth_options = quant_config.get('bitwidth_options', [])
+        hparams['bitwidth_options'] = str(bitwidth_options)
+        
+        # Add other quantization details
+        hparams['training_method'] = quant_config.get('training_method', 'Unknown')
+        hparams['validation_function'] = quant_config.get('validation_function', 'Unknown')
+        hparams['weight_quantization'] = quant_config.get('weight_quantization', 'Unknown')
+        hparams['activation_quantization'] = quant_config.get('activation_quantization', 'Unknown')
+    else:
+        hparams['quantization_enabled'] = 'False'
+        hparams['quantization_method'] = 'None'
+        hparams['bitwidth_options'] = 'N/A'
+    
+    # Log hyperparameters to TensorBoard (will be updated with metrics after training)
+    logging.info("\nLogging hyperparameters to TensorBoard...")
+    for key, value in hparams.items():
+        logging.info(f"  {key}: {value}")
+    
+    # ========================================================================
+    # 8. Train Model
     # ========================================================================
     logging.info("\n" + "=" * 80)
     logging.info("STARTING TRAINING")
     logging.info("=" * 80 + "\n")
-    
-    # Check if quantization is enabled
-    quantization_enabled = config.get("quantization", {}).get("enable", False)
     
     try:
         if quantization_enabled:
@@ -297,7 +353,85 @@ def main():
         logging.info("\n" + "=" * 80)
         logging.info("TRAINING COMPLETED SUCCESSFULLY!")
         logging.info("=" * 80)
-        logging.info(f"Experiment directory: {experiment_dir}")
+        
+        # ====================================================================
+        # Log final metrics to TensorBoard hyperparameters
+        # ====================================================================
+        final_train_acc = train_history['train_acc'][-1] if train_history['train_acc'] else 0.0
+        final_val_acc = train_history['val_acc'][-1] if train_history['val_acc'] else 0.0
+        best_val_acc = max(train_history['val_acc']) if train_history['val_acc'] else 0.0
+        
+        # Update hparams with final metrics
+        metrics = {
+            'hparam/final_train_acc': final_train_acc,
+            'hparam/final_val_acc': final_val_acc,
+            'hparam/best_val_acc': best_val_acc,
+        }
+        
+        writer.add_hparams(hparams, metrics)
+        writer.close()
+        
+        logging.info(f"\nFinal Training Accuracy: {final_train_acc:.4f}")
+        logging.info(f"Final Validation Accuracy: {final_val_acc:.4f}")
+        logging.info(f"Best Validation Accuracy: {best_val_acc:.4f}")
+        
+        # ====================================================================
+        # Save Experiment Summary
+        # ====================================================================
+        summary_file = Path(experiment_dir) / "experiment_summary.yaml"
+        summary = {
+            'experiment_id': Path(experiment_dir).name,
+            'model': hparams['model'],
+            'model_variant': hparams['model_variant'],
+            'dataset': hparams['dataset'],
+            'quantization_enabled': hparams['quantization_enabled'],
+            'quantization_method': hparams['quantization_method'],
+            'bitwidth_options': hparams['bitwidth_options'],
+            'training_method': hparams.get('training_method', 'N/A'),
+            'validation_function': hparams.get('validation_function', 'N/A'),
+            'num_epochs': hparams['num_epochs'],
+            'batch_size': hparams['batch_size'],
+            'learning_rate': hparams['learning_rate'],
+            'optimizer': hparams['optimizer'],
+            'scheduler': hparams['scheduler'],
+            'loss_function': hparams['loss_function'],
+            'final_train_accuracy': float(final_train_acc),
+            'final_val_accuracy': float(final_val_acc),
+            'best_val_accuracy': float(best_val_acc),
+            'training_status': 'completed',
+        }
+        
+        # Add bitwidth bin statistics if using random_bitwidths validation
+        if (quantization_enabled and 
+            hparams.get('validation_function') == 'random_bitwidths' and
+            'bitwidth_bin_stats' in train_history and 
+            train_history['bitwidth_bin_stats']):
+            # Get the final epoch's bin stats
+            final_bin_stats = train_history['bitwidth_bin_stats'][-1]
+            summary['bitwidth_bin_stats'] = final_bin_stats
+            
+            # Calculate and add average validation std
+            if 'avg_val_std_history' in train_history and train_history['avg_val_std_history']:
+                summary['avg_val_std'] = float(train_history['avg_val_std_history'][-1])
+            else:
+                # Fallback: calculate from bin stats
+                if final_bin_stats:
+                    avg_val_std = sum(b['std_acc'] for b in final_bin_stats) / len(final_bin_stats)
+                    summary['avg_val_std'] = float(avg_val_std)
+                else:
+                    summary['avg_val_std'] = 0.0
+            
+            logging.info(f"Bitwidth bin statistics added to summary ({len(final_bin_stats)} bins)")
+            logging.info(f"Average validation std: {summary['avg_val_std']:.4f}")
+        else:
+            summary['avg_val_std'] = 'N/A'
+        
+        with open(summary_file, 'w') as f:
+            yaml.dump(summary, f, default_flow_style=False)
+        
+        logging.info(f"\nExperiment summary saved to: {summary_file}")
+        
+        logging.info(f"\nExperiment directory: {experiment_dir}")
         logging.info(f"TensorBoard logs: {tensorboard_dir}")
         logging.info("\nTo view training logs in TensorBoard, run:")
         logging.info(f"  tensorboard --logdir={tensorboard_dir}")
@@ -307,6 +441,54 @@ def main():
         logging.info("\n" + "=" * 80)
         logging.warning("Training interrupted by user")
         logging.info("=" * 80)
+        
+        # Save partial summary
+        summary_file = Path(experiment_dir) / "experiment_summary.yaml"
+        final_train_acc = train_history['train_acc'][-1] if train_history.get('train_acc') else 0.0
+        final_val_acc = train_history['val_acc'][-1] if train_history.get('val_acc') else 0.0
+        best_val_acc = max(train_history['val_acc']) if train_history.get('val_acc') else 0.0
+        
+        summary = {
+            'experiment_id': Path(experiment_dir).name,
+            'model': hparams['model'],
+            'model_variant': hparams['model_variant'],
+            'dataset': hparams['dataset'],
+            'quantization_enabled': hparams['quantization_enabled'],
+            'quantization_method': hparams['quantization_method'],
+            'bitwidth_options': hparams['bitwidth_options'],
+            'training_method': hparams.get('training_method', 'N/A'),
+            'validation_function': hparams.get('validation_function', 'N/A'),
+            'num_epochs': hparams['num_epochs'],
+            'batch_size': hparams['batch_size'],
+            'learning_rate': hparams['learning_rate'],
+            'optimizer': hparams['optimizer'],
+            'scheduler': hparams['scheduler'],
+            'loss_function': hparams['loss_function'],
+            'final_train_accuracy': float(final_train_acc),
+            'final_val_accuracy': float(final_val_acc),
+            'best_val_accuracy': float(best_val_acc),
+            'training_status': 'interrupted',
+        }
+        
+        # Add bitwidth bin statistics if available
+        if (quantization_enabled and 
+            hparams.get('validation_function') == 'random_bitwidths' and
+            train_history.get('bitwidth_bin_stats') and 
+            train_history['bitwidth_bin_stats']):
+            final_bin_stats = train_history['bitwidth_bin_stats'][-1]
+            summary['bitwidth_bin_stats'] = final_bin_stats
+            if train_history.get('avg_val_std_history'):
+                summary['avg_val_std'] = float(train_history['avg_val_std_history'][-1])
+            else:
+                summary['avg_val_std'] = 'N/A'
+        else:
+            summary['avg_val_std'] = 'N/A'
+        
+        with open(summary_file, 'w') as f:
+            yaml.dump(summary, f, default_flow_style=False)
+        
+        writer.close()
+        
         logging.info(f"Experiment directory: {experiment_dir}")
         logging.info(f"TensorBoard logs: {tensorboard_dir}")
         logging.info("\nTo view partial training logs in TensorBoard, run:")
@@ -322,6 +504,38 @@ def main():
         logging.error(f"\nCommand that failed:")
         command_line = " ".join(sys.argv)
         logging.error(f"  {command_line}")
+        
+        # Save error summary
+        summary_file = Path(experiment_dir) / "experiment_summary.yaml"
+        summary = {
+            'experiment_id': Path(experiment_dir).name,
+            'model': hparams['model'],
+            'model_variant': hparams['model_variant'],
+            'dataset': hparams['dataset'],
+            'quantization_enabled': hparams['quantization_enabled'],
+            'quantization_method': hparams['quantization_method'],
+            'bitwidth_options': hparams['bitwidth_options'],
+            'training_method': hparams.get('training_method', 'N/A'),
+            'validation_function': hparams.get('validation_function', 'N/A'),
+            'num_epochs': hparams['num_epochs'],
+            'batch_size': hparams['batch_size'],
+            'learning_rate': hparams['learning_rate'],
+            'optimizer': hparams['optimizer'],
+            'scheduler': hparams['scheduler'],
+            'loss_function': hparams['loss_function'],
+            'final_train_accuracy': 0.0,
+            'final_val_accuracy': 0.0,
+            'best_val_accuracy': 0.0,
+            'training_status': 'failed',
+            'error_message': str(e),
+            'avg_val_std': 'N/A',
+        }
+        
+        with open(summary_file, 'w') as f:
+            yaml.dump(summary, f, default_flow_style=False)
+        
+        writer.close()
+        
         import traceback
         traceback.print_exc()
         sys.exit(1)

@@ -184,7 +184,7 @@ def plot_confusion_matrix(cm, class_names=None, normalize=False):
 # Validation Function
 # ============================================================================
 
-def validate(model, val_loader, loss_fn, device, config, augmenter=None, apply_augmentation_fn=None):
+def validate(model, val_loader, loss_fn, device, augmenter=None, apply_augmentation_fn=None):
     """
     Default validation function.
     
@@ -193,7 +193,6 @@ def validate(model, val_loader, loss_fn, device, config, augmenter=None, apply_a
         val_loader: Validation data loader
         loss_fn: Loss function
         device: Device to run validation on
-        config: Configuration dictionary
         augmenter: Data augmenter object (optional)
         apply_augmentation_fn: Function to apply augmentation (optional)
     
@@ -429,7 +428,7 @@ def train(model, train_loader, val_loader, config, experiment_dir,
             val_results = val_fn(model, val_loader, loss_fn, device, config)
         else:
             # Use default validation function
-            val_results = validate(model, val_loader, loss_fn, device, config, augmenter, apply_augmentation_fn)
+            val_results = validate(model, val_loader, loss_fn, device, augmenter, apply_augmentation_fn)
         
         epoch_val_loss = val_results['loss']
         epoch_val_acc = val_results['accuracy']

@@ -59,9 +59,10 @@ def create_model(config):
         logging.info(f"  Conv class: {conv_class_name}")
         logging.info(f"  Quantization method: {quantization_method}")
         
-        # Import QuanConv
-        from models.QuantModules import QuanConv
-        Conv = QuanConv
+        # Dynamically import the Conv class specified in config
+        import models.QuantModules as QuantModules
+        Conv = getattr(QuantModules, conv_class_name)
+        logging.info(f"  Successfully loaded Conv class: {Conv.__name__}")
     else:
         logging.info("Quantization disabled - using standard Conv2d layers")
     
