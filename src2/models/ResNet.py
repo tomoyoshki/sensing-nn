@@ -248,6 +248,10 @@ class ResNet(nn.Module):
         
         # Initialize weights
         self._initialize_weights()
+
+
+    def get_conv_class(self):
+        return self.Conv
     
     def _make_layer(self, block, out_channels, num_blocks, stride):
         """
@@ -385,6 +389,8 @@ class MultiModalResNet(nn.Module):
         self.multi_location_flag = len(location_names) > 1
         self.fc_dim = fc_dim
         self.num_classes = num_classes
+        self.Conv = Conv if Conv is not None else nn.Conv2d
+        self.BatchNorm = BatchNorm if BatchNorm is not None else nn.BatchNorm2d
         
         # Determine block type and feature dimension
         model_configs = {
@@ -437,6 +443,9 @@ class MultiModalResNet(nn.Module):
         )
         
         self.class_layer = nn.Linear(fc_dim, num_classes)
+    
+    def get_conv_class(self):
+        return self.Conv
     
     def forward(self, freq_x, return_embeddings=False):
         """

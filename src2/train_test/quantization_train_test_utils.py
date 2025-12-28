@@ -32,14 +32,7 @@ def get_conv_class_from_model(model):
     Returns:
         Conv class type, or None if no quantized Conv layers found
     """
-    from models.QuantModules import QuanConv
-    
-    # Look for the first quantized Conv layer
-    for module in model.modules():
-        if isinstance(module, QuanConv):
-            return type(module)
-    
-    return None
+    return model.get_conv_class()
 
 
 def get_average_bitwidth(model):
@@ -88,14 +81,13 @@ def set_random_bitwidth_all_layers(model, bitwidth_options):
             module.set_bitwidth(bw)
 
 
-def setup_quantization_layers(model, config, quant_config):
+def setup_quantization_layers(model, quant_config):
     """
     Setup quantization functions for all quantized Conv layers in the model.
     
     Args:
         model: PyTorch model containing quantized Conv layers
-        config: Full configuration dictionary
-        quant_config: Nested quantization config (e.g., config['quantization']['dorefa'])
+        quant_config: Quantization configuration dictionary
     
     Returns:
         model: Model with quantization layers configured
@@ -105,17 +97,10 @@ def setup_quantization_layers(model, config, quant_config):
         logging.warning("No quantized Conv layers found in model")
         return model
     
-    # Create args object that QuanConv.setup_quantize_funcs expects
-    class Args:
-        def __init__(self, dataset_config):
-            self.dataset_config = dataset_config
-    
-    args = Args(dataset_config={"quantization": quant_config})
-    
     # Setup quantization for all quantized Conv layers
     for module in model.modules():
         if isinstance(module, conv_class):
-            module.setup_quantize_funcs(args)
+            module.setup_quantize_funcs(quant_config)
     
     logging.info("Quantization layers configured successfully")
     logging.info(f"  Weight quantization: {quant_config.get('weight_quantization', 'N/A')}")
@@ -658,7 +643,7 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
     quant_config = config['quantization'][quantization_method]
     
     # Setup quantization layers
-    model = setup_quantization_layers(model, config, quant_config)
+    model = setup_quantization_layers(model, quant_config)
     model = model.to(device)
     
     # Extract training and validation methods
