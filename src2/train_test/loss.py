@@ -29,7 +29,7 @@ def filter_kwargs(func, kwargs):
     valid_params = set(sig.parameters.keys())
     return {k: v for k, v in kwargs.items() if k in valid_params}
 
-def get_loss_function(config=None, loss_name=None, **kwargs):
+def get_loss_function(config=None, loss_name=None, model=None, **kwargs):
     """
     Factory function to get the appropriate loss function from config or arguments.
     
@@ -40,6 +40,8 @@ def get_loss_function(config=None, loss_name=None, **kwargs):
             - "cross_entropy": Standard cross-entropy loss (default)
             - "label_smoothing_ce": Cross-entropy with label smoothing
             - "focal": Focal loss (can be added in the future)
+        model (nn.Module, optional): PyTorch model. Some loss functions may need
+            access to model weights (e.g., for regularization terms)
         **kwargs: Additional arguments to pass to the loss function
     
     Returns:
@@ -48,14 +50,14 @@ def get_loss_function(config=None, loss_name=None, **kwargs):
     Example:
         >>> # From config
         >>> config = {'loss': {'name': 'cross_entropy'}}
-        >>> loss_fn = get_loss_function(config=config)
+        >>> loss_fn = get_loss_function(config=config, model=model)
         
         >>> # Direct specification
-        >>> loss_fn = get_loss_function(loss_name="cross_entropy")
+        >>> loss_fn = get_loss_function(loss_name="cross_entropy", model=model)
         
         >>> # With label smoothing
         >>> config = {'loss': {'name': 'label_smoothing_ce', 'label_smoothing': 0.1}}
-        >>> loss_fn = get_loss_function(config=config)
+        >>> loss_fn = get_loss_function(config=config, model=model)
     """
     # Extract loss configuration from config if provided
     if config is not None:

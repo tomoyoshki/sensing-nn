@@ -244,8 +244,8 @@ def main():
     # ========================================================================
     logging.info("\nSetting up training components...")
     
-    # Loss function
-    loss_fn = get_loss_function(config=config)
+    # Loss function (pass model in case loss needs access to weights)
+    loss_fn = get_loss_function(config=config, model=model)
     
     # Optimizer
     optimizer = setup_optimizer(model, config)
