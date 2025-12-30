@@ -25,6 +25,121 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 # ============================================================================
+# Optimizer and Scheduler Setup
+# ============================================================================
+
+def setup_optimizer(model, config):
+    """
+    Create optimizer based on configuration.
+    
+    Args:
+        model: PyTorch model
+        config: Configuration dictionary
+    
+    Returns:
+        optimizer: Configured optimizer
+    """
+    model_name = config.get("model", "ResNet")
+    optimizer_config = config.get(model_name, {}).get("optimizer", {})
+    
+    optimizer_name = optimizer_config.get("name", "AdamW")
+    start_lr = optimizer_config.get("start_lr", 0.001)
+    weight_decay = optimizer_config.get("weight_decay", 0.0)
+    
+    if optimizer_name == "AdamW":
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=start_lr,
+            weight_decay=weight_decay
+        )
+    elif optimizer_name == "Adam":
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=start_lr,
+            weight_decay=weight_decay
+        )
+    elif optimizer_name == "SGD":
+        momentum = optimizer_config.get("momentum", 0.9)
+        optimizer = torch.optim.SGD(
+            model.parameters(),
+            lr=start_lr,
+            momentum=momentum,
+            weight_decay=weight_decay
+        )
+    else:
+        raise ValueError(f"Unknown optimizer: {optimizer_name}")
+    
+    logging.info(f"Optimizer created: {optimizer_name}")
+    logging.info(f"  Learning rate: {start_lr}")
+    logging.info(f"  Weight decay: {weight_decay}")
+    
+    return optimizer
+
+
+def setup_scheduler(optimizer, config):
+    """
+    Create learning rate scheduler based on configuration.
+    
+    Args:
+        optimizer: PyTorch optimizer
+        config: Configuration dictionary
+    
+    Returns:
+        scheduler: Learning rate scheduler (or None)
+    """
+    model_name = config.get("model", "ResNet")
+    scheduler_config = config.get(model_name, {}).get("lr_scheduler", {})
+    
+    scheduler_name = scheduler_config.get("name", "cosine")
+    train_epochs = scheduler_config.get("train_epochs", 50)
+    warmup_epochs = scheduler_config.get("warmup_epochs", 0)
+    
+    if scheduler_name == "cosine":
+        # Cosine annealing
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=train_epochs - warmup_epochs,
+            eta_min=scheduler_config.get("min_lr", 1e-6)
+        )
+        logging.info(f"Scheduler created: CosineAnnealingLR")
+        logging.info(f"  Train epochs: {train_epochs}, Warmup epochs: {warmup_epochs}, Min LR: {scheduler_config.get('min_lr', 1e-6)}")
+    
+    elif scheduler_name == "step":
+        # Step decay
+        decay_epochs = scheduler_config.get("decay_epochs", 30)
+        decay_rate = scheduler_config.get("decay_rate", 0.1)
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer,
+            step_size=decay_epochs,
+            gamma=decay_rate
+        )
+        logging.info(f"Scheduler created: StepLR")
+        logging.info(f"  Step size: {decay_epochs}, Gamma: {decay_rate}")
+    
+    elif scheduler_name == "multistep":
+        # Multi-step decay
+        milestones = scheduler_config.get("milestones", [30, 60, 90])
+        decay_rate = scheduler_config.get("decay_rate", 0.1)
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer,
+            milestones=milestones,
+            gamma=decay_rate
+        )
+        logging.info(f"Scheduler created: MultiStepLR")
+        logging.info(f"  Milestones: {milestones}, Gamma: {decay_rate}")
+    
+    elif scheduler_name == "none" or scheduler_name is None:
+        scheduler = None
+        logging.info("No learning rate scheduler")
+    
+    else:
+        logging.warning(f"Unknown scheduler: {scheduler_name}. Using no scheduler.")
+        scheduler = None
+    
+    return scheduler
+
+
+# ============================================================================
 # Experiment Management
 # ============================================================================
 
@@ -266,7 +381,7 @@ def validate(model, val_loader, loss_fn, device, augmenter=None, apply_augmentat
 # ============================================================================
 
 def train(model, train_loader, val_loader, config, experiment_dir, 
-          loss_fn=None, optimizer=None, scheduler=None, val_fn=None,
+          loss_fn=None, val_fn=None,
           augmenter=None, apply_augmentation_fn=None):
     """
     Train the model with comprehensive logging and checkpointing.
@@ -278,8 +393,6 @@ def train(model, train_loader, val_loader, config, experiment_dir,
         config: Configuration dictionary
         experiment_dir: Path to experiment directory
         loss_fn: Loss function (if None, uses CrossEntropyLoss)
-        optimizer: Optimizer (if None, uses AdamW from config)
-        scheduler: Learning rate scheduler (optional)
         val_fn: Custom validation function (optional)
         augmenter: Data augmenter object (optional)
         apply_augmentation_fn: Function to apply augmentation (optional)
@@ -290,6 +403,9 @@ def train(model, train_loader, val_loader, config, experiment_dir,
     """
     device = torch.device(config.get('device', 'cuda:0') if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
+
+    optimizer = setup_optimizer(model, config)
+    scheduler = setup_scheduler(optimizer, config)
     
     # Setup loss function
     if loss_fn is None:

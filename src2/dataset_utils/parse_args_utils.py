@@ -117,7 +117,6 @@ def get_config():
     config['yaml_path'] = args.yaml_path
     config['device'] = f'cuda:{args.gpu}'
     config['model_variant'] = args.model_variant
-    config['loss_name'] = args.loss
     config['quantization_method'] = args.quantization_method
     return config
 

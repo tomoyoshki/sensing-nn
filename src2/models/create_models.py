@@ -52,12 +52,15 @@ def create_model(config):
     
     if quantization_enabled:
         # Import quantization modules
-        conv_class_name = config["quantization"].get("Conv", "QuanConv")
-        quantization_method = config.get("quantization_method", "dorefa")
+        # conv_class_name = config["quantization"].get("Conv", "QuanConv")
+        quantization_method_name = config.get("quantization_method", "dorefa")
+        quantization_method_config = config["quantization"].get(quantization_method_name, {})
+        conv_class_name = quantization_method_config.get("Conv", "QuanConv")
+
         
         logging.info(f"Quantization enabled:")
         logging.info(f"  Conv class: {conv_class_name}")
-        logging.info(f"  Quantization method: {quantization_method}")
+        logging.info(f"  Quantization method: {quantization_method_name}")
         
         # Dynamically import the Conv class specified in config
         import models.QuantModules as QuantModules

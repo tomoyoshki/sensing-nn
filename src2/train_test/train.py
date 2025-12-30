@@ -25,7 +25,9 @@ from dataset_utils.MultiModalDataLoader import create_dataloaders
 from data_augmenter import create_augmenter, apply_augmentation
 from models.create_models import create_model
 from train_test.loss import get_loss_function
-from train_test.train_test_utils import setup_experiment_dir, train
+from train_test.train_test_utils import (
+    setup_experiment_dir, train, setup_optimizer, setup_scheduler
+)
 from train_test.normalize import setup_normalization
 
 # Configure logging
@@ -33,116 +35,6 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
-
-
-def setup_optimizer(model, config):
-    """
-    Create optimizer based on configuration.
-    
-    Args:
-        model: PyTorch model
-        config: Configuration dictionary
-    
-    Returns:
-        optimizer: Configured optimizer
-    """
-    model_name = config.get("model", "ResNet")
-    optimizer_config = config.get(model_name, {}).get("optimizer", {})
-    
-    optimizer_name = optimizer_config.get("name", "AdamW")
-    start_lr = optimizer_config.get("start_lr", 0.001)
-    weight_decay = optimizer_config.get("weight_decay", 0.0)
-    
-    if optimizer_name == "AdamW":
-        optimizer = torch.optim.AdamW(
-            model.parameters(),
-            lr=start_lr,
-            weight_decay=weight_decay
-        )
-    elif optimizer_name == "Adam":
-        optimizer = torch.optim.Adam(
-            model.parameters(),
-            lr=start_lr,
-            weight_decay=weight_decay
-        )
-    elif optimizer_name == "SGD":
-        momentum = optimizer_config.get("momentum", 0.9)
-        optimizer = torch.optim.SGD(
-            model.parameters(),
-            lr=start_lr,
-            momentum=momentum,
-            weight_decay=weight_decay
-        )
-    else:
-        raise ValueError(f"Unknown optimizer: {optimizer_name}")
-    
-    logging.info(f"Optimizer created: {optimizer_name}")
-    logging.info(f"  Learning rate: {start_lr}")
-    logging.info(f"  Weight decay: {weight_decay}")
-    
-    return optimizer
-
-
-def setup_scheduler(optimizer, config):
-    """
-    Create learning rate scheduler based on configuration.
-    
-    Args:
-        optimizer: PyTorch optimizer
-        config: Configuration dictionary
-    
-    Returns:
-        scheduler: Learning rate scheduler (or None)
-    """
-    model_name = config.get("model", "ResNet")
-    scheduler_config = config.get(model_name, {}).get("lr_scheduler", {})
-    
-    scheduler_name = scheduler_config.get("name", "cosine")
-    train_epochs = scheduler_config.get("train_epochs", 50)
-    warmup_epochs = scheduler_config.get("warmup_epochs", 0)
-    
-    if scheduler_name == "cosine":
-        # Cosine annealing
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer,
-            T_max=train_epochs - warmup_epochs,
-            eta_min=scheduler_config.get("min_lr", 1e-6)
-        )
-        logging.info(f"Scheduler created: CosineAnnealingLR")
-    
-    elif scheduler_name == "step":
-        # Step decay
-        decay_epochs = scheduler_config.get("decay_epochs", 30)
-        decay_rate = scheduler_config.get("decay_rate", 0.1)
-        scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer,
-            step_size=decay_epochs,
-            gamma=decay_rate
-        )
-        logging.info(f"Scheduler created: StepLR")
-        logging.info(f"  Step size: {decay_epochs}, Gamma: {decay_rate}")
-    
-    elif scheduler_name == "multistep":
-        # Multi-step decay
-        milestones = scheduler_config.get("milestones", [30, 60, 90])
-        decay_rate = scheduler_config.get("decay_rate", 0.1)
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(
-            optimizer,
-            milestones=milestones,
-            gamma=decay_rate
-        )
-        logging.info(f"Scheduler created: MultiStepLR")
-        logging.info(f"  Milestones: {milestones}, Gamma: {decay_rate}")
-    
-    elif scheduler_name == "none" or scheduler_name is None:
-        scheduler = None
-        logging.info("No learning rate scheduler")
-    
-    else:
-        logging.warning(f"Unknown scheduler: {scheduler_name}. Using no scheduler.")
-        scheduler = None
-    
-    return scheduler
 
 
 def main():
@@ -247,12 +139,6 @@ def main():
     # Loss function (pass model in case loss needs access to weights)
     loss_fn = get_loss_function(config=config, model=model)
     
-    # Optimizer
-    optimizer = setup_optimizer(model, config)
-    
-    # Scheduler
-    scheduler = setup_scheduler(optimizer, config)
-    
     # ========================================================================
     # 7. Log Hyperparameters to TensorBoard
     # ========================================================================
@@ -265,32 +151,29 @@ def main():
         'model_variant': config.get('model_variant', 'None'),
         'dataset': Path(config.get('yaml_path', 'Unknown')).stem,
         'batch_size': config.get('batch_size', 'Unknown'),
-        'learning_rate': optimizer.param_groups[0]['lr'],
-        'weight_decay': config.get(model_name, {}).get('optimizer', {}).get('weight_decay', 0.0),
-        'optimizer': config.get(model_name, {}).get('optimizer', {}).get('name', 'Unknown'),
-        'scheduler': config.get(model_name, {}).get('lr_scheduler', {}).get('name', 'Unknown'),
-        'loss_function': config.get('loss_name', 'cross_entropy'),
-        'num_epochs': config.get(model_name, {}).get('lr_scheduler', {}).get('train_epochs', 50),
+        'num_epochs': config.get('num_epochs', 'Unknown'),
     }
     
     # Add quantization info if enabled
     quantization_enabled = config.get("quantization", {}).get("enable", False)
     if quantization_enabled:
         quantization_method = config.get('quantization_method', 'Unknown')
-        quant_config = config.get('quantization', {}).get(quantization_method, {})
-        
+        quantization_method_config = config.get('quantization', {}).get(quantization_method, {})
+        loss_name = quantization_method_config.get('loss_name', 'cross_entropy')
+
+        hparams['loss_function'] = loss_name
         hparams['quantization_enabled'] = 'True'
         hparams['quantization_method'] = quantization_method
         
         # Get bitwidth options from the quantization method config
-        bitwidth_options = quant_config.get('bitwidth_options', [])
+        bitwidth_options = quantization_method_config.get('bitwidth_options', [])
         hparams['bitwidth_options'] = str(bitwidth_options)
         
         # Add other quantization details
-        hparams['training_method'] = quant_config.get('training_method', 'Unknown')
-        hparams['validation_function'] = quant_config.get('validation_function', 'Unknown')
-        hparams['weight_quantization'] = quant_config.get('weight_quantization', 'Unknown')
-        hparams['activation_quantization'] = quant_config.get('activation_quantization', 'Unknown')
+        hparams['training_method'] = quantization_method_config.get('training_method', 'Unknown')
+        hparams['validation_function'] = quantization_method_config.get('validation_function', 'Unknown')
+        hparams['weight_quantization'] = quantization_method_config.get('weight_quantization', 'Unknown')
+        hparams['activation_quantization'] = quantization_method_config.get('activation_quantization', 'Unknown')
     else:
         hparams['quantization_enabled'] = 'False'
         hparams['quantization_method'] = 'None'
@@ -320,6 +203,8 @@ def main():
             
             logging.info(f"Using quantization-aware training with method: {quantization_method}")
             
+            # Note: optimizer and scheduler are created inside train_with_quantization
+            # AFTER setup_quantization_layers() to ensure all parameters are included
             model, train_history = train_with_quantization(
                 model=model,
                 train_loader=train_loader,
@@ -327,8 +212,6 @@ def main():
                 config=config,
                 experiment_dir=experiment_dir,
                 loss_fn=loss_fn,
-                optimizer=optimizer,
-                scheduler=scheduler,
                 augmenter=augmenter,
                 apply_augmentation_fn=apply_augmentation
             )
@@ -343,8 +226,6 @@ def main():
                 config=config,
                 experiment_dir=experiment_dir,
                 loss_fn=loss_fn,
-                optimizer=optimizer,
-                scheduler=scheduler,
                 val_fn=None,  # Use default validation
                 augmenter=augmenter,
                 apply_augmentation_fn=apply_augmentation
@@ -519,9 +400,6 @@ def main():
             'validation_function': hparams.get('validation_function', 'N/A'),
             'num_epochs': hparams['num_epochs'],
             'batch_size': hparams['batch_size'],
-            'learning_rate': hparams['learning_rate'],
-            'optimizer': hparams['optimizer'],
-            'scheduler': hparams['scheduler'],
             'loss_function': hparams['loss_function'],
             'final_train_accuracy': 0.0,
             'final_val_accuracy': 0.0,

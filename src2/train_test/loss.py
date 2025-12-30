@@ -60,9 +60,12 @@ def get_loss_function(config=None, loss_name=None, model=None, **kwargs):
         >>> loss_fn = get_loss_function(config=config, model=model)
     """
     # Extract loss configuration from config if provided
-    if config is not None:
+    quantization_method_name = config.get('quantization_method', None)
+    quantization_method_config = config.get('quantization', {}).get(quantization_method_name, None)
+
+    if quantization_method_config is not None:
         # Try to get loss config from global 'loss_name' key
-        loss_name = config.get('loss_name', 'cross_entropy')
+        loss_name = quantization_method_config.get('loss_name', 'cross_entropy')
         loss_kwargs = config.get(loss_name, None)
 
     # Log loss function details
@@ -78,9 +81,19 @@ def get_loss_function(config=None, loss_name=None, model=None, **kwargs):
     elif loss_name == "label_smoothing_ce":
         filtered_kwargs = filter_kwargs(nn.CrossEntropyLoss.__init__, loss_kwargs)
         return nn.CrossEntropyLoss(**filtered_kwargs)
+    elif loss_name == "importance_vector_loss":
+        # Create base task loss function (default: cross_entropy)
+        base_loss = nn.CrossEntropyLoss()
+        
+        # Get importance vector loss parameters
+        lambda_var = loss_kwargs.get('lambda_variance', 0.1) if loss_kwargs else 0.1
+        variance_metric = loss_kwargs.get('variance_metric', 'loss') if loss_kwargs else 'loss'
+        
+        logging.info(f"  Using ImportanceVectorLoss with lambda_variance={lambda_var}, metric={variance_metric}")
+        return ImportanceVectorLoss(base_loss, lambda_var, variance_metric)
     else:
         raise ValueError(f"Unknown loss function: {loss_name}. "
-                        f"Supported: 'cross_entropy', 'label_smoothing_ce'")
+                        f"Supported: 'cross_entropy', 'label_smoothing_ce', 'importance_vector_loss'")
 
 
 def convert_to_one_hot(labels, num_classes):
@@ -156,4 +169,126 @@ class LossWrapper:
             labels = convert_from_one_hot(labels)
         
         return self.loss_fn(logits, labels)
+
+
+class ImportanceVectorLoss(nn.Module):
+    """
+    Multi-component loss for importance vector-based adaptive quantization.
+    
+    Combines:
+    1. Task loss (e.g., cross-entropy for classification)
+    2. Variance regularization (encourages consistent predictions across bitwidth configs)
+    
+    The variance component penalizes high variance in predictions/losses across
+    different sampled bitwidth configurations, promoting robustness.
+    """
+    
+    def __init__(self, task_loss_fn, lambda_var=0.1, variance_metric='loss'):
+        """
+        Args:
+            task_loss_fn: Base task loss function (e.g., nn.CrossEntropyLoss())
+            lambda_var: Weight for variance regularization component
+            variance_metric: 'loss' or 'accuracy' - what to compute variance over
+        """
+        super(ImportanceVectorLoss, self).__init__()
+        self.task_loss_fn = task_loss_fn
+        self.lambda_var = lambda_var
+        self.variance_metric = variance_metric
+        
+        assert variance_metric in ['loss', 'accuracy'], \
+            f"variance_metric must be 'loss' or 'accuracy', got {variance_metric}"
+    
+    def forward(self, outputs_or_list, labels_or_list):
+        """
+        Compute multi-component loss for K different bitwidth configurations.
+        
+        Handles two modes:
+        1. Soft mode: Single tensor inputs (outputs, labels) - just computes task loss
+        2. Hard mode: Lists of K tensors - computes task loss + variance regularization
+        
+        Args:
+            outputs_or_list: Either a single tensor [batch_size, num_classes] (soft mode)
+                           or list of K output tensors (hard mode)
+            labels_or_list: Either a single tensor [batch_size] or [batch_size, num_classes] (soft mode)
+                          or list of K label tensors (hard mode)
+        
+        Returns:
+            total_loss: Combined loss (task + variance in hard mode, just task in soft mode)
+            In hard mode only: loss_components dict with 'task_loss', 'variance_loss', 'total_loss'
+        """
+        # Check if we're in soft mode (single tensors) or hard mode (lists)
+        is_soft_mode = isinstance(outputs_or_list, torch.Tensor)
+        
+        if is_soft_mode:
+            # Soft mode: single tensor inputs, just compute task loss
+            outputs = outputs_or_list
+            labels = labels_or_list
+            
+            # Handle one-hot labels if needed
+            if len(labels.shape) == 2 and labels.shape[1] > 1:
+                loss_labels = torch.argmax(labels, dim=1)
+            else:
+                loss_labels = labels
+            
+            # Compute and return task loss only
+            return self.task_loss_fn(outputs, loss_labels)
+        
+        # Hard mode: list of tensors from multiple bitwidth configurations
+        outputs_list = outputs_or_list
+        labels_list = labels_or_list
+        
+        K = len(outputs_list)
+        assert K > 1, "Need at least 2 configs to compute variance"
+        assert len(labels_list) == K, "Mismatch between outputs and labels"
+        
+        # Compute task loss for each configuration
+        task_losses = []
+        accuracies = []
+        
+        for outputs, labels in zip(outputs_list, labels_list):
+            # Handle one-hot labels if needed
+            if len(labels.shape) == 2 and labels.shape[1] > 1:
+                loss_labels = torch.argmax(labels, dim=1)
+            else:
+                loss_labels = labels
+            
+            # Compute loss
+            loss = self.task_loss_fn(outputs, loss_labels)
+            task_losses.append(loss)
+            
+            # Compute accuracy for variance metric
+            predictions = torch.argmax(outputs, dim=1)
+            if len(labels.shape) == 2 and labels.shape[1] > 1:
+                labels_idx = torch.argmax(labels, dim=1)
+            else:
+                labels_idx = labels
+            
+            accuracy = (predictions == labels_idx).float().mean()
+            accuracies.append(accuracy)
+        
+        # Mean task loss across configurations
+        task_loss = torch.stack(task_losses).mean()
+        
+        # Compute variance regularization
+        if self.variance_metric == 'loss':
+            # Variance of losses across K configurations
+            variance = torch.stack(task_losses).var()
+        else:  # 'accuracy'
+            # Variance of accuracies across K configurations
+            variance = torch.stack(accuracies).var()
+        
+        variance_loss = self.lambda_var * variance
+        
+        # Total loss
+        total_loss = task_loss + variance_loss
+        
+        # Return loss and components for logging
+        loss_components = {
+            'task_loss': task_loss.item(),
+            'variance_loss': variance_loss.item(),
+            'total_loss': total_loss.item(),
+            'raw_variance': variance.item()
+        }
+        
+        return total_loss, loss_components
 

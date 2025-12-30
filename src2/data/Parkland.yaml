@@ -16,6 +16,11 @@ label_smoothing_ce:
         name: "label_smoothing_ce"
         label_smoothing: 0.1
 
+importance_vector_loss:
+        name: "importance_vector_loss"
+        lambda_variance: 0.1
+        variance_metric: "loss"
+
 loss_name: "cross_entropy"
 
 repetition: 3
@@ -71,7 +76,12 @@ seq_len: 4
 
 quantization:
         enable: True
-        Conv: "QuanConv"
+        # Conv: "QuanConv" # QuanConv (for Joint Quantization, and Single Precision Training), QuanConvImportance (for importance vector quantization)
+        importance_vector_comprehensive_validation:
+                name: "importance_vector_comprehensive_validation"
+                number_of_configs: 8
+                bitwidth_options: [4,8]
+                bin_tolerance: 0.5
         random_bitwidths:
                 bitwidth_options: [4,8]
                 name: "random_bitwidths"
@@ -92,14 +102,44 @@ quantization:
                 switchable_clipping: True
                 sat_weight_normalization: False
         dorefa:
-                bitwidth_options: [4,8]
+                Conv: "QuanConv"
+                loss_name: "cross_entropy" # cross_entropy, label_smoothing_ce 
+                bitwidth_options: [8]
                 bitwidht_allocation: "random"
                 weight_quantization: "dorefa"
                 activation_quantization: "dorefa"
-                validation_function: "random_bitwidths" # simple_validation, random_bitwidths
-                training_method: "joint_quantization" # joint_quantization, vanilla_single_precision_training
+                validation_function: "simple_validation" # simple_validation, random_bitwidths
+                training_method: "vanilla_single_precision_training" # joint_quantization, vanilla_single_precision_training
                 switchable_clipping: True
-                sat_weight_normalization: True
+                sat_weight_normalization: False
+        importance_vector:
+                Conv: "QuanConvImportance"
+                loss_name: "importance_vector_loss" # cross_entropy, label_smoothing_ce, importance_vector_loss
+                bitwidth_options: [4, 8]
+                weight_quantization: "dorefa"
+                activation_quantization: "dorefa"
+                validation_function: "importance_vector_comprehensive_validation"
+                training_method: "joint_quantization_with_importance_vector"
+                switchable_clipping: True
+                sat_weight_normalization: False
+                
+                # Importance vector specific params
+                importance_vector:
+                        # 'soft' for training (differentiable weighted combination)
+                        # 'hard' for inference (argmax selection)
+                        sampling_strategy: "soft"
+                        
+                        # Temperature annealing
+                        temperature_start: 1.0
+                        temperature_min: 0.1
+                        temperature_decay: 0.99
+                        
+                        # Variance regularization
+                        lambda_variance: 0.1
+                        variance_metric: "loss"  # 'loss' or 'accuracy'
+                
+                # Visualization frequency
+                visualize_importance_every: 2  # epochs
 
                 
 ResNet:

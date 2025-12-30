@@ -553,4 +553,392 @@ class QuanConv(BaseQuanConv):
         return output
 
 
+class QuanConvImportance(BaseQuanConv):
+    """
+    Quantized convolution with learnable per-layer bit-width importance vectors.
+    
+    Uses Gumbel-Softmax to sample bit-widths from learned importance distributions,
+    enabling automatic discovery of optimal per-layer quantization precision.
+    
+    Features:
+    - Learnable importance vector for bit-width selection
+    - Gumbel-Softmax sampling with temperature annealing
+    - Soft mode (training): Differentiable weighted combination of all bitwidth outputs
+    - Hard mode (inference): Argmax selection of single best bitwidth
+    - Unique layer identification for tracking and visualization
+    
+    Training vs Inference:
+    - During training, use 'soft' strategy: outputs from all bitwidths are weighted
+      by importance probabilities, enabling gradient flow to importance vectors
+    - During inference, use 'hard' strategy: argmax selects single best bitwidth
+    """
+    
+    # Class variable for unique layer identification
+    _layer_counter = 0
+    
+    def _custom_init(self):
+        """
+        Custom initialization for importance vector quantization.
+        
+        Sets up:
+        - Unique layer ID and name
+        - Learnable importance vector (initialized uniformly)
+        """
+        # Assign unique layer ID
+        QuanConvImportance._layer_counter += 1
+        self.layer_id = QuanConvImportance._layer_counter
+        self.layer_name = f"conv_{self.layer_id}"
+        
+        # Importance vector will be initialized after setup_quantize_funcs is called
+        # because we need to know the number of bitwidth options
+        self.importance_vector = None
+        self.sampling_strategy = None  # Default to soft for training (differentiable)
+        self.current_temperature = 1.0  # Default temperature (will be updated during training)
+    
+    def setup_quantize_funcs(self, quantization_config):
+        """
+        Override to initialize importance vector after bitwidth options are known.
+        Also extracts sampling strategy from config.
+        """
+        super().setup_quantize_funcs(quantization_config)
+        
+        # Extract sampling strategy from config (default to 'soft' for training)
+        iv_config = quantization_config.get('importance_vector', {})
+        self.sampling_strategy = iv_config.get('sampling_strategy', 'soft')
+        
+        # Initialize importance vector uniformly: [1/N, 1/N, ..., 1/N]
+        num_bitwidths = len(self.bitwidth_opts)
+        # Use logits (unnormalized), which will be passed through softmax
+        # Initialize to zeros so softmax gives uniform distribution initially
+        self.importance_vector = nn.Parameter(
+            torch.zeros(num_bitwidths),
+            requires_grad=True
+        )
+    
+    
+    def set_temperature(self, temperature):
+        """
+        Set the current temperature for Gumbel-Softmax sampling.
+        
+        This should be called at the start of each epoch during training.
+        
+        Args:
+            temperature: Temperature value (higher = more exploration, lower = more exploitation)
+        """
+        self.current_temperature = temperature
+    
+    def get_best_bitwidth(self):
+        """
+        Get the bitwidth with highest importance (argmax).
+        Used during inference/hard mode.
+        
+        Returns:
+            int: Best bitwidth according to learned importance
+        """
+        assert self.importance_vector is not None, "Importance vector not initialized"
+        best_idx = torch.argmax(self.importance_vector).item()
+        return self.bitwidth_opts[best_idx]
+    
+    def _forward_with_bitwidth(self, inp, bitwidth):
+        """
+        Compute forward pass with a specific bitwidth.
+        
+        Args:
+            inp: Input tensor [batch_size, in_channels, height, width]
+            bitwidth: Specific bitwidth to use for quantization
+        
+        Returns:
+            Output tensor [batch_size, out_channels, out_height, out_width]
+        """
+        # Set bitwidth for quantization functions
+        self.set_bitwidth(bitwidth)
+        
+        # Quantize weights
+        w = self._quantize_weight()
+        
+        # Weight normalization (optional)
+        if self.sat_weight_normalization:
+            std = w.detach().std()
+            if std > 0:
+                w = w / std
+        
+        # Quantize activations
+        x = self._quantize_activation(inp)
+        
+        # Convolution
+        output = self._apply_convolution(x, w)
+        
+        return output
+    
+    def get_importance_distribution(self):
+        """
+        Get the current importance distribution (softmax of importance vector).
+        
+        Returns:
+            dict: {'layer_name': str, 'distribution': tensor, 'bitwidth_options': list}
+        """
+        if self.importance_vector is None:
+            return None
+        
+        distribution = torch.softmax(self.importance_vector, dim=0)
+        return {
+            'layer_name': self.layer_name,
+            'distribution': distribution.detach().cpu(),
+            'bitwidth_options': self.bitwidth_opts
+        }
+    
+    @classmethod
+    def set_all_layers_mode(cls, model, mode):
+        """
+        Set the sampling strategy for all QuanConvImportance layers in a model.
+        
+        Args:
+            model: PyTorch model containing QuanConvImportance layers
+            mode: Sampling strategy:
+                - 'best_bitwidth': Use argmax of importance vector (inference/validation)
+                - 'hard_gumbel_softmax': Sample from importance distribution (validation)
+                - 'uniform_sampling': Sample uniformly at random (validation baseline)
+        """
+        valid_modes = ['best_bitwidth', 'hard_gumbel_softmax', 'uniform_sampling']
+        assert mode in valid_modes, f"Mode must be one of {valid_modes}, got {mode}"
+        
+        for module in model.modules():
+            if isinstance(module, cls):
+                module.sampling_strategy = mode
+    
+    @classmethod
+    def get_all_best_bitwidths(cls, model):
+        """
+        Get the best bitwidth (argmax of importance) for all layers.
+        
+        Useful for logging and visualization during inference.
+        
+        Args:
+            model: PyTorch model containing QuanConvImportance layers
+        
+        Returns:
+            dict: {layer_name: best_bitwidth}
+        """
+        best_bitwidths = {}
+        for module in model.modules():
+            if isinstance(module, cls):
+                best_bitwidths[module.layer_name] = module.get_best_bitwidth()
+        return best_bitwidths
+    
+    @classmethod
+    def get_all_importance_distributions(cls, model):
+        """
+        Get importance distributions for all QuanConvImportance layers in a model.
+        
+        This is a class method that collects softmax distributions from all instances
+        of QuanConvImportance in the given model, useful for visualization and analysis.
+        
+        Args:
+            model: PyTorch model containing QuanConvImportance layers
+        
+        Returns:
+            dict: {layer_name: {'distribution': tensor, 'bitwidth_options': list}}
+        """
+        distributions = {}
+        for module in model.modules():
+            if isinstance(module, cls):
+                dist_info = module.get_importance_distribution()
+                if dist_info is not None:
+                    distributions[dist_info['layer_name']] = {
+                        'distribution': dist_info['distribution'],
+                        'bitwidth_options': dist_info['bitwidth_options']
+                    }
+        
+        return distributions
+    
+    @classmethod
+    def collect_all_importance_vectors(cls, model):
+        """
+        Collect all importance vectors from QuanConvImportance layers in a model.
+        
+        Args:
+            model: PyTorch model containing QuanConvImportance layers
+        
+        Returns:
+            dict: {layer_name: importance_vector_tensor}
+        """
+        importance_vectors = {}
+        for module in model.modules():
+            if isinstance(module, cls):
+                if hasattr(module, 'importance_vector') and module.importance_vector is not None:
+                    importance_vectors[module.layer_name] = module.importance_vector.detach().cpu()
+        
+        return importance_vectors
+    
+    def get_temperature_for_epoch(self, epoch, num_epochs):
+        """
+        Compute temperature with exponential annealing schedule for Gumbel-Softmax.
+        
+        Methodology: Exponential decay (standard for Gumbel-Softmax)
+        Formula: temp = max(temp_min, temp_start * (decay_rate ** epoch))
+        
+        High temp (1.0) → soft sampling, more exploration
+        Low temp (0.1) → hard sampling, more exploitation
+        
+        Args:
+            epoch: Current epoch (0-indexed)
+            num_epochs: Total number of epochs (for reference, not used in exponential decay)
+        
+        Returns:
+            float: Current temperature
+        """
+        assert self.quantization_config is not None, "quantization_config is None"
+        # Extract importance vector config
+        temp_start = self.quantization_config.get('temperature_start', 1.0)
+        temp_min = self.quantization_config.get('temperature_min', 0.1)
+        temp_decay = self.quantization_config.get('temperature_decay', 0.99)
+        
+        # Exponential decay annealing
+        temp = max(temp_min, temp_start * (temp_decay ** epoch))
+        return temp
+    
+    @staticmethod
+    def plot_importance_distributions(importance_dists, bitwidth_options, epoch):
+        """
+        Create a bar plot showing learned importance distributions for each layer.
+        
+        Args:
+            importance_dists: Dict of {layer_name: {'distribution': tensor, 'bitwidth_options': list}}
+            bitwidth_options: List of bitwidth options (for reference)
+            epoch: Current epoch number (for title)
+        
+        Returns:
+            matplotlib.figure.Figure: The created figure
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+        
+        num_layers = len(importance_dists)
+        if num_layers == 0:
+            # Create empty figure if no importance vectors
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.text(0.5, 0.5, 'No importance vectors found', 
+                   ha='center', va='center', fontsize=14)
+            ax.set_title(f'Importance Distributions (Epoch {epoch + 1})')
+            return fig
+        
+        # Create subplots: arrange in grid
+        cols = min(3, num_layers)
+        rows = (num_layers + cols - 1) // cols
+        
+        fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows))
+        
+        # Flatten axes for easier indexing
+        if num_layers == 1:
+            axes = [axes]
+        elif rows == 1 or cols == 1:
+            axes = axes.flatten()
+        else:
+            axes = axes.flatten()
+        
+        # Plot each layer's distribution
+        for idx, (layer_name, dist_info) in enumerate(sorted(importance_dists.items())):
+            ax = axes[idx]
+            
+            distribution = dist_info['distribution'].numpy()
+            bw_opts = dist_info['bitwidth_options']
+            
+            # Create bar plot
+            x_pos = np.arange(len(bw_opts))
+            bars = ax.bar(x_pos, distribution, alpha=0.7, color='steelblue', edgecolor='navy')
+            
+            # Highlight the maximum probability
+            max_idx = np.argmax(distribution)
+            bars[max_idx].set_color('orange')
+            bars[max_idx].set_alpha(0.9)
+            
+            # Labels and formatting
+            ax.set_xlabel('Bitwidth', fontsize=10, fontweight='bold')
+            ax.set_ylabel('Probability', fontsize=10, fontweight='bold')
+            ax.set_title(f'{layer_name}', fontsize=11, fontweight='bold')
+            ax.set_xticks(x_pos)
+            ax.set_xticklabels([f'{bw}' for bw in bw_opts])
+            ax.set_ylim([0, 1.0])
+            ax.grid(True, alpha=0.3, axis='y')
+            
+            # Add text annotation for max probability
+            ax.text(max_idx, distribution[max_idx] + 0.05, 
+                   f'{distribution[max_idx]:.2f}',
+                   ha='center', va='bottom', fontsize=9, fontweight='bold')
+        
+        # Hide unused subplots
+        for idx in range(num_layers, len(axes)):
+            axes[idx].axis('off')
+        
+        fig.suptitle(f'Learned Importance Distributions (Epoch {epoch + 1})', 
+                    fontsize=14, fontweight='bold', y=0.995)
+        plt.tight_layout()
+        
+        return fig
+
+    
+    def sample_bitwidth_uniform(self):
+        """
+        Sample a bitwidth uniformly at random from bitwidth options.
+        """
+        idx = torch.randint(0, len(self.bitwidth_opts), (1,)).item()
+        return self.bitwidth_opts[idx]
+    
+    def forward(self, inp):
+        """
+        Forward pass with importance-based bitwidth selection.
+        
+        Two modes:
+        - 'soft' (training): Compute outputs for ALL bitwidth options and combine
+          using importance weights. This is differentiable and allows gradients
+          to flow to the importance vector.
+        - 'hard' (inference): Use argmax to select single best bitwidth.
+        
+        Args:
+            inp: Input tensor [batch_size, in_channels, height, width]
+        
+        Returns:
+            Output tensor [batch_size, out_channels, out_height, out_width]
+        """
+        if not self.quantization_enabled:
+            return self._apply_convolution(inp, self.weight)
+        
+        # Validate setup
+        if isinstance(self.quantize_a, PACT):
+            assert self.alpha_setup_flag, "Alpha not setup for PACT quantization"
+        assert self.importance_vector is not None, "Importance vector not initialized"
+        assert self.quantize_w is not None, "quantize_w is None"
+        assert self.quantize_a is not None, "quantize_a is None"
+        
+        # Validate mode vs model.training state
+        assert self.sampling_strategy is not None, "sampling_strategy is None"
+        if self.sampling_strategy == 'best_bitwidth':
+            # ================================================================
+            # BEST_BITWIDTH MODE: Use argmax to select single best bitwidth
+            # ================================================================
+            best_bitwidth = self.get_best_bitwidth()
+            output = self._forward_with_bitwidth(inp, best_bitwidth)
+        
+        elif self.sampling_strategy == 'hard_gumbel_softmax':
+            # ================================================================
+            # HARD_GUMBEL_SOFTMAX MODE: Sample from importance vector
+            # ================================================================
+            current_temperature = self.get_temperature_for_epoch(self.current_epoch, self.num_epochs)
+            soft_Weights = F.gumbel_softmax(self.importance_vector,
+             temperature=current_temperature, hard=True)
+            selected_bitwidth = torch.sum(soft_Weights * self.bitwidth_opts)
+            output = self._forward_with_bitwidth(inp, selected_bitwidth)
+        
+        elif self.sampling_strategy == 'uniform_sampling':
+            # ================================================================
+            # UNIFORM_SAMPLING MODE (Validation): Sample uniformly at random
+            # ================================================================
+            selected_bitwidth = self.sample_bitwidth_uniform()
+            output = self._forward_with_bitwidth(inp, selected_bitwidth)
+        else:
+            raise ValueError(f"Invalid sampling strategy: {self.sampling_strategy}, \
+             must be one of: best_bitwidth, hard_gumbel_softmax, uniform_sampling")
+        
+        return output
+
 

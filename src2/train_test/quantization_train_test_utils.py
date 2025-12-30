@@ -15,9 +15,13 @@ import torch.nn as nn
 import numpy as np
 from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
 # Import validation function from train_test_utils
-from train_test.train_test_utils import validate, calculate_confusion_matrix, plot_confusion_matrix
+from train_test.train_test_utils import (
+    validate, calculate_confusion_matrix, plot_confusion_matrix,
+    setup_optimizer, setup_scheduler
+)
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
@@ -277,6 +281,219 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
         logging.info(f"  Average Validation Std across bins: {avg_val_std:.4f}")
     
     return stats
+
+
+def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device, 
+                                             augmenter, apply_augmentation_fn, 
+                                             num_configs, bitwidth_options, 
+                                             temperature, bin_tolerance=0.5):
+    """
+    Comprehensive validation for importance vector training with three modes:
+    1. Random bitwidths (baseline comparison - uniform sampling)
+    2. Importance-based sampling (stochastic sampling from learned distributions)
+    3. Learned best bitwidths (argmax of importance per layer - deterministic)
+    
+    Args:
+        model: PyTorch model with QuanConvImportance layers
+        val_loader: Validation data loader
+        loss_fn: Loss function
+        device: Device to run validation on
+        augmenter: Data augmenter object
+        apply_augmentation_fn: Function to apply augmentation
+        num_configs: Number of configurations to test for modes 1 and 2
+        bitwidth_options: List of bitwidth options
+        temperature: Temperature for importance sampling (mode 2)
+        bin_tolerance: Tolerance for grouping bitwidths into bins
+    
+    Returns:
+        dict: Comprehensive statistics for all three validation modes
+    """
+    from models.QuantModules import QuanConvImportance
+    
+    # Helper function to get average bitwidth for QuanConvImportance layers
+    # Note: For stochastic modes, this reflects bitwidths from the last forward pass
+    def get_avg_bitwidth():
+        bitwidths = []
+        for module in model.modules():
+            if isinstance(module, QuanConvImportance):
+                if hasattr(module, 'curr_bitwidth') and module.curr_bitwidth is not None:
+                    bitwidths.append(module.curr_bitwidth)
+        return np.mean(bitwidths) if len(bitwidths) > 0 else 0.0
+    
+    model.eval()
+    
+    logging.info("=" * 80)
+    logging.info("Comprehensive Importance Vector Validation")
+    logging.info("=" * 80)
+    
+    # ========================================================================
+    # Mode 1: Random Bitwidths (Baseline - Uniform Sampling)
+    # ========================================================================
+    logging.info("\n[Mode 1] Random Bitwidth Validation (Uniform Baseline)")
+    logging.info("-" * 80)
+    
+    # Set all layers to hard_random mode (uniform sampling)
+    QuanConvImportance.set_all_layers_mode(model, 'hard_random')
+    
+    random_results = []
+    for i in range(num_configs):
+        # Run validation (bitwidths are sampled per forward pass in hard_random mode)
+        val_result = validate(
+            model, val_loader, loss_fn, device,
+            augmenter, apply_augmentation_fn
+        )
+        
+        # Get average bitwidth (from last batch)
+        avg_bitwidth = get_avg_bitwidth()
+        
+        random_results.append({
+            'accuracy': val_result['accuracy'],
+            'loss': val_result['loss'],
+            'avg_bitwidth': avg_bitwidth
+        })
+        
+        bitwidth_str = f", Avg BW={avg_bitwidth:.2f}"
+        logging.info(f"  Config {i+1}/{num_configs}: Acc={val_result['accuracy']:.4f}{bitwidth_str}")
+    
+    # Calculate random bitwidth statistics
+    random_accs = [r['accuracy'] for r in random_results]
+    random_losses = [r['loss'] for r in random_results]
+    random_bws = [r['avg_bitwidth'] for r in random_results]
+    
+    random_stats = {
+        'mean_acc': np.mean(random_accs),
+        'std_acc': np.std(random_accs),
+        'mean_loss': np.mean(random_losses),
+        'mean_bitwidth': np.mean(random_bws),
+    }
+    
+    logging.info(f"Random BW Stats: Acc={random_stats['mean_acc']:.4f}±{random_stats['std_acc']:.4f}, "
+                f"Loss={random_stats['mean_loss']:.4f}, BW={random_stats['mean_bitwidth']:.2f}")
+    
+    # ========================================================================
+    # Mode 2: Importance-Based Sampling (Stochastic from learned distribution)
+    # ========================================================================
+    logging.info("\n[Mode 2] Importance-Based Sampling Validation (Stochastic)")
+    logging.info(f"  Temperature: {temperature:.4f}")
+    logging.info("-" * 80)
+    
+    # Set all layers to hard_sampled_from_iv mode (sample from importance)
+    QuanConvImportance.set_all_layers_mode(model, 'hard_sampled_from_iv', temperature)
+    
+    importance_results = []
+    for i in range(num_configs):
+        # Run validation (bitwidths are sampled from importance per forward pass)
+        val_result = validate(
+            model, val_loader, loss_fn, device,
+            augmenter, apply_augmentation_fn
+        )
+        
+        # Get average bitwidth (from last batch)
+        avg_bitwidth = get_avg_bitwidth()
+        
+        importance_results.append({
+            'accuracy': val_result['accuracy'],
+            'loss': val_result['loss'],
+            'avg_bitwidth': avg_bitwidth
+        })
+        
+        bitwidth_str = f", Avg BW={avg_bitwidth:.2f}"
+        logging.info(f"  Config {i+1}/{num_configs}: Acc={val_result['accuracy']:.4f}{bitwidth_str}")
+    
+    # Calculate importance sampling statistics
+    importance_accs = [r['accuracy'] for r in importance_results]
+    importance_losses = [r['loss'] for r in importance_results]
+    importance_bws = [r['avg_bitwidth'] for r in importance_results]
+    
+    importance_stats = {
+        'mean_acc': np.mean(importance_accs),
+        'std_acc': np.std(importance_accs),
+        'mean_loss': np.mean(importance_losses),
+        'mean_bitwidth': np.mean(importance_bws),
+    }
+    
+    logging.info(f"Importance Sampling Stats: Acc={importance_stats['mean_acc']:.4f}±{importance_stats['std_acc']:.4f}, "
+                f"Loss={importance_stats['mean_loss']:.4f}, BW={importance_stats['mean_bitwidth']:.2f}")
+    
+    # ========================================================================
+    # Mode 3: Learned Best Bitwidths (Argmax per layer - Deterministic)
+    # ========================================================================
+    logging.info("\n[Mode 3] Learned Best Bitwidth Validation (Argmax/Deterministic)")
+    logging.info("-" * 80)
+    
+    # Set all layers to hard_best mode (argmax of importance)
+    QuanConvImportance.set_all_layers_mode(model, 'hard_best')
+    
+    # Get importance distributions and log choices
+    importance_dists = QuanConvImportance.get_all_importance_distributions(model)
+    
+    for module in model.modules():
+        if isinstance(module, QuanConvImportance):
+            best_bw = module.get_best_bitwidth()
+            if module.layer_name in importance_dists:
+                dist = importance_dists[module.layer_name]['distribution']
+                confidence = dist.max().item()
+                logging.info(f"  {module.layer_name}: Best BW={best_bw} (confidence={confidence:.4f})")
+    
+    avg_bitwidth = get_avg_bitwidth()
+    
+    # Run full validation with learned bitwidths
+    val_result = validate(
+        model, val_loader, loss_fn, device,
+        augmenter, apply_augmentation_fn
+    )
+    
+    highest_conf_stats = {
+        'accuracy': val_result['accuracy'],
+        'loss': val_result['loss'],
+        'avg_bitwidth': avg_bitwidth
+    }
+    
+    logging.info(f"Highest Confidence Stats: Acc={highest_conf_stats['accuracy']:.4f}, "
+                f"Loss={highest_conf_stats['loss']:.4f}, BW={highest_conf_stats['avg_bitwidth']:.2f}")
+    
+    # ========================================================================
+    # Summary
+    # ========================================================================
+    logging.info("\n" + "=" * 80)
+    logging.info("Validation Summary")
+    logging.info("=" * 80)
+    logging.info(f"Random BW (uniform):     Acc={random_stats['mean_acc']:.4f}±{random_stats['std_acc']:.4f}, BW={random_stats['mean_bitwidth']:.2f}")
+    logging.info(f"Importance Sampling:     Acc={importance_stats['mean_acc']:.4f}±{importance_stats['std_acc']:.4f}, BW={importance_stats['mean_bitwidth']:.2f}")
+    logging.info(f"Highest Confidence:      Acc={highest_conf_stats['accuracy']:.4f}, BW={highest_conf_stats['avg_bitwidth']:.2f}")
+    logging.info("=" * 80)
+    
+    # Return comprehensive statistics
+    return {
+        # Mode 1: Random bitwidths (baseline)
+        'random': {
+            'mean_acc': random_stats['mean_acc'],
+            'std_acc': random_stats['std_acc'],
+            'mean_loss': random_stats['mean_loss'],
+            'mean_bitwidth': random_stats['mean_bitwidth'],
+            'all_accuracies': random_accs,
+            'all_bitwidths': random_bws,
+        },
+        # Mode 2: Importance sampling (stochastic)
+        'importance': {
+            'mean_acc': importance_stats['mean_acc'],
+            'std_acc': importance_stats['std_acc'],
+            'mean_loss': importance_stats['mean_loss'],
+            'mean_bitwidth': importance_stats['mean_bitwidth'],
+            'all_accuracies': importance_accs,
+            'all_bitwidths': importance_bws,
+        },
+        # Mode 3: Highest confidence (deterministic argmax)
+        'highest_conf': {
+            'accuracy': highest_conf_stats['accuracy'],
+            'loss': highest_conf_stats['loss'],
+            'avg_bitwidth': highest_conf_stats['avg_bitwidth'],
+        },
+        # Overall metrics (use highest_conf as main metric for model selection)
+        'mean_acc': highest_conf_stats['accuracy'],
+        'accuracy': highest_conf_stats['accuracy'],
+        'loss': highest_conf_stats['loss'],
+    }
 
 
 def plot_bitwidth_vs_accuracy(bitwidths, accuracies, epoch, title="Bitwidth vs Accuracy", bin_tolerance=0.5):
@@ -598,16 +815,148 @@ def train_epoch_joint_quantization(model, train_loader, optimizer, loss_fn,
     }
 
 
+def train_epoch_importance_vector(model, train_loader, optimizer, loss_fn, 
+                                   quant_config, augmenter, apply_augmentation_fn, 
+                                   device, writer, epoch, num_epochs, clip_grad=None):
+    """
+    Train one epoch using importance vector-based adaptive quantization.
+    
+    For each batch, performs K forward passes with different bitwidth configurations
+    sampled from learned importance distributions. Uses multi-component loss with
+    variance regularization to encourage robustness across bitwidth choices.
+    
+    Args:
+        model: PyTorch model to train (with QuanConvImportance layers)
+        train_loader: Training data loader
+        optimizer: Optimizer (optimizes both network weights and importance vectors)
+        loss_fn: Loss function (should be ImportanceVectorLoss)
+        quant_config: Quantization configuration dictionary
+        augmenter: Data augmenter object
+        apply_augmentation_fn: Function to apply augmentation
+        device: Device to run training on
+        writer: TensorBoard writer
+        epoch: Current epoch number
+        num_epochs: Total number of epochs (for temperature annealing)
+        clip_grad: Gradient clipping value (optional)
+    
+    Returns:
+        dict: Training metrics (loss, accuracy, task_loss, variance_loss, temperature)
+    """
+    from models.QuantModules import QuanConvImportance
+    
+    model.train()
+    
+    # Compute annealed temperature for this epoch
+    temperature = QuanConvImportance.get_temperature_for_epoch(epoch, num_epochs, quant_config)
+    
+    # Set all layers to SOFT mode for training (differentiable weighted outputs)
+    QuanConvImportance.set_training_mode(model, temperature)
+    
+    train_loss = 0.0
+    train_correct = 0
+    train_total = 0
+    
+    logging.info(f"Training with importance vector (soft mode, temp={temperature:.4f})")
+    
+    # Create tqdm progress bar
+    pbar = tqdm(train_loader, desc=f"Epoch {epoch+1} Training", 
+                leave=True, dynamic_ncols=True)
+    
+    for batch_idx, batch_data in enumerate(pbar):
+        # Unpack batch
+        if len(batch_data) == 3:
+            data, labels, idx = batch_data
+        else:
+            data, labels = batch_data[0], batch_data[1]
+        
+        # Apply augmentation if provided
+        if augmenter is not None and apply_augmentation_fn is not None:
+            data, labels = apply_augmentation_fn(augmenter, data, labels)
+        
+        # Move to device
+        labels = labels.to(device)
+        if isinstance(data, dict):
+            # Multi-modal data
+            for loc in data:
+                for mod in data[loc]:
+                    data[loc][mod] = data[loc][mod].to(device)
+        else:
+            data = data.to(device)
+        
+        # Forward pass - soft mode computes differentiable weighted outputs
+        # The importance vectors receive gradients through the weighted combination
+        outputs = model(data)
+        
+        # Compute loss (standard cross-entropy, gradients flow to importance vectors)
+        if len(labels.shape) == 2 and labels.shape[1] > 1:
+            loss_labels = torch.argmax(labels, dim=1)
+        else:
+            loss_labels = labels
+        
+        loss = loss_fn(outputs, loss_labels)
+        
+        # Backward pass
+        optimizer.zero_grad()
+        loss.backward()
+        
+        # Gradient clipping
+        if clip_grad is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad)
+        
+        optimizer.step()
+        
+        # Calculate metrics
+        train_loss += loss.item() * labels.size(0)
+        
+        predictions = torch.argmax(outputs, dim=1)
+        if len(labels.shape) == 2 and labels.shape[1] > 1:
+            labels_idx = torch.argmax(labels, dim=1)
+        else:
+            labels_idx = labels
+        
+        train_correct += (predictions == labels_idx).sum().item()
+        train_total += labels.size(0)
+        
+        # Update progress bar with current metrics
+        current_acc = train_correct / train_total if train_total > 0 else 0
+        current_loss = train_loss / train_total if train_total > 0 else 0
+        pbar.set_postfix({
+            'loss': f'{current_loss:.4f}',
+            'acc': f'{current_acc:.4f}',
+            'temp': f'{temperature:.3f}'
+        })
+        
+        # Log to TensorBoard every 50 batches
+        if batch_idx % 50 == 0 and writer is not None:
+            global_step = epoch * len(train_loader) + batch_idx
+            writer.add_scalar('Train/Batch_Loss', loss.item(), global_step)
+            writer.add_scalar('Train/Temperature', temperature, global_step)
+    
+    # Calculate epoch metrics
+    epoch_train_loss = train_loss / train_total
+    epoch_train_acc = train_correct / train_total
+    
+    return {
+        'loss': epoch_train_loss,
+        'accuracy': epoch_train_acc,
+        'temperature': temperature
+    }
+
+
 def train_with_quantization(model, train_loader, val_loader, config, experiment_dir,
-                            loss_fn, optimizer, scheduler, augmenter, apply_augmentation_fn):
+                            loss_fn, augmenter, apply_augmentation_fn):
     """
     Main training function for quantization-aware training.
     
     This function handles:
-    - Setup of quantization layers
+    - Setup of quantization layers (BEFORE optimizer creation to include all params)
+    - Optimizer and scheduler creation (AFTER quantization setup)
     - Training loop with appropriate training method (joint quantization, etc.)
     - Validation with appropriate validation function (random bitwidths, etc.)
     - Checkpointing and best model tracking
+    
+    Note: Optimizer and scheduler are created internally AFTER setup_quantization_layers()
+    to ensure all parameters (including importance vectors) are included.
     
     Args:
         model: PyTorch model to train
@@ -616,8 +965,6 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
         config: Full configuration dictionary
         experiment_dir: Path to experiment directory
         loss_fn: Loss function
-        optimizer: Optimizer
-        scheduler: Learning rate scheduler (optional)
         augmenter: Data augmenter object
         apply_augmentation_fn: Function to apply augmentation
     
@@ -642,9 +989,17 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
     
     quant_config = config['quantization'][quantization_method]
     
-    # Setup quantization layers
+    # Setup quantization layers FIRST
+    # This creates importance_vector parameters for QuanConvImportance layers
     model = setup_quantization_layers(model, quant_config)
     model = model.to(device)
+    
+    # Create optimizer AFTER quantization setup so all parameters are included
+    # (importance_vector parameters are created in setup_quantization_layers)
+    optimizer = setup_optimizer(model, config)
+    
+    # Create scheduler
+    scheduler = setup_scheduler(optimizer, config)
     
     # Extract training and validation methods
     training_method = quant_config.get('training_method', 'joint_quantization')
@@ -731,6 +1086,21 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
                 epoch=epoch,
                 clip_grad=clip_grad
             )
+        elif training_method == "joint_quantization_with_importance_vector":
+            train_metrics = train_epoch_importance_vector(
+                model=model,
+                train_loader=train_loader,
+                optimizer=optimizer,
+                loss_fn=loss_fn,
+                quant_config=quant_config,
+                augmenter=augmenter,
+                apply_augmentation_fn=apply_augmentation_fn,
+                device=device,
+                writer=writer,
+                epoch=epoch,
+                num_epochs=num_epochs,
+                clip_grad=clip_grad
+            )
         else:
             raise ValueError(f"Unknown training method: {training_method}")
         
@@ -786,6 +1156,44 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
             
             epoch_val_loss = val_stats['loss']
             epoch_val_acc = val_stats['accuracy']
+        elif validation_function == "importance_vector_comprehensive_validation":
+            # Comprehensive validation for importance vector training
+            # Get validation config
+            val_config = config.get('quantization', {}).get('importance_vector_comprehensive_validation', {})
+            num_configs = val_config.get('number_of_configs', 4)
+            bitwidth_options = val_config.get('bitwidth_options', [4, 6, 8])
+            bin_tolerance = val_config.get('bin_tolerance', 0.5)
+            
+            # Get current temperature (same as used in training)
+            from models.QuantModules import QuanConvImportance
+            temperature = QuanConvImportance.get_temperature_for_epoch(epoch, num_epochs, quant_config)
+            
+            val_stats = validate_importance_vector_comprehensive(
+                model=model,
+                val_loader=val_loader,
+                loss_fn=loss_fn,
+                device=device,
+                augmenter=augmenter,
+                apply_augmentation_fn=apply_augmentation_fn,
+                num_configs=num_configs,
+                bitwidth_options=bitwidth_options,
+                temperature=temperature,
+                bin_tolerance=bin_tolerance
+            )
+            
+            # Use random bitwidth mean as the main metric (for model selection)
+            epoch_val_loss = val_stats['loss']
+            epoch_val_acc = val_stats['accuracy']
+            
+            # Store all three validation modes in history
+            if 'val_random_acc' not in train_history:
+                train_history['val_random_acc'] = []
+                train_history['val_importance_acc'] = []
+                train_history['val_highest_conf_acc'] = []
+            
+            train_history['val_random_acc'].append(val_stats['random']['mean_acc'])
+            train_history['val_importance_acc'].append(val_stats['importance']['mean_acc'])
+            train_history['val_highest_conf_acc'].append(val_stats['highest_conf']['accuracy'])
         else:
             raise ValueError(f"Unknown validation function: {validation_function}")
         
@@ -826,6 +1234,58 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
             writer.add_scalar('Bitwidth/std_bitwidth', val_stats['std_bitwidth'], epoch)
             writer.add_scalar('Bitwidth/min_bitwidth', val_stats['min_bitwidth'], epoch)
             writer.add_scalar('Bitwidth/max_bitwidth', val_stats['max_bitwidth'], epoch)
+        
+        # Additional validation metrics for importance_vector_comprehensive
+        if validation_function == "importance_vector_comprehensive":
+            # Log all three validation modes
+            writer.add_scalar('Validation/random_mean_acc', val_stats['random']['mean_acc'], epoch)
+            writer.add_scalar('Validation/random_std_acc', val_stats['random']['std_acc'], epoch)
+            writer.add_scalar('Validation/importance_mean_acc', val_stats['importance']['mean_acc'], epoch)
+            writer.add_scalar('Validation/importance_std_acc', val_stats['importance']['std_acc'], epoch)
+            writer.add_scalar('Validation/highest_conf_acc', val_stats['highest_conf']['accuracy'], epoch)
+            
+            # Log bitwidth statistics for all modes
+            writer.add_scalar('Bitwidth/random_mean_bw', val_stats['random']['mean_bitwidth'], epoch)
+            writer.add_scalar('Bitwidth/importance_mean_bw', val_stats['importance']['mean_bitwidth'], epoch)
+            writer.add_scalar('Bitwidth/highest_conf_bw', val_stats['highest_conf']['avg_bitwidth'], epoch)
+            
+            # Create comparison plot
+            try:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                modes = ['Random\nBitwidths', 'Importance\nSampling', 'Highest\nConfidence']
+                accs = [
+                    val_stats['random']['mean_acc'],
+                    val_stats['importance']['mean_acc'],
+                    val_stats['highest_conf']['accuracy']
+                ]
+                stds = [
+                    val_stats['random']['std_acc'],
+                    val_stats['importance']['std_acc'],
+                    0.0  # Single measurement for highest confidence
+                ]
+                
+                bars = ax.bar(modes, accs, yerr=stds, capsize=5, alpha=0.7, 
+                             color=['steelblue', 'orange', 'green'])
+                ax.set_ylabel('Validation Accuracy', fontsize=12, fontweight='bold')
+                ax.set_title(f'Validation Accuracy Comparison (Epoch {epoch + 1})', 
+                           fontsize=14, fontweight='bold')
+                ax.set_ylim([min(accs) - 0.05, max(accs) + 0.05])
+                ax.grid(True, alpha=0.3, axis='y')
+                
+                # Add value labels on bars
+                for bar, acc, std in zip(bars, accs, stds):
+                    height = bar.get_height()
+                    label = f'{acc:.4f}'
+                    if std > 0:
+                        label += f'±{std:.4f}'
+                    ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                           label, ha='center', va='bottom', fontsize=10, fontweight='bold')
+                
+                plt.tight_layout()
+                writer.add_figure('Validation/mode_comparison', fig, epoch)
+                plt.close(fig)
+            except Exception as e:
+                logging.warning(f"Could not create validation comparison plot: {e}")
             
             # Create and log bitwidth vs accuracy plot (every 5 epochs or last epoch)
             if (epoch + 1) % 5 == 0 or epoch == num_epochs - 1:
@@ -839,6 +1299,36 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
                 writer.add_figure('Bitwidth_Analysis/bitwidth_vs_accuracy', bitwidth_acc_fig, epoch)
                 plt.close(bitwidth_acc_fig)
                 logging.info(f"  Bitwidth vs Accuracy plot logged to TensorBoard")
+        
+        # Additional logging for importance vector training
+        if training_method == "joint_quantization_with_importance_vector":
+            from models.QuantModules import QuanConvImportance
+            
+            # Log temperature
+            if 'temperature' in train_metrics:
+                writer.add_scalar('Temperature', train_metrics['temperature'], epoch)
+            
+            # Log loss components
+            if 'task_loss' in train_metrics:
+                writer.add_scalar('Loss/task_loss', train_metrics['task_loss'], epoch)
+                logging.info(f"  Task Loss: {train_metrics['task_loss']:.4f}")
+            
+            if 'variance_loss' in train_metrics:
+                writer.add_scalar('Loss/variance_loss', train_metrics['variance_loss'], epoch)
+                logging.info(f"  Variance Loss: {train_metrics['variance_loss']:.4f}")
+            
+            # Visualize importance distributions
+            iv_config = quant_config.get('importance_vector', {})
+            visualize_freq = quant_config.get('visualize_importance_every', 5)
+            
+            if (epoch + 1) % visualize_freq == 0 or epoch == num_epochs - 1:
+                importance_dists = QuanConvImportance.get_all_importance_distributions(model)
+                if len(importance_dists) > 0:
+                    bitwidth_options = quant_config.get('bitwidth_options', [4, 8])
+                    fig = QuanConvImportance.plot_importance_distributions(importance_dists, bitwidth_options, epoch)
+                    writer.add_figure('Importance/distributions', fig, epoch)
+                    plt.close(fig)
+                    logging.info(f"  Importance distributions logged to TensorBoard")
         
         # ====================================================================
         # Save Checkpoints
