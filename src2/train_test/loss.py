@@ -77,20 +77,20 @@ def get_loss_function(config=None, loss_name=None, model=None, **kwargs):
     # Create loss function based on name
     if loss_name == "cross_entropy":
         filtered_kwargs = filter_kwargs(nn.CrossEntropyLoss.__init__, loss_kwargs)
-        return nn.CrossEntropyLoss(**filtered_kwargs)
+        return nn.CrossEntropyLoss(**filtered_kwargs), loss_name
     elif loss_name == "label_smoothing_ce":
         filtered_kwargs = filter_kwargs(nn.CrossEntropyLoss.__init__, loss_kwargs)
-        return nn.CrossEntropyLoss(**filtered_kwargs)
+        return nn.CrossEntropyLoss(**filtered_kwargs), loss_name
     elif loss_name == "importance_vector_loss":
         # Create base task loss function (default: cross_entropy)
         base_loss = nn.CrossEntropyLoss()
         
         # Get importance vector loss parameters
-        lambda_var = loss_kwargs.get('lambda_variance', 0.1) if loss_kwargs else 0.1
-        variance_metric = loss_kwargs.get('variance_metric', 'loss') if loss_kwargs else 'loss'
+        target_avg_bitwidth = loss_kwargs.get('target_avg_bitwidth', 4.0) if loss_kwargs else 4.0
+        budget_coeff = loss_kwargs.get('budget_coeff', 0.05) if loss_kwargs else 0.05
         
-        logging.info(f"  Using ImportanceVectorLoss with lambda_variance={lambda_var}, metric={variance_metric}")
-        return ImportanceVectorLoss(base_loss, lambda_var, variance_metric)
+        logging.info(f"  Using ImportanceVectorLoss with target_avg_bitwidth={target_avg_bitwidth}, budget_coeff={budget_coeff}")
+        return ImportanceVectorLoss(base_loss, budget_coeff, target_avg_bitwidth), loss_name
     else:
         raise ValueError(f"Unknown loss function: {loss_name}. "
                         f"Supported: 'cross_entropy', 'label_smoothing_ce', 'importance_vector_loss'")
@@ -170,57 +170,111 @@ class LossWrapper:
         
         return self.loss_fn(logits, labels)
 
-
 class ImportanceVectorLoss(nn.Module):
     """
-    Multi-component loss for importance vector-based adaptive quantization.
+    Simplified loss for importance vector-based adaptive quantization.
     
     Combines:
     1. Task loss (e.g., cross-entropy for classification)
-    2. Variance regularization (encourages consistent predictions across bitwidth configs)
+    2. Bitwidth budget constraint (gentle push toward target average bitwidth)
     
-    The variance component penalizes high variance in predictions/losses across
-    different sampled bitwidth configurations, promoting robustness.
+    The budget component gently encourages the model to achieve a target
+    average bitwidth across all layers (e.g., 4-bit average) without
+    overwhelming the task loss signal.
     """
     
-    def __init__(self, task_loss_fn, lambda_var=0.1, variance_metric='loss'):
+    def __init__(self, task_loss_fn, budget_coeff=0.001, 
+                 target_avg_bitwidth=None):
         """
         Args:
             task_loss_fn: Base task loss function (e.g., nn.CrossEntropyLoss())
-            lambda_var: Weight for variance regularization component
-            variance_metric: 'loss' or 'accuracy' - what to compute variance over
+            budget_coeff: Coefficient for bitwidth budget constraint component
+                         (default: 0.001, much smaller than before to avoid dominating)
+            target_avg_bitwidth: Target average bitwidth across network (e.g., 4.0)
+                                If None, budget loss is disabled
         """
         super(ImportanceVectorLoss, self).__init__()
         self.task_loss_fn = task_loss_fn
-        self.lambda_var = lambda_var
-        self.variance_metric = variance_metric
-        
-        assert variance_metric in ['loss', 'accuracy'], \
-            f"variance_metric must be 'loss' or 'accuracy', got {variance_metric}"
+        self.budget_coeff = budget_coeff
+        self.target_avg_bitwidth = target_avg_bitwidth
     
-    def forward(self, outputs_or_list, labels_or_list):
+    def compute_expected_bitwidth_loss(self, model):
+        """
+        Compute bitwidth budget constraint loss.
+        
+        Encourages the network to achieve a target average bitwidth by
+        computing the expected bitwidth from each layer's importance distribution.
+        
+        Args:
+            model: PyTorch model containing QuanConvImportance layers
+        
+        Returns:
+            budget_loss: MSE between average expected bitwidth and target
+        """
+        if self.target_avg_bitwidth is None:
+            return torch.tensor(0.0)
+        
+        conv_class = model.get_conv_class()
+        assert conv_class is not None, "conv_class is None"
+        
+        expected_bitwidths = []
+        
+        for module in model.modules():
+            if isinstance(module, conv_class):
+                # Check that this module instance has the required attributes
+                # (these are set by setup_quantize_funcs on each instance)
+                if not hasattr(module, 'importance_vector') or module.importance_vector is None:
+                    continue
+                if not hasattr(module, 'bitwidth_opts_tensor') or module.bitwidth_opts_tensor is None:
+                    continue
+                
+                # Get softmax probabilities from importance vector
+                probs = torch.softmax(module.importance_vector, dim=0)
+                
+                # Compute expected bitwidth: E[bitwidth] = sum(p_i * bitwidth_i)
+                expected_bw = torch.sum(probs * module.bitwidth_opts_tensor)
+                expected_bitwidths.append(expected_bw)
+        
+        if len(expected_bitwidths) == 0:
+            return torch.tensor(0.0)
+        
+        # Average expected bitwidth across all layers
+        avg_expected_bitwidth = torch.stack(expected_bitwidths).mean()
+        
+        # MSE loss from target
+        budget_loss = (avg_expected_bitwidth - self.target_avg_bitwidth) ** 2
+        
+        return budget_loss
+    
+    def forward(self, outputs_or_list, labels_or_list, model=None):
         """
         Compute multi-component loss for K different bitwidth configurations.
         
         Handles two modes:
-        1. Soft mode: Single tensor inputs (outputs, labels) - just computes task loss
-        2. Hard mode: Lists of K tensors - computes task loss + variance regularization
+        1. Single forward mode: Single tensor inputs (outputs, labels) - computes task loss only
+        2. Multi-config mode: Lists of K tensors - computes task loss + budget
         
         Args:
-            outputs_or_list: Either a single tensor [batch_size, num_classes] (soft mode)
-                           or list of K output tensors (hard mode)
-            labels_or_list: Either a single tensor [batch_size] or [batch_size, num_classes] (soft mode)
-                          or list of K label tensors (hard mode)
+            outputs_or_list: Either a single tensor [batch_size, num_classes] (single mode)
+                           or list of K output tensors (multi-config mode)
+            labels_or_list: Either a single tensor [batch_size] or [batch_size, num_classes]
+                          or list of K label tensors (multi-config mode)
+            model: PyTorch model (required for bitwidth budget loss, optional otherwise)
         
         Returns:
-            total_loss: Combined loss (task + variance in hard mode, just task in soft mode)
-            In hard mode only: loss_components dict with 'task_loss', 'variance_loss', 'total_loss'
+            If single mode:
+                total_loss: Just task loss
+            If multi-config mode:
+                total_loss: Combined loss (task + budget)
+                loss_components: Dict with detailed breakdown
         """
-        # Check if we're in soft mode (single tensors) or hard mode (lists)
-        is_soft_mode = isinstance(outputs_or_list, torch.Tensor)
+        # Check if we're in single mode (single tensors) or multi-config mode (lists)
+        is_single_mode = isinstance(outputs_or_list, torch.Tensor)
         
-        if is_soft_mode:
-            # Soft mode: single tensor inputs, just compute task loss
+        if is_single_mode:
+            # ================================================================
+            # SINGLE FORWARD MODE: Just compute task loss
+            # ================================================================
             outputs = outputs_or_list
             labels = labels_or_list
             
@@ -233,15 +287,19 @@ class ImportanceVectorLoss(nn.Module):
             # Compute and return task loss only
             return self.task_loss_fn(outputs, loss_labels)
         
-        # Hard mode: list of tensors from multiple bitwidth configurations
+        # ================================================================
+        # MULTI-CONFIG MODE: Compute all loss components
+        # ================================================================
         outputs_list = outputs_or_list
         labels_list = labels_or_list
         
         K = len(outputs_list)
-        assert K > 1, "Need at least 2 configs to compute variance"
+        assert K > 1, "Need at least 2 configs to compute statistics"
         assert len(labels_list) == K, "Mismatch between outputs and labels"
         
-        # Compute task loss for each configuration
+        # ----------------------------------------------------------------
+        # 1. TASK LOSS (averaged across K configurations)
+        # ----------------------------------------------------------------
         task_losses = []
         accuracies = []
         
@@ -256,7 +314,7 @@ class ImportanceVectorLoss(nn.Module):
             loss = self.task_loss_fn(outputs, loss_labels)
             task_losses.append(loss)
             
-            # Compute accuracy for variance metric
+            # Compute accuracy for logging
             predictions = torch.argmax(outputs, dim=1)
             if len(labels.shape) == 2 and labels.shape[1] > 1:
                 labels_idx = torch.argmax(labels, dim=1)
@@ -269,26 +327,36 @@ class ImportanceVectorLoss(nn.Module):
         # Mean task loss across configurations
         task_loss = torch.stack(task_losses).mean()
         
-        # Compute variance regularization
-        if self.variance_metric == 'loss':
-            # Variance of losses across K configurations
-            variance = torch.stack(task_losses).var()
-        else:  # 'accuracy'
-            # Variance of accuracies across K configurations
-            variance = torch.stack(accuracies).var()
+        # ----------------------------------------------------------------
+        # 2. BITWIDTH BUDGET CONSTRAINT LOSS (gentle regularization)
+        # ----------------------------------------------------------------
+        if model is not None and self.target_avg_bitwidth is not None:
+            budget_loss_raw = self.compute_expected_bitwidth_loss(model)
+            budget_loss = self.budget_coeff * budget_loss_raw
+        else:
+            budget_loss_raw = torch.tensor(0.0)
+            budget_loss = torch.tensor(0.0)
         
-        variance_loss = self.lambda_var * variance
+        # ----------------------------------------------------------------
+        # TOTAL LOSS
+        # ----------------------------------------------------------------
+        total_loss = task_loss + budget_loss
         
-        # Total loss
-        total_loss = task_loss + variance_loss
-        
+        # ----------------------------------------------------------------
         # Return loss and components for logging
+        # ----------------------------------------------------------------
+        # Compute variance statistics for logging only (not used in loss)
+        raw_variance = torch.stack(task_losses).var()
+        
         loss_components = {
             'task_loss': task_loss.item(),
-            'variance_loss': variance_loss.item(),
+            'variance_loss': 0.0,  # Keep for backward compatibility but set to 0
+            'budget_loss': budget_loss.item(),
             'total_loss': total_loss.item(),
-            'raw_variance': variance.item()
+            'raw_variance': raw_variance.item(),  # Keep for logging/monitoring
+            'raw_budget_loss': budget_loss_raw.item() if isinstance(budget_loss_raw, torch.Tensor) else 0.0,
+            'mean_accuracy': torch.stack(accuracies).mean().item(),
+            'accuracy_std': torch.stack(accuracies).std().item()
         }
         
         return total_loss, loss_components
-

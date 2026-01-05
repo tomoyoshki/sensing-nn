@@ -19,7 +19,9 @@ label_smoothing_ce:
 importance_vector_loss:
         name: "importance_vector_loss"
         lambda_variance: 0.1
-        variance_metric: "loss"
+        variance_metric: "loss" # Not used anymore
+        target_avg_bitwidth: 6.0
+        budget_coeff: 0.01
 
 loss_name: "cross_entropy"
 
@@ -120,23 +122,29 @@ quantization:
                 activation_quantization: "dorefa"
                 validation_function: "importance_vector_comprehensive_validation"
                 training_method: "joint_quantization_with_importance_vector"
+                number_of_configs: 2
                 switchable_clipping: True
                 sat_weight_normalization: False
                 
                 # Importance vector specific params
                 importance_vector:
-                        # 'soft' for training (differentiable weighted combination)
-                        # 'hard' for inference (argmax selection)
-                        sampling_strategy: "soft"
+                        sampling_strategy: "soft_gumbel_softmax" # 'best_bitwidth', 'soft_gumbel_softmax', 'uniform_sampling'
                         
-                        # Temperature annealing
-                        temperature_start: 1.0
-                        temperature_min: 0.1
-                        temperature_decay: 0.99
+                
+                # Temperature scheduler for Gumbel-Softmax
+                # Used by: models/Temperature_Scheduler.py
+                # Similar to LR scheduler, call temp_scheduler.step() at end of each epoch
+                temp_scheduler:
+                        # Scheduler type: 'cosine', 'exponential', 'linear', 'step', 'cyclic', 'constant'
+                        name: "cosine"
+                        temp_start: 1.0     # High temperature = more exploration
+                        temp_min: 0.1       # Low temperature = more exploitation
+                        # num_epochs is taken from lr_scheduler.train_epochs automatically
                         
-                        # Variance regularization
-                        lambda_variance: 0.1
-                        variance_metric: "loss"  # 'loss' or 'accuracy'
+                        # Additional params for specific schedulers:
+                        # For 'exponential': decay_rate (optional, computed if not provided)
+                        # For 'step': milestones: [30, 60, 80], gamma: 0.5
+                        # For 'cyclic': cycle_length: 20
                 
                 # Visualization frequency
                 visualize_importance_every: 2  # epochs

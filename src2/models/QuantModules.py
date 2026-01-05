@@ -614,18 +614,33 @@ class QuanConvImportance(BaseQuanConv):
             torch.zeros(num_bitwidths),
             requires_grad=True
         )
+
+        # Register as buffer so it moves with model.to(device) but doesn't require gradients
+        self.register_buffer(
+            'bitwidth_opts_tensor',
+            torch.tensor(self.bitwidth_opts, dtype=torch.float32)
+        )
+        
+
     
     
     def set_temperature(self, temperature):
         """
         Set the current temperature for Gumbel-Softmax sampling.
         
-        This should be called at the start of each epoch during training.
+        This is typically called by the TemperatureScheduler at the end of each epoch.
+        See models/Temperature_Scheduler.py for scheduler implementations.
         
         Args:
             temperature: Temperature value (higher = more exploration, lower = more exploitation)
         """
         self.current_temperature = temperature
+
+    def get_temperature(self):
+        """
+        Get the current temperature for Gumbel-Softmax sampling.
+        """
+        return self.current_temperature
     
     def get_best_bitwidth(self):
         """
@@ -696,10 +711,10 @@ class QuanConvImportance(BaseQuanConv):
             model: PyTorch model containing QuanConvImportance layers
             mode: Sampling strategy:
                 - 'best_bitwidth': Use argmax of importance vector (inference/validation)
-                - 'hard_gumbel_softmax': Sample from importance distribution (validation)
+                - 'soft_gumbel_softmax': Sample from importance distribution (training)
                 - 'uniform_sampling': Sample uniformly at random (validation baseline)
         """
-        valid_modes = ['best_bitwidth', 'hard_gumbel_softmax', 'uniform_sampling']
+        valid_modes = ['best_bitwidth', 'soft_gumbel_softmax', 'uniform_sampling']
         assert mode in valid_modes, f"Mode must be one of {valid_modes}, got {mode}"
         
         for module in model.modules():
@@ -770,32 +785,6 @@ class QuanConvImportance(BaseQuanConv):
         
         return importance_vectors
     
-    def get_temperature_for_epoch(self, epoch, num_epochs):
-        """
-        Compute temperature with exponential annealing schedule for Gumbel-Softmax.
-        
-        Methodology: Exponential decay (standard for Gumbel-Softmax)
-        Formula: temp = max(temp_min, temp_start * (decay_rate ** epoch))
-        
-        High temp (1.0) → soft sampling, more exploration
-        Low temp (0.1) → hard sampling, more exploitation
-        
-        Args:
-            epoch: Current epoch (0-indexed)
-            num_epochs: Total number of epochs (for reference, not used in exponential decay)
-        
-        Returns:
-            float: Current temperature
-        """
-        assert self.quantization_config is not None, "quantization_config is None"
-        # Extract importance vector config
-        temp_start = self.quantization_config.get('temperature_start', 1.0)
-        temp_min = self.quantization_config.get('temperature_min', 0.1)
-        temp_decay = self.quantization_config.get('temperature_decay', 0.99)
-        
-        # Exponential decay annealing
-        temp = max(temp_min, temp_start * (temp_decay ** epoch))
-        return temp
     
     @staticmethod
     def plot_importance_distributions(importance_dists, bitwidth_options, epoch):
@@ -889,9 +878,6 @@ class QuanConvImportance(BaseQuanConv):
         Forward pass with importance-based bitwidth selection.
         
         Two modes:
-        - 'soft' (training): Compute outputs for ALL bitwidth options and combine
-          using importance weights. This is differentiable and allows gradients
-          to flow to the importance vector.
         - 'hard' (inference): Use argmax to select single best bitwidth.
         
         Args:
@@ -914,31 +900,36 @@ class QuanConvImportance(BaseQuanConv):
         assert self.sampling_strategy is not None, "sampling_strategy is None"
         if self.sampling_strategy == 'best_bitwidth':
             # ================================================================
-            # BEST_BITWIDTH MODE: Use argmax to select single best bitwidth
+            # BEST BITWIDTH MODE: Use argmax to select single best bitwidth
             # ================================================================
             best_bitwidth = self.get_best_bitwidth()
             output = self._forward_with_bitwidth(inp, best_bitwidth)
-        
-        elif self.sampling_strategy == 'hard_gumbel_softmax':
+        elif self.sampling_strategy == 'soft_gumbel_softmax':
             # ================================================================
-            # HARD_GUMBEL_SOFTMAX MODE: Sample from importance vector
+            # HARD GUMBEL SOFTMAX MODE: Sample from importance vector
+            # Temperature is managed by TemperatureScheduler.step()
             # ================================================================
-            current_temperature = self.get_temperature_for_epoch(self.current_epoch, self.num_epochs)
             soft_Weights = F.gumbel_softmax(self.importance_vector,
-             temperature=current_temperature, hard=True)
-            selected_bitwidth = torch.sum(soft_Weights * self.bitwidth_opts)
-            output = self._forward_with_bitwidth(inp, selected_bitwidth)
-        
+             tau=self.current_temperature, hard=False)
+
+            outputs = []
+            for bitwidth in self.bitwidth_opts:
+                output = self._forward_with_bitwidth(inp, bitwidth)
+                outputs.append(output)
+
+            stacked_outputs = torch.stack(outputs, dim=0)
+            probs_expanded = soft_Weights.view(-1, 1, 1, 1,1)
+            output = (stacked_outputs * probs_expanded).sum(dim=0)
+
         elif self.sampling_strategy == 'uniform_sampling':
             # ================================================================
-            # UNIFORM_SAMPLING MODE (Validation): Sample uniformly at random
+            # UNIFORM SAMPLING MODE (Validation): Sample uniformly at random
             # ================================================================
             selected_bitwidth = self.sample_bitwidth_uniform()
             output = self._forward_with_bitwidth(inp, selected_bitwidth)
         else:
             raise ValueError(f"Invalid sampling strategy: {self.sampling_strategy}, \
              must be one of: best_bitwidth, hard_gumbel_softmax, uniform_sampling")
-        
         return output
 
 

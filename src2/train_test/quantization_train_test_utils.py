@@ -16,7 +16,7 @@ import numpy as np
 from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-
+from models.Temperature_Scheduler import build_temp_scheduler
 # Import validation function from train_test_utils
 from train_test.train_test_utils import (
     validate, calculate_confusion_matrix, plot_confusion_matrix,
@@ -285,8 +285,7 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
 
 def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device, 
                                              augmenter, apply_augmentation_fn, 
-                                             num_configs, bitwidth_options, 
-                                             temperature, bin_tolerance=0.5):
+                                             num_configs):
     """
     Comprehensive validation for importance vector training with three modes:
     1. Random bitwidths (baseline comparison - uniform sampling)
@@ -300,24 +299,24 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
         device: Device to run validation on
         augmenter: Data augmenter object
         apply_augmentation_fn: Function to apply augmentation
-        num_configs: Number of configurations to test for modes 1 and 2
-        bitwidth_options: List of bitwidth options
-        temperature: Temperature for importance sampling (mode 2)
-        bin_tolerance: Tolerance for grouping bitwidths into bins
+        num_configs: Number of configurations to test
     
     Returns:
         dict: Comprehensive statistics for all three validation modes
     """
-    from models.QuantModules import QuanConvImportance
-    
+    conv_class = model.get_conv_class()
     # Helper function to get average bitwidth for QuanConvImportance layers
     # Note: For stochastic modes, this reflects bitwidths from the last forward pass
     def get_avg_bitwidth():
         bitwidths = []
         for module in model.modules():
-            if isinstance(module, QuanConvImportance):
+            if isinstance(module, conv_class):
                 if hasattr(module, 'curr_bitwidth') and module.curr_bitwidth is not None:
-                    bitwidths.append(module.curr_bitwidth)
+                    bw = module.curr_bitwidth
+                    # Handle both tensor and scalar bitwidths (tensors come from Gumbel-Softmax sampling)
+                    if isinstance(bw, torch.Tensor):
+                        bw = bw.detach().cpu().item()
+                    bitwidths.append(bw)
         return np.mean(bitwidths) if len(bitwidths) > 0 else 0.0
     
     model.eval()
@@ -333,7 +332,7 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
     logging.info("-" * 80)
     
     # Set all layers to hard_random mode (uniform sampling)
-    QuanConvImportance.set_all_layers_mode(model, 'hard_random')
+    conv_class.set_all_layers_mode(model, 'uniform_sampling')
     
     random_results = []
     for i in range(num_configs):
@@ -373,47 +372,46 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
     # ========================================================================
     # Mode 2: Importance-Based Sampling (Stochastic from learned distribution)
     # ========================================================================
-    logging.info("\n[Mode 2] Importance-Based Sampling Validation (Stochastic)")
-    logging.info(f"  Temperature: {temperature:.4f}")
-    logging.info("-" * 80)
+    # logging.info("\n[Mode 2] Importance-Based Sampling Validation (Stochastic)")
+    # logging.info("-" * 80)
     
-    # Set all layers to hard_sampled_from_iv mode (sample from importance)
-    QuanConvImportance.set_all_layers_mode(model, 'hard_sampled_from_iv', temperature)
+    # # Set all layers to hard_sampled_from_iv mode (sample from importance)
+    # conv_class.set_all_layers_mode(model, 'hard_gumbel_softmax')
     
-    importance_results = []
-    for i in range(num_configs):
-        # Run validation (bitwidths are sampled from importance per forward pass)
-        val_result = validate(
-            model, val_loader, loss_fn, device,
-            augmenter, apply_augmentation_fn
-        )
+    # importance_results = []
+    # for i in range(num_configs):
+    #     # Run validation (bitwidths are sampled from importance per forward pass)
+    #     val_result = validate(
+    #         model, val_loader, loss_fn, device,
+    #         augmenter, apply_augmentation_fn
+    #     )
         
-        # Get average bitwidth (from last batch)
-        avg_bitwidth = get_avg_bitwidth()
+    #     # Get average bitwidth (from last batch)
+    #     avg_bitwidth = get_avg_bitwidth()
         
-        importance_results.append({
-            'accuracy': val_result['accuracy'],
-            'loss': val_result['loss'],
-            'avg_bitwidth': avg_bitwidth
-        })
+    #     importance_results.append({
+    #         'accuracy': val_result['accuracy'],
+    #         'loss': val_result['loss'],
+    #         'avg_bitwidth': avg_bitwidth
+    #     })
         
-        bitwidth_str = f", Avg BW={avg_bitwidth:.2f}"
-        logging.info(f"  Config {i+1}/{num_configs}: Acc={val_result['accuracy']:.4f}{bitwidth_str}")
+    #     bitwidth_str = f", Avg BW={avg_bitwidth:.2f}"
+    #     logging.info(f"  Config {i+1}/{num_configs}: Acc={val_result['accuracy']:.4f}{bitwidth_str}")
     
-    # Calculate importance sampling statistics
-    importance_accs = [r['accuracy'] for r in importance_results]
-    importance_losses = [r['loss'] for r in importance_results]
-    importance_bws = [r['avg_bitwidth'] for r in importance_results]
+    # # Calculate importance sampling statistics
+    # importance_accs = [r['accuracy'] for r in importance_results]
+    # importance_losses = [r['loss'] for r in importance_results]
+    # importance_bws = [r['avg_bitwidth'] for r in importance_results]
     
-    importance_stats = {
-        'mean_acc': np.mean(importance_accs),
-        'std_acc': np.std(importance_accs),
-        'mean_loss': np.mean(importance_losses),
-        'mean_bitwidth': np.mean(importance_bws),
-    }
+    # importance_stats = {
+    #     'mean_acc': np.mean(importance_accs),
+    #     'std_acc': np.std(importance_accs),
+    #     'mean_loss': np.mean(importance_losses),
+    #     'mean_bitwidth': np.mean(importance_bws),
+    # }
     
-    logging.info(f"Importance Sampling Stats: Acc={importance_stats['mean_acc']:.4f}±{importance_stats['std_acc']:.4f}, "
-                f"Loss={importance_stats['mean_loss']:.4f}, BW={importance_stats['mean_bitwidth']:.2f}")
+    # logging.info(f"Importance Sampling Stats: Acc={importance_stats['mean_acc']:.4f}±{importance_stats['std_acc']:.4f}, "
+    #             f"Loss={importance_stats['mean_loss']:.4f}, BW={importance_stats['mean_bitwidth']:.2f}")
     
     # ========================================================================
     # Mode 3: Learned Best Bitwidths (Argmax per layer - Deterministic)
@@ -422,26 +420,26 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
     logging.info("-" * 80)
     
     # Set all layers to hard_best mode (argmax of importance)
-    QuanConvImportance.set_all_layers_mode(model, 'hard_best')
+    conv_class.set_all_layers_mode(model, 'best_bitwidth')
     
     # Get importance distributions and log choices
-    importance_dists = QuanConvImportance.get_all_importance_distributions(model)
+    importance_dists = conv_class.get_all_importance_distributions(model)
     
     for module in model.modules():
-        if isinstance(module, QuanConvImportance):
+        if isinstance(module, conv_class):
             best_bw = module.get_best_bitwidth()
             if module.layer_name in importance_dists:
                 dist = importance_dists[module.layer_name]['distribution']
                 confidence = dist.max().item()
                 logging.info(f"  {module.layer_name}: Best BW={best_bw} (confidence={confidence:.4f})")
     
-    avg_bitwidth = get_avg_bitwidth()
     
     # Run full validation with learned bitwidths
     val_result = validate(
         model, val_loader, loss_fn, device,
         augmenter, apply_augmentation_fn
     )
+    avg_bitwidth = get_avg_bitwidth()
     
     highest_conf_stats = {
         'accuracy': val_result['accuracy'],
@@ -459,7 +457,7 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
     logging.info("Validation Summary")
     logging.info("=" * 80)
     logging.info(f"Random BW (uniform):     Acc={random_stats['mean_acc']:.4f}±{random_stats['std_acc']:.4f}, BW={random_stats['mean_bitwidth']:.2f}")
-    logging.info(f"Importance Sampling:     Acc={importance_stats['mean_acc']:.4f}±{importance_stats['std_acc']:.4f}, BW={importance_stats['mean_bitwidth']:.2f}")
+    # logging.info(f"Importance Sampling:     Acc={importance_stats['mean_acc']:.4f}±{importance_stats['std_acc']:.4f}, BW={importance_stats['mean_bitwidth']:.2f}")
     logging.info(f"Highest Confidence:      Acc={highest_conf_stats['accuracy']:.4f}, BW={highest_conf_stats['avg_bitwidth']:.2f}")
     logging.info("=" * 80)
     
@@ -475,14 +473,14 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
             'all_bitwidths': random_bws,
         },
         # Mode 2: Importance sampling (stochastic)
-        'importance': {
-            'mean_acc': importance_stats['mean_acc'],
-            'std_acc': importance_stats['std_acc'],
-            'mean_loss': importance_stats['mean_loss'],
-            'mean_bitwidth': importance_stats['mean_bitwidth'],
-            'all_accuracies': importance_accs,
-            'all_bitwidths': importance_bws,
-        },
+        # 'importance': {
+        #     'mean_acc': importance_stats['mean_acc'],
+        #     'std_acc': importance_stats['std_acc'],
+        #     'mean_loss': importance_stats['mean_loss'],
+        #     'mean_bitwidth': importance_stats['mean_bitwidth'],
+        #     'all_accuracies': importance_accs,
+        #     'all_bitwidths': importance_bws,
+        # },
         # Mode 3: Highest confidence (deterministic argmax)
         'highest_conf': {
             'accuracy': highest_conf_stats['accuracy'],
@@ -815,7 +813,7 @@ def train_epoch_joint_quantization(model, train_loader, optimizer, loss_fn,
     }
 
 
-def train_epoch_importance_vector(model, train_loader, optimizer, loss_fn, 
+def train_epoch_importance_vector(model, train_loader, optimizer, temp_scheduler, loss_fn, 
                                    quant_config, augmenter, apply_augmentation_fn, 
                                    device, writer, epoch, num_epochs, clip_grad=None):
     """
@@ -829,6 +827,7 @@ def train_epoch_importance_vector(model, train_loader, optimizer, loss_fn,
         model: PyTorch model to train (with QuanConvImportance layers)
         train_loader: Training data loader
         optimizer: Optimizer (optimizes both network weights and importance vectors)
+        temp_scheduler: Temperature scheduler (updates temperature in all layers)
         loss_fn: Loss function (should be ImportanceVectorLoss)
         quant_config: Quantization configuration dictionary
         augmenter: Data augmenter object
@@ -840,27 +839,33 @@ def train_epoch_importance_vector(model, train_loader, optimizer, loss_fn,
         clip_grad: Gradient clipping value (optional)
     
     Returns:
-        dict: Training metrics (loss, accuracy, task_loss, variance_loss, temperature)
+        dict: Training metrics (loss, accuracy, task_loss, variance_loss, budget_loss, temperature)
     """
-    from models.QuantModules import QuanConvImportance
     
     model.train()
-    
-    # Compute annealed temperature for this epoch
-    temperature = QuanConvImportance.get_temperature_for_epoch(epoch, num_epochs, quant_config)
-    
-    # Set all layers to SOFT mode for training (differentiable weighted outputs)
-    QuanConvImportance.set_training_mode(model, temperature)
-    
+
+    # Running totals for metrics
     train_loss = 0.0
+    train_task_loss = 0.0
+    train_variance_loss = 0.0
+    train_budget_loss = 0.0
+    train_raw_variance = 0.0
     train_correct = 0
     train_total = 0
-    
-    logging.info(f"Training with importance vector (soft mode, temp={temperature:.4f})")
+    num_batches = 0
+
+    conv_class = model.get_conv_class()
+    mode = quant_config.get('importance_vector', {}).get('sampling_strategy', 'hard_gumbel_softmax')
+    conv_class.set_all_layers_mode(model, mode)
     
     # Create tqdm progress bar
     pbar = tqdm(train_loader, desc=f"Epoch {epoch+1} Training", 
                 leave=True, dynamic_ncols=True)
+    
+    num_configs = quant_config.get('number_of_configs', 8)
+    assert num_configs > 1, "Number of configurations must be greater than 1"
+    
+    logging.info(f"Training with importance vector (num_configs={num_configs}, mode={mode})")
     
     for batch_idx, batch_data in enumerate(pbar):
         # Unpack batch
@@ -883,17 +888,31 @@ def train_epoch_importance_vector(model, train_loader, optimizer, loss_fn,
         else:
             data = data.to(device)
         
-        # Forward pass - soft mode computes differentiable weighted outputs
-        # The importance vectors receive gradients through the weighted combination
-        outputs = model(data)
-        
-        # Compute loss (standard cross-entropy, gradients flow to importance vectors)
+        # Prepare labels for loss computation
         if len(labels.shape) == 2 and labels.shape[1] > 1:
             loss_labels = torch.argmax(labels, dim=1)
         else:
             loss_labels = labels
         
-        loss = loss_fn(outputs, loss_labels)
+        # ================================================================
+        # Multi-config forward passes (like joint_quantization)
+        # Each forward pass samples different bitwidths from importance
+        # ================================================================
+        outputs_list = []
+        labels_list = []
+        
+        for _ in range(num_configs):
+            # Forward pass - bitwidths are sampled based on mode
+            # (each forward will sample different bitwidths from importance distribution)
+            outputs = model(data)
+            outputs_list.append(outputs)
+            labels_list.append(loss_labels)
+        
+        # ================================================================
+        # Compute multi-component loss using ImportanceVectorLoss
+        # Returns (total_loss, loss_components) when given lists
+        # ================================================================
+        loss, loss_components = loss_fn(outputs_list, labels_list, model=model)
         
         # Backward pass
         optimizer.zero_grad()
@@ -905,41 +924,74 @@ def train_epoch_importance_vector(model, train_loader, optimizer, loss_fn,
         
         optimizer.step()
         
-        # Calculate metrics
-        train_loss += loss.item() * labels.size(0)
+        # ================================================================
+        # Accumulate metrics from loss components
+        # ================================================================
+        batch_size = labels.size(0)
+        train_loss += loss_components['total_loss'] * batch_size
+        train_task_loss += loss_components['task_loss'] * batch_size
+        train_variance_loss += loss_components['variance_loss'] * batch_size
+        train_budget_loss += loss_components['budget_loss'] * batch_size
+        train_raw_variance += loss_components['raw_variance'] * batch_size
         
-        predictions = torch.argmax(outputs, dim=1)
-        if len(labels.shape) == 2 and labels.shape[1] > 1:
-            labels_idx = torch.argmax(labels, dim=1)
-        else:
-            labels_idx = labels
-        
-        train_correct += (predictions == labels_idx).sum().item()
-        train_total += labels.size(0)
+        # Use mean accuracy from loss_components (averaged across K configs)
+        train_correct += loss_components['mean_accuracy'] * batch_size
+        train_total += batch_size
+        num_batches += 1
         
         # Update progress bar with current metrics
         current_acc = train_correct / train_total if train_total > 0 else 0
         current_loss = train_loss / train_total if train_total > 0 else 0
+        current_task_loss = train_task_loss / train_total if train_total > 0 else 0
+        current_var_loss = train_variance_loss / train_total if train_total > 0 else 0
+        
         pbar.set_postfix({
             'loss': f'{current_loss:.4f}',
+            'task': f'{current_task_loss:.4f}',
+            'var': f'{current_var_loss:.4f}',
             'acc': f'{current_acc:.4f}',
-            'temp': f'{temperature:.3f}'
+            'temp': f'{temp_scheduler.get_last_temp():.3f}'
         })
         
         # Log to TensorBoard every 50 batches
         if batch_idx % 50 == 0 and writer is not None:
             global_step = epoch * len(train_loader) + batch_idx
-            writer.add_scalar('Train/Batch_Loss', loss.item(), global_step)
-            writer.add_scalar('Train/Temperature', temperature, global_step)
+            writer.add_scalar('Train/Batch_Total_Loss', loss_components['total_loss'], global_step)
+            writer.add_scalar('Train/Batch_Task_Loss', loss_components['task_loss'], global_step)
+            writer.add_scalar('Train/Batch_Variance_Loss', loss_components['variance_loss'], global_step)
+            writer.add_scalar('Train/Batch_Budget_Loss', loss_components['budget_loss'], global_step)
+            writer.add_scalar('Train/Batch_Raw_Variance', loss_components['raw_variance'], global_step)
+            writer.add_scalar('Train/Batch_Mean_Accuracy', loss_components['mean_accuracy'], global_step)
+            writer.add_scalar('Train/Batch_Accuracy_Std', loss_components['accuracy_std'], global_step)
+            writer.add_scalar('Train/Temperature', temp_scheduler.get_last_temp(), global_step)
     
     # Calculate epoch metrics
     epoch_train_loss = train_loss / train_total
     epoch_train_acc = train_correct / train_total
+    epoch_task_loss = train_task_loss / train_total
+    epoch_variance_loss = train_variance_loss / train_total
+    epoch_budget_loss = train_budget_loss / train_total
+    epoch_raw_variance = train_raw_variance / train_total
+    epoch_temperature = temp_scheduler.get_last_temp()
+
+    logging.info(f"Epoch Temperature: {epoch_temperature:.3f}")
+    # Temperature scheduler step
+    temp_scheduler.step()
+    
+    # Log epoch-level metrics
+    logging.info(f"  Epoch Loss Components - Total: {epoch_train_loss:.4f}, "
+                f"Task: {epoch_task_loss:.4f}, Variance: {epoch_variance_loss:.4f}, "
+                f"Budget: {epoch_budget_loss:.4f}")
+    logging.info(f"  Raw Variance: {epoch_raw_variance:.6f}, Mean Accuracy: {epoch_train_acc:.4f}")
     
     return {
         'loss': epoch_train_loss,
         'accuracy': epoch_train_acc,
-        'temperature': temperature
+        'task_loss': epoch_task_loss,
+        'variance_loss': epoch_variance_loss,
+        'budget_loss': epoch_budget_loss,
+        'raw_variance': epoch_raw_variance,
+        'temperature': epoch_temperature
     }
 
 
@@ -1000,6 +1052,7 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
     
     # Create scheduler
     scheduler = setup_scheduler(optimizer, config)
+
     
     # Extract training and validation methods
     training_method = quant_config.get('training_method', 'joint_quantization')
@@ -1025,7 +1078,14 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
     num_classes = config.get('vehicle_classification', {}).get('num_classes', 7)
     class_names = config.get('vehicle_classification', {}).get('class_names', None)
     clip_grad = config.get(model_name, {}).get('optimizer', {}).get('clip_grad', None)
-    
+
+    if quant_config.get(quantization_method, {}).get('temp_scheduler', {}):
+        temp_config = quant_config.get(quantization_method, {}).get('temp_scheduler', {})
+        temperature_scheduler = build_temp_scheduler(model, temp_config, num_epochs)
+    else:
+        temperature_scheduler = None
+
+    temperature_scheduler = build_temp_scheduler(model, quant_config, num_epochs)
     # Training history
     train_history = {
         'train_loss': [],
@@ -1036,7 +1096,13 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
         'val_std_acc': [],
         'learning_rates': [],
         'bitwidth_bin_stats': [],  # Store bin stats for each epoch
-        'avg_val_std_history': []  # Store avg val std for each epoch
+        'avg_val_std_history': [],  # Store avg val std for each epoch
+        # Loss components for importance vector training
+        'train_task_loss': [],
+        'train_variance_loss': [],
+        'train_budget_loss': [],
+        'train_raw_variance': [],
+        'train_temperature': []
     }
     
     # Best model tracking
@@ -1087,10 +1153,13 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
                 clip_grad=clip_grad
             )
         elif training_method == "joint_quantization_with_importance_vector":
+            # Setup Temperature Scheduler
+            assert temperature_scheduler is not None, "Temperature scheduler is not set"
             train_metrics = train_epoch_importance_vector(
                 model=model,
                 train_loader=train_loader,
                 optimizer=optimizer,
+                temp_scheduler=temperature_scheduler,
                 loss_fn=loss_fn,
                 quant_config=quant_config,
                 augmenter=augmenter,
@@ -1109,6 +1178,14 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
         
         train_history['train_loss'].append(epoch_train_loss)
         train_history['train_acc'].append(epoch_train_acc)
+        
+        # Append loss components for importance vector training
+        if training_method == "joint_quantization_with_importance_vector":
+            train_history['train_task_loss'].append(train_metrics.get('task_loss', 0.0))
+            train_history['train_variance_loss'].append(train_metrics.get('variance_loss', 0.0))
+            train_history['train_budget_loss'].append(train_metrics.get('budget_loss', 0.0))
+            train_history['train_raw_variance'].append(train_metrics.get('raw_variance', 0.0))
+            train_history['train_temperature'].append(train_metrics.get('temperature', 0.0))
         
         # ====================================================================
         # Validation Phase
@@ -1160,13 +1237,7 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
             # Comprehensive validation for importance vector training
             # Get validation config
             val_config = config.get('quantization', {}).get('importance_vector_comprehensive_validation', {})
-            num_configs = val_config.get('number_of_configs', 4)
-            bitwidth_options = val_config.get('bitwidth_options', [4, 6, 8])
-            bin_tolerance = val_config.get('bin_tolerance', 0.5)
-            
-            # Get current temperature (same as used in training)
-            from models.QuantModules import QuanConvImportance
-            temperature = QuanConvImportance.get_temperature_for_epoch(epoch, num_epochs, quant_config)
+            num_configs = val_config.get('number_of_configs', 2)
             
             val_stats = validate_importance_vector_comprehensive(
                 model=model,
@@ -1176,9 +1247,6 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
                 augmenter=augmenter,
                 apply_augmentation_fn=apply_augmentation_fn,
                 num_configs=num_configs,
-                bitwidth_options=bitwidth_options,
-                temperature=temperature,
-                bin_tolerance=bin_tolerance
             )
             
             # Use random bitwidth mean as the main metric (for model selection)
@@ -1192,7 +1260,7 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
                 train_history['val_highest_conf_acc'] = []
             
             train_history['val_random_acc'].append(val_stats['random']['mean_acc'])
-            train_history['val_importance_acc'].append(val_stats['importance']['mean_acc'])
+            # train_history['val_importance_acc'].append(val_stats['importance']['mean_acc'])
             train_history['val_highest_conf_acc'].append(val_stats['highest_conf']['accuracy'])
         else:
             raise ValueError(f"Unknown validation function: {validation_function}")
@@ -1240,32 +1308,30 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
             # Log all three validation modes
             writer.add_scalar('Validation/random_mean_acc', val_stats['random']['mean_acc'], epoch)
             writer.add_scalar('Validation/random_std_acc', val_stats['random']['std_acc'], epoch)
-            writer.add_scalar('Validation/importance_mean_acc', val_stats['importance']['mean_acc'], epoch)
-            writer.add_scalar('Validation/importance_std_acc', val_stats['importance']['std_acc'], epoch)
+            # writer.add_scalar('Validation/importance_mean_acc', val_stats['importance']['mean_acc'], epoch)
+            # writer.add_scalar('Validation/importance_std_acc', val_stats['importance']['std_acc'], epoch)
             writer.add_scalar('Validation/highest_conf_acc', val_stats['highest_conf']['accuracy'], epoch)
             
             # Log bitwidth statistics for all modes
             writer.add_scalar('Bitwidth/random_mean_bw', val_stats['random']['mean_bitwidth'], epoch)
-            writer.add_scalar('Bitwidth/importance_mean_bw', val_stats['importance']['mean_bitwidth'], epoch)
+            # writer.add_scalar('Bitwidth/importance_mean_bw', val_stats['importance']['mean_bitwidth'], epoch)
             writer.add_scalar('Bitwidth/highest_conf_bw', val_stats['highest_conf']['avg_bitwidth'], epoch)
             
             # Create comparison plot
             try:
                 fig, ax = plt.subplots(figsize=(10, 6))
-                modes = ['Random\nBitwidths', 'Importance\nSampling', 'Highest\nConfidence']
+                modes = ['Random\nBitwidths', 'Highest\nConfidence']
                 accs = [
                     val_stats['random']['mean_acc'],
-                    val_stats['importance']['mean_acc'],
                     val_stats['highest_conf']['accuracy']
                 ]
                 stds = [
                     val_stats['random']['std_acc'],
-                    val_stats['importance']['std_acc'],
                     0.0  # Single measurement for highest confidence
                 ]
                 
                 bars = ax.bar(modes, accs, yerr=stds, capsize=5, alpha=0.7, 
-                             color=['steelblue', 'orange', 'green'])
+                             color=['steelblue', 'orange'])
                 ax.set_ylabel('Validation Accuracy', fontsize=12, fontweight='bold')
                 ax.set_title(f'Validation Accuracy Comparison (Epoch {epoch + 1})', 
                            fontsize=14, fontweight='bold')
@@ -1306,16 +1372,63 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
             
             # Log temperature
             if 'temperature' in train_metrics:
-                writer.add_scalar('Temperature', train_metrics['temperature'], epoch)
+                writer.add_scalar('Train/Epoch_Temperature', train_metrics['temperature'], epoch)
             
-            # Log loss components
+            # Log all loss components (epoch-level)
             if 'task_loss' in train_metrics:
-                writer.add_scalar('Loss/task_loss', train_metrics['task_loss'], epoch)
-                logging.info(f"  Task Loss: {train_metrics['task_loss']:.4f}")
+                writer.add_scalar('Loss/Epoch_Task_Loss', train_metrics['task_loss'], epoch)
             
             if 'variance_loss' in train_metrics:
-                writer.add_scalar('Loss/variance_loss', train_metrics['variance_loss'], epoch)
-                logging.info(f"  Variance Loss: {train_metrics['variance_loss']:.4f}")
+                writer.add_scalar('Loss/Epoch_Variance_Loss', train_metrics['variance_loss'], epoch)
+            
+            if 'budget_loss' in train_metrics:
+                writer.add_scalar('Loss/Epoch_Budget_Loss', train_metrics['budget_loss'], epoch)
+            
+            if 'raw_variance' in train_metrics:
+                writer.add_scalar('Loss/Epoch_Raw_Variance', train_metrics['raw_variance'], epoch)
+            
+            # Create loss components breakdown plot
+            try:
+                fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+                
+                # Plot 1: Loss components bar chart for this epoch
+                loss_names = ['Total', 'Task', 'Variance', 'Budget']
+                loss_values = [
+                    train_metrics.get('loss', 0),
+                    train_metrics.get('task_loss', 0),
+                    train_metrics.get('variance_loss', 0),
+                    train_metrics.get('budget_loss', 0)
+                ]
+                colors = ['steelblue', 'forestgreen', 'orange', 'crimson']
+                
+                bars = axes[0].bar(loss_names, loss_values, color=colors, alpha=0.8, edgecolor='black')
+                axes[0].set_ylabel('Loss Value', fontsize=12, fontweight='bold')
+                axes[0].set_title(f'Loss Components (Epoch {epoch + 1})', fontsize=14, fontweight='bold')
+                axes[0].grid(True, alpha=0.3, axis='y')
+                
+                # Add value labels on bars
+                for bar, val in zip(bars, loss_values):
+                    height = bar.get_height()
+                    axes[0].text(bar.get_x() + bar.get_width()/2., height + 0.001,
+                               f'{val:.4f}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+                
+                # Plot 2: Loss components as percentage of total
+                total_loss = train_metrics.get('loss', 1)
+                if total_loss > 0:
+                    percentages = [v / total_loss * 100 for v in loss_values[1:]]  # Skip total
+                    wedges, texts, autotexts = axes[1].pie(
+                        percentages, labels=['Task', 'Variance', 'Budget'],
+                        colors=colors[1:], autopct='%1.1f%%',
+                        startangle=90, explode=[0.02, 0.02, 0.02]
+                    )
+                    axes[1].set_title(f'Loss Component Distribution (Epoch {epoch + 1})', 
+                                     fontsize=14, fontweight='bold')
+                
+                plt.tight_layout()
+                writer.add_figure('Loss/Components_Breakdown', fig, epoch)
+                plt.close(fig)
+            except Exception as e:
+                logging.warning(f"Could not create loss components plot: {e}")
             
             # Visualize importance distributions
             iv_config = quant_config.get('importance_vector', {})

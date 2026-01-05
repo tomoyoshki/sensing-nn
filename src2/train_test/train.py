@@ -79,6 +79,9 @@ def main():
     # Get augmentation mode from config or use default
     model_name = config.get("model", "ResNet")
     augmenters_config = config.get(model_name, {}).get("fixed_augmenters", {})
+    learning_rate = config.get(model_name, {}).get("lr_scheduler", {}).get("train_epochs", "Unknown")
+    optimizer_name = config.get(model_name, {}).get("optimizer", {}).get("name", "Unknown")
+    scheduler_name = config.get(model_name, {}).get("lr_scheduler", {}).get("name", "Unknown")
     
     # For training, we typically want augmentation enabled
     augmenter = create_augmenter(config, augmentation_mode="fixed")
@@ -137,7 +140,7 @@ def main():
     logging.info("\nSetting up training components...")
     
     # Loss function (pass model in case loss needs access to weights)
-    loss_fn = get_loss_function(config=config, model=model)
+    loss_fn, loss_fn_name = get_loss_function(config=config, model=model)
     
     # ========================================================================
     # 7. Log Hyperparameters to TensorBoard
@@ -152,6 +155,10 @@ def main():
         'dataset': Path(config.get('yaml_path', 'Unknown')).stem,
         'batch_size': config.get('batch_size', 'Unknown'),
         'num_epochs': config.get('num_epochs', 'Unknown'),
+        'learning_rate': learning_rate,
+        'optimizer': optimizer_name,
+        'scheduler': scheduler_name,
+        'loss_function': loss_fn_name,
     }
     
     # Add quantization info if enabled
