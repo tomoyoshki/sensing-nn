@@ -7,25 +7,27 @@ import logging
 
 class MultiModalDataset(Dataset):
     """
-    PyTorch Dataset for multi-modal sensing data (vehicle classification).
+    PyTorch Dataset for multi-modal sensing data (classification).
     
     Loads individual samples from .pt files as needed (lazy loading) to avoid memory overflow.
     Each .pt file contains a dictionary with 'data' and 'label' keys.
     
     Data structure:
         - data: dict[location][modality] = Tensor
-        - label: dict with 'vehicle_type' key
+        - label: dict with classification label key(s)
     """
     
-    def __init__(self, index_file, num_classes=None):
+    def __init__(self, index_file, num_classes=None, label_keys=None):
         """
         Initialize the dataset.
         
         Args:
             index_file (str): Path to file containing list of sample file paths
             num_classes (int, optional): Number of classes (required for balanced sampling)
+            label_keys (list[str], optional): Label keys to search in sample["label"]
         """
         self.num_classes = num_classes
+        self.label_keys = label_keys or []
         
         # Load sample file paths from index file
         if not os.path.exists(index_file):
@@ -53,7 +55,7 @@ class MultiModalDataset(Dataset):
         logging.info("Computing sample weights for balanced sampling...")
         for idx in range(len(self.sample_files)):
             _, label, _ = self.__getitem__(idx)
-            label_idx = label.item()
+            label_idx = label.item() if hasattr(label, "item") else int(label)
             sample_labels.append(label_idx)
             label_count[label_idx] += 1
         
@@ -75,7 +77,7 @@ class MultiModalDataset(Dataset):
         
         Returns:
             data (dict): Multi-modal data dict[location][modality] = Tensor
-            label (Tensor): Vehicle type label
+            label (Tensor): Classification label
             idx (int): Sample index
         """
         # Load sample from disk (lazy loading)
@@ -92,11 +94,22 @@ class MultiModalDataset(Dataset):
         
         data = sample["data"]
         
-        # Extract vehicle_type label from the label dictionary
+        # Extract label from the label dictionary
         if isinstance(sample["label"], dict):
-            if "vehicle_type" not in sample["label"]:
-                raise KeyError(f"'vehicle_type' not found in sample labels. Available keys: {list(sample['label'].keys())}")
-            label = sample["label"]["vehicle_type"]
+            label = None
+            for key in self.label_keys:
+                if key in sample["label"]:
+                    label = sample["label"][key]
+                    break
+            if label is None:
+                if len(sample["label"]) == 1:
+                    label = next(iter(sample["label"].values()))
+                else:
+                    raise KeyError(
+                        "No matching label key found. "
+                        f"Expected one of {self.label_keys}, "
+                        f"available keys: {list(sample['label'].keys())}"
+                    )
         else:
             # If label is not a dict, assume it's directly the vehicle type
             label = sample["label"]
@@ -114,15 +127,39 @@ def create_dataloaders(config):
     Returns:
         tuple: (train_loader, val_loader, test_loader)
     """
-    # Extract vehicle classification configuration
-    batch_size = config.get("batch_size")
-    num_workers = config.get("num_workers")
-    use_balanced_sampling = config.get("use_balanced_sampling")
-    if "vehicle_classification" not in config:
-        raise ValueError("'vehicle_classification' not found in config")
+    # Extract classification task configuration
+    batch_size = config.get("batch_size", 128)
+    num_workers = config.get("num_workers", 4)
+    use_balanced_sampling = config.get("use_balanced_sampling", False)
+    task_name = config.get("task_name") or config.get("task") or config.get("classification_task")
+    if task_name:
+        if task_name not in config:
+            raise ValueError(
+                f"Task '{task_name}' not found in config. "
+                f"Available tasks: {[k for k in config.keys() if k.endswith('_classification')]}"
+            )
+    elif "vehicle_classification" in config:
+        task_name = "vehicle_classification"
+    elif "activity_classification" in config:
+        task_name = "activity_classification"
+    else:
+        available_tasks = sorted([k for k in config.keys() if k.endswith("_classification")])
+        if available_tasks:
+            task_name = available_tasks[0]
+            logging.warning(
+                f"No task specified. Using '{task_name}'. "
+                f"Available tasks: {available_tasks}"
+            )
+        else:
+            raise ValueError("No classification task found in config (expected *_classification section).")
     
-    task_config = config["vehicle_classification"]
+    task_config = config[task_name]
     num_classes = task_config.get("num_classes")
+    label_keys = None
+    if task_name == "vehicle_classification":
+        label_keys = ["vehicle_type", "vehicle", "class", "label"]
+    elif task_name == "activity_classification":
+        label_keys = ["activity", "activity_type", "activity_class", "label"]
     
     # Get index file paths
     train_index_file = task_config.get("train_index_file")
@@ -142,17 +179,20 @@ def create_dataloaders(config):
     
     train_dataset = MultiModalDataset(
         index_file=train_index_file,
-        num_classes=num_classes
+        num_classes=num_classes,
+        label_keys=label_keys
     )
     
     val_dataset = MultiModalDataset(
         index_file=val_index_file,
-        num_classes=num_classes
+        num_classes=num_classes,
+        label_keys=label_keys
     )
     
     test_dataset = MultiModalDataset(
         index_file=test_index_file,
-        num_classes=num_classes
+        num_classes=num_classes,
+        label_keys=label_keys
     )
     
     # Create dataloaders
