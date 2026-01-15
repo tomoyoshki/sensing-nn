@@ -77,7 +77,7 @@ seq_len: 4
 
 
 quantization:
-        enable: False
+        enable: True
         # Conv: "QuanConv" # QuanConv (for Joint Quantization, and Single Precision Training), QuanConvImportance (for importance vector quantization)
         importance_vector_comprehensive_validation:
                 name: "importance_vector_comprehensive_validation"

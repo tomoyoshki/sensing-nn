@@ -71,56 +71,20 @@ Example:
 def quantize(x, nbit, alpha=None):
     """Quantization function used by DoReFa and PACT"""
     class DynamicQuantizer(torch.autograd.Function):
+        """Simple quantizer for DoReFa (no learnable clipping)"""
         @staticmethod
-        def forward(ctx, x, nbit, alpha=None):
+        def forward(ctx, x, nbit):
             if nbit == 32:
-                # Full precision mode: don't save alpha, no quantization happens
-                # Alpha should not affect gradients in this mode
-                ctx.save_for_backward(x)
-                ctx.is_full_precision = True
                 return x
-            else:
-                # Quantized mode: save alpha only if provided, compute gradients for it
-                ctx.is_full_precision = False
-                if alpha is not None:
-                    ctx.save_for_backward(x, alpha)
-                    ctx.has_alpha = True
-                else:
-                    ctx.save_for_backward(x)
-                    ctx.has_alpha = False
-                scale = (
-                    (2**nbit - 1) if alpha is None else (2**nbit - 1) / alpha
-                )
-                return torch.round(scale * x) / scale
+            scale = 2**nbit - 1
+            return torch.round(scale * x) / scale
 
         @staticmethod
         def backward(ctx, grad_output):
-            saved = ctx.saved_tensors
-            x = saved[0]
-            
-            # In full precision mode, alpha should not receive gradients
-            if ctx.is_full_precision:
-                grad_input = grad_output.clone()
-                return grad_input, None, None
-            
-            # In quantized mode, check if alpha was provided
-            if not ctx.has_alpha:
-                # No alpha provided (e.g., DoReFa without PACT)
-                grad_input = grad_output.clone()
-                return grad_input, None, None
-            else:
-                # Alpha was provided (PACT quantization), compute gradients
-                alpha = saved[1]
-                lower_bound = x < 0
-                upper_bound = x > alpha
-                x_range = ~(lower_bound | upper_bound)
-                # Fix alpha gradient: alpha is tensor shape [len(bitwidths), 1, 1, 1]
-                # Correct STE for PACT: y = clamp(x, 0, α), so α gets gradient only where x > α
-                # Sum over batch, channels, height, width dimensions, keep bitwidth dimension
-                grad_alpha = (grad_output * (x > alpha).float()).sum(dim=(0, 1, 2, 3), keepdim=True)
-                return grad_output * x_range.float(), None, grad_alpha
-    
-    return DynamicQuantizer.apply(x, nbit, alpha)
+            # STE: pass gradient through unchanged
+            return grad_output.clone(), None
+        
+    return DynamicQuantizer.apply(x, nbit)
 
 
 class LSQQuantizer(torch.autograd.Function):
@@ -456,18 +420,82 @@ class DoReFaA(nn.Module):
 
     def forward(self, inp, nbit_a, *args, **kwargs):
         """forward pass"""
-        return quantize(torch.clamp(inp, 0, 1), nbit_a, *args, **kwargs)
+        if nbit_a == 32:
+            return torch.clamp(inp, 0, 1)
+        return quantize(torch.clamp(inp, 0, 1), nbit_a)
+
+
+class PACTFunction(torch.autograd.Function):
+    """
+    PACT: Parameterized Clipping Activation for Quantized Neural Networks
+    Reference: https://arxiv.org/abs/1805.06085
+    
+    Forward:
+        y = clamp(x, 0, α)
+        y_q = round(y * (2^k - 1) / α) * α / (2^k - 1)
+    
+    Backward (using STE):
+        ∂L/∂x = ∂L/∂y  if 0 ≤ x ≤ α, else 0
+        ∂L/∂α = Σ(∂L/∂y * 1_{x ≥ α})
+    """
+    @staticmethod
+    def forward(ctx, x, alpha, nbit):
+        # Save ORIGINAL x before clamping - needed for correct alpha gradient
+        ctx.save_for_backward(x, alpha)
+        ctx.nbit = nbit
+        
+        # Clamp to [0, alpha]
+        y = torch.clamp(x, min=0.0, max=alpha.item())
+        
+        # Quantize: scale to [0, 2^k - 1], round, scale back
+        scale = (2 ** nbit - 1) / alpha
+        y_q = torch.round(y * scale) / scale
+        
+        return y_q
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        # Retrieve ORIGINAL x (before clamping) and alpha
+        x, alpha = ctx.saved_tensors
+        
+        # Gradient for x: pass through only where 0 <= x <= alpha (STE)
+        x_lower = (x >= 0).float()
+        x_upper = (x <= alpha).float()
+        grad_x = grad_output * x_lower * x_upper
+        
+        # Gradient for alpha: accumulate where x >= alpha (clipped from above)
+        # This is the key fix - we check ORIGINAL x, not clamped x
+        grad_alpha = (grad_output * (x >= alpha).float()).sum().view(-1)
+        
+        return grad_x, grad_alpha, None
 
 
 class PACT(nn.Module):
+    """
+    PACT activation quantization module.
+    Replaces ReLU with parameterized clipping: y = clamp(x, 0, α)
+    then quantizes to k bits.
+    """
     def __init__(self):
         super(PACT, self).__init__()
 
     def forward(self, inp, nbit_a, alpha, *args, **kwargs):
-        """forward pass"""
-        input = torch.clamp(inp, min=0, max=alpha)  # Use tensor alpha directly
-        input_val = quantize(input, nbit_a, alpha)
-        return input_val
+        """
+        Forward pass
+        
+        Args:
+            inp: Input tensor
+            nbit_a: Number of bits for activation quantization
+            alpha: Learnable clipping parameter (nn.Parameter)
+        
+        Returns:
+            Quantized activation tensor
+        """
+        if nbit_a == 32:
+            # Full precision mode - just clamp, no quantization
+            return torch.clamp(inp, min=0, max=alpha.item())
+        
+        return PACTFunction.apply(inp, alpha, nbit_a)
 
 
 class BaseQuanConv(nn.Module):

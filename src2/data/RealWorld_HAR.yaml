@@ -47,7 +47,7 @@ modality_names: ["acc", "gyr", "mag", "lig"]
 seq_len: 4
 
 quantization:
-        enable: False
+        enable: True
         importance_vector_comprehensive_validation:
                 name: "importance_vector_comprehensive_validation"
                 number_of_configs: 8
