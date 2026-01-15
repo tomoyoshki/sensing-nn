@@ -148,6 +148,39 @@ quantization:
                 
                 # Visualization frequency
                 visualize_importance_every: 2  # epochs
+        SmoothQuant:
+                Conv: "DeepLayerSmoothQuant"
+                name: "SmoothQuant"
+                loss_name: "cross_entropy" # cross_entropy, label_smoothing_ce
+                bitwidth_options: [8]
+                validation_function: "simple_validation" # simple_validation, random_bitwidths
+                training_method: "vanilla_single_precision_training" # joint_quantization, vanilla_single_precision_training
+
+ViT:
+        model_name: "ViT"
+        dropout_ratio: 0.2
+        # Fill more specific configs for ViT
+
+        optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.0000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+        lr_scheduler:
+                name: "cosine"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 50
+                start_epoch: 0
+                decay_epochs: 2
+                decay_rate: 0.2
+
+        fixed_augmenters:
+                time_augmenters: ["no"]
+                freq_augmenters: ["no"]
+
 
                 
 ResNet:
