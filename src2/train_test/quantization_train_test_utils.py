@@ -1085,7 +1085,12 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
     else:
         temperature_scheduler = None
 
-    temperature_scheduler = build_temp_scheduler(model, quant_config, num_epochs)
+    temperature_scheduler = None
+
+    # Only importance-vector training needs temperature scheduling
+    if training_method == "joint_quantization_with_importance_vector":
+        temperature_scheduler = build_temp_scheduler(model, quant_config, num_epochs)
+
     # Training history
     train_history = {
         'train_loss': [],

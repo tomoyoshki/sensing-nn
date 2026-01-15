@@ -153,56 +153,288 @@ class LSQQuantizer(torch.autograd.Function):
         return grad_x, grad_s, None, None
 
 
+import math
+
 class LSQ(nn.Module):
-    def __init__(self, is_activation=False, bitwidth=8, shape=1):
+    def __init__(self, is_activation=False, bitwidth=8, shape=1, bitwidth_opts=None, signed=None):
         super().__init__()
         self.is_activation = is_activation
-        self.bitwidth = bitwidth
-        self.step_size = nn.Parameter(torch.ones(shape))
-        self.initialized = False
+
+        # default signed rule: activations unsigned, weights signed
+        if signed is None:
+            signed = (not is_activation)
+        self.signed = signed
+
+        # multi-precision setup
+        if bitwidth_opts is None:
+            bitwidth_opts = [bitwidth]
+        self.bitwidth_opts = list(bitwidth_opts)
+        self.bitwidth = bitwidth if bitwidth in self.bitwidth_opts else self.bitwidth_opts[0]
+
+        # ensure shape is tuple
+        if isinstance(shape, int):
+            shape = (shape,)
+        self.shape = tuple(shape)
+
+        # bank of step sizes: [B, *shape]
+        self.step_size = nn.Parameter(torch.ones(len(self.bitwidth_opts), *self.shape))
+        self.register_buffer("initialized", torch.zeros(len(self.bitwidth_opts), dtype=torch.bool))
+
+    def _idx(self, bw: int) -> int:
+        return self.bitwidth_opts.index(int(bw))
 
     def update_bitwidth(self, bw):
-        """Update bitwidth dynamically"""
-        self.bitwidth = bw
+        self.bitwidth = int(bw)
+
+    def _qrange(self, bw: int):
+        if self.signed:
+            qn = -(2 ** (bw - 1))
+            qp =  (2 ** (bw - 1)) - 1
+        else:
+            qn = 0
+            qp = (2 ** bw) - 1
+        return qn, qp
+
+    def _init_step(self, x, bw, idx):
+        _, qp = self._qrange(bw)
+        # LSQ init: alpha0 = 2*E|x| / sqrt(qp)  (common LSQ init)
+        alpha0 = (2.0 * x.detach().abs().mean() / math.sqrt(max(qp, 1))).clamp(min=1e-6)
+        with torch.no_grad():
+            self.step_size[idx].copy_(alpha0.expand_as(self.step_size[idx]))
+        self.initialized[idx] = True
 
     def forward(self, x):
-        if not self.initialized:
-            if self.is_activation:
-                # Activations: scale = E(|x|) / (2^(b-1) - 1)
-                scale = x.abs().mean() / (2 ** (self.bitwidth - 1) - 1)
-            else:
-                # Weights: scale = 2·E(|w|) / (2^(b-1) - 1)
-                scale = 2 * x.abs().mean() / (2 ** (self.bitwidth - 1) - 1)
-            self.step_size.data.copy_(scale.clamp(min=1e-6))
-            self.initialized = True
-        return LSQQuantizer.apply(x, self.step_size, self.bitwidth, self.is_activation)
+        bw = int(self.bitwidth)
+        idx = self._idx(bw)
+
+        if not bool(self.initialized[idx].item()):
+            self._init_step(x, bw, idx)
+
+        qn, qp = self._qrange(bw)
+
+        s = self.step_size[idx].to(device=x.device, dtype=x.dtype)
+
+        # gradient scaling factor
+        # N per alpha supports per-channel step sizes too
+        N_per_alpha = x.numel() / s.numel()
+        g = 1.0 / math.sqrt(max(qp, 1) * N_per_alpha)
+
+        # grad scale trick: forward identity; backward scaled
+        s_scaled = (s.detach() - (s.detach() * g).detach() + s * g)
+
+        # broadcast s_scaled to x if needed
+        s_b = s_scaled
+        while s_b.dim() < x.dim():
+            s_b = s_b.view(*s_b.shape, 1)
+
+        x_div = x / s_b
+        x_clamped = torch.clamp(x_div, qn, qp)
+
+        # round STE
+        x_rounded = (torch.round(x_clamped) - x_clamped).detach() + x_clamped
+        return x_rounded * s_b
 
 
-class LSQPlus(LSQ):
-    def __init__(self, is_activation=False, bitwidth=8, shape=1, zero_point=True):
-        super().__init__(is_activation, bitwidth, shape)
-        self.zero_point = zero_point
-        self.zp = nn.Parameter(torch.zeros(shape), requires_grad=zero_point)
+
+def grad_scale(x, scale: float):
+    y = x
+    y_grad = x * scale
+    return (y - y_grad).detach() + y_grad
+
+class LSQPlus(nn.Module):
+    """
+    LSQ+ Quantizer (Learned Step Size Quantization Plus)
+    
+    Paper: "LSQ+: Improving low-bit quantization through learnable offsets and better initialization"
+    
+    Quantization formula: x_int = clamp(round(x/s - zp), qn, qp)
+    Dequantization formula: x_q = (x_int + zp) * s
+    
+    For weights: symmetric quantization (zp = 0, signed)
+    For activations: asymmetric quantization (learned zp, unsigned)
+    """
+    
+    def __init__(self, is_activation=False, bitwidth=8, shape=1,
+                 bitwidth_opts=None, signed=None, batch_init: int = 20):
+        super().__init__()
+        self.is_activation = is_activation
+        
+        # Signed convention: weights signed, activations unsigned (unless overridden)
+        if signed is None:
+            signed = not is_activation
+        self.signed = signed
+        
+        # Multi-precision support
+        if bitwidth_opts is None:
+            bitwidth_opts = [bitwidth]
+        self.bitwidth_opts = list(bitwidth_opts)
+        self.bitwidth = bitwidth if bitwidth in self.bitwidth_opts else self.bitwidth_opts[0]
+        
+        # Shape for per-channel or per-tensor quantization
+        if isinstance(shape, int):
+            shape = (shape,)
+        self.shape = tuple(shape)
+        
+        B = len(self.bitwidth_opts)
+        
+        # Learnable step size (scale)
+        self.step_size = nn.Parameter(torch.ones(B, *self.shape))
+        
+        # Learnable zero-point: only for activations in asymmetric mode
+        # For weights, we use symmetric quantization (zp fixed at 0)
+        self.use_zero_point = is_activation and not signed
+        if self.use_zero_point:
+            self.zp = nn.Parameter(torch.zeros(B, *self.shape))
+        else:
+            self.register_buffer('zp', torch.zeros(B, *self.shape))
+        
+        # Initialization tracking
+        self.register_buffer("initialized", torch.zeros(B, dtype=torch.bool))
+        
+        # Batch-wise initialization for activations (EMA over first few batches)
+        self.batch_init = int(batch_init) if is_activation else 0
+        if self.batch_init > 0:
+            self.register_buffer("init_count", torch.zeros(B, dtype=torch.long))
+            self.register_buffer("running_min", torch.zeros(B, *self.shape))
+            self.register_buffer("running_max", torch.zeros(B, *self.shape))
+
+    def _idx(self, bw: int) -> int:
+        return self.bitwidth_opts.index(int(bw))
 
     def update_bitwidth(self, bw):
-        """Update bitwidth dynamically"""
-        self.bitwidth = bw
+        self.bitwidth = int(bw)
+
+    def _qrange(self, bw: int):
+        """Get quantization range [qn, qp] based on bitwidth and signedness."""
+        if self.signed:
+            qn = -(2 ** (bw - 1))
+            qp = (2 ** (bw - 1)) - 1
+        else:
+            qn = 0
+            qp = (2 ** bw) - 1
+        return qn, qp
+
+    def _init_params(self, x, bw, idx):
+        """
+        Initialize step_size and zero_point based on input statistics.
+        
+        For activations (asymmetric): use min/max to set scale and zero-point
+        For weights (symmetric): use 2*mean(|x|)/sqrt(qp) like LSQ
+        """
+        qn, qp = self._qrange(bw)
+        
+        with torch.no_grad():
+            if self.is_activation:
+                # Asymmetric initialization for activations
+                x_min = x.detach().min()
+                x_max = x.detach().max()
+                
+                # Scale to cover the full range
+                scale = ((x_max - x_min) / (qp - qn)).clamp(min=1e-8)
+                
+                # Zero-point: maps x_min to qn
+                # x_int = round(x/s - zp), so zp = x_min/s - qn
+                zero_point = (x_min / scale) - qn
+                
+                self.step_size[idx].fill_(scale.item())
+                if self.use_zero_point:
+                    self.zp[idx].fill_(zero_point.item())
+            else:
+                # Symmetric initialization for weights (same as LSQ)
+                scale = (2.0 * x.detach().abs().mean() / math.sqrt(qp)).clamp(min=1e-8)
+                self.step_size[idx].fill_(scale.item())
+                # zp stays at 0 for symmetric quantization
+        
+        self.initialized[idx] = True
+
+    def _batch_init_update(self, x, bw, idx):
+        """
+        Update running statistics during batch initialization phase.
+        Uses exponential moving average of min/max values.
+        """
+        qn, qp = self._qrange(bw)
+        count = int(self.init_count[idx].item())
+        
+        with torch.no_grad():
+            x_min = x.detach().min()
+            x_max = x.detach().max()
+            
+            if count == 0:
+                self.running_min[idx].fill_(x_min.item())
+                self.running_max[idx].fill_(x_max.item())
+            else:
+                # EMA with momentum 0.9
+                momentum = 0.9
+                self.running_min[idx].mul_(momentum).add_((1 - momentum) * x_min)
+                self.running_max[idx].mul_(momentum).add_((1 - momentum) * x_max)
+            
+            # Update scale and zero-point based on running stats
+            r_min = self.running_min[idx]
+            r_max = self.running_max[idx]
+            
+            scale = ((r_max - r_min) / (qp - qn)).clamp(min=1e-8)
+            zero_point = (r_min / scale) - qn
+            
+            self.step_size[idx].copy_(scale)
+            if self.use_zero_point:
+                self.zp[idx].copy_(zero_point)
+        
+        self.init_count[idx] += 1
 
     def forward(self, x):
-        if not self.initialized:
-            if self.is_activation:
-                # Activations: scale = E(|x|) / (2^(b-1) - 1)
-                scale = x.abs().mean() / (2 ** (self.bitwidth - 1) - 1)
-            else:
-                # Weights: scale = 2·E(|w|) / (2^(b-1) - 1)
-                scale = 2 * x.abs().mean() / (2 ** (self.bitwidth - 1) - 1)
-            self.step_size.data.copy_(scale.clamp(min=1e-6))
-            self.initialized = True
-        # LSQPlus with zero-point: compute quantized integer first, then clamp, then dequantize
-        qn = 0
-        qp = 2 ** self.bitwidth - 1
-        x_int = torch.clamp((x / self.step_size + self.zp).round(), qn, qp)
-        return (x_int - self.zp) * self.step_size
+        bw = int(self.bitwidth)
+        idx = self._idx(bw)
+        qn, qp = self._qrange(bw)
+        
+        # Initialize on first forward pass
+        if not self.initialized[idx]:
+            self._init_params(x, bw, idx)
+        
+        # Batch initialization phase for activations
+        if self.is_activation and self.batch_init > 0:
+            if self.init_count[idx] < self.batch_init:
+                self._batch_init_update(x, bw, idx)
+        
+        # Get parameters
+        s = self.step_size[idx]
+        zp = self.zp[idx]
+        
+        # Move to correct device/dtype
+        s = s.to(device=x.device, dtype=x.dtype)
+        zp = zp.to(device=x.device, dtype=x.dtype)
+        
+        # Gradient scaling (LSQ+ paper recommendation)
+        # Scale gradients by 1/sqrt(n_elements * qp) for stability
+        n_elements = x.numel() / s.numel()
+        grad_scale_factor = 1.0 / math.sqrt(n_elements * max(qp, 1))
+        
+        # Apply gradient scaling via the detach trick
+        s = (s - s * grad_scale_factor).detach() + s * grad_scale_factor
+        if self.use_zero_point and self.zp.requires_grad:
+            zp = (zp - zp * grad_scale_factor).detach() + zp * grad_scale_factor
+        
+        # Broadcast to input dimensions
+        s_b = s
+        zp_b = zp
+        while s_b.dim() < x.dim():
+            s_b = s_b.unsqueeze(-1)
+            zp_b = zp_b.unsqueeze(-1)
+        
+        # Quantize: x_int = clamp(round(x/s - zp), qn, qp)
+        x_scaled = x / s_b - zp_b
+        
+        # STE for rounding: forward uses round, backward passes gradient through
+        x_rounded = (torch.round(x_scaled) - x_scaled).detach() + x_scaled
+        
+        # Clamp to valid range
+        x_int = torch.clamp(x_rounded, qn, qp)
+        
+        # Dequantize: x_q = (x_int + zp) * s
+        x_q = (x_int + zp_b) * s_b
+        
+        return x_q
+
+
 
 
 class DoReFaW(nn.Module):
@@ -356,9 +588,22 @@ class BaseQuanConv(nn.Module):
         if self.weight_quantization == "dorefa":
             self.quantize_w = DoReFaW()
         elif self.weight_quantization == "lsq":
-            self.quantize_w = LSQ(is_activation=False, bitwidth=self.bitwidth_opts[0])
+            # weights are signed, often better per-channel step: (out_ch,1,1,1)
+            self.quantize_w = LSQ(
+                is_activation=False,
+                bitwidth=self.bitwidth_opts[0],
+                bitwidth_opts=self.bitwidth_opts,
+                shape=(self.out_channels, 1, 1, 1),
+                signed=True
+            )
         elif self.weight_quantization == "lsqplus":
-            self.quantize_w = LSQPlus(is_activation=False, bitwidth=self.bitwidth_opts[0])
+            self.quantize_w = LSQPlus(
+                is_activation=False,
+                bitwidth=self.bitwidth_opts[0],
+                bitwidth_opts=self.bitwidth_opts,
+                shape=(self.out_channels, 1, 1, 1),
+                signed=True
+            )
         else:
             raise NotImplementedError(
                 f"Weight Quantization '{self.weight_quantization}' not supported. "
@@ -371,9 +616,23 @@ class BaseQuanConv(nn.Module):
         elif self.activation_quantization == "pact":
             self.quantize_a = PACT()
         elif self.activation_quantization == "lsq":
-            self.quantize_a = LSQ(is_activation=True, bitwidth=self.bitwidth_opts[0])
+            # activations are unsigned (post-ReLU), usually per-tensor step: shape=1
+            self.quantize_a = LSQ(
+                is_activation=True,
+                bitwidth=self.bitwidth_opts[0],
+                bitwidth_opts=self.bitwidth_opts,
+                shape=1,
+                signed=False
+            )
         elif self.activation_quantization == "lsqplus":
-            self.quantize_a = LSQPlus(is_activation=True, bitwidth=self.bitwidth_opts[0])
+            self.quantize_a = LSQPlus(
+                is_activation=True,
+                bitwidth=self.bitwidth_opts[0],
+                bitwidth_opts=self.bitwidth_opts,
+                shape=1,
+                signed=False
+            )
+
         else:
             raise NotImplementedError(
                 f"Activation Quantization '{self.activation_quantization}' not supported. "
@@ -931,5 +1190,4 @@ class QuanConvImportance(BaseQuanConv):
             raise ValueError(f"Invalid sampling strategy: {self.sampling_strategy}, \
              must be one of: best_bitwidth, hard_gumbel_softmax, uniform_sampling")
         return output
-
 

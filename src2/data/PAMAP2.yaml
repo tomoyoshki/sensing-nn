@@ -234,3 +234,137 @@ phase_shift:
 
 horizontal_flip:
         prob: 0.5
+
+# ------------------------------------------- Quantization Configs ------------------------------------------
+base_experiment_dir: /home/madhav5/sensing-nn/src2/experiments
+
+cross_entropy:
+        name: "cross_entropy"
+
+label_smoothing_ce:
+        name: "label_smoothing_ce"
+        label_smoothing: 0.1
+
+loss_name: "cross_entropy"
+
+batch_size: 128
+num_workers: 4
+use_balanced_sampling: True
+
+# Normalization
+normalization:
+        method: "minmax"
+        minmax_range: [0, 1]
+
+quantization:
+        enable: False
+        importance_vector_comprehensive_validation:
+                name: "importance_vector_comprehensive_validation"
+                number_of_configs: 8
+                bitwidth_options: [2, 4, 8]
+                bin_tolerance: 0.5
+        random_bitwidths:
+                bitwidth_options: [2, 4, 8]
+                name: "random_bitwidths"
+                number_of_configs: 8
+                bin_tolerance: 0.5
+        joint_quantization:
+                joint_quantization_batch_size: 2
+                every_epoch_new_bitwidth_config: True
+        vanilla_single_precision_training:
+                bitwidth_options: [8]
+        any_precision:
+                joint_quantization_batch_size: 2
+                bitwidth_options: [8, 16, 32]
+                weight_quantization: "dorefa"
+                activation_quantization: "dorefa"
+                validation_function: "random_bitwidths"
+                training_method: "joint_quantization"
+                switchable_clipping: True
+                sat_weight_normalization: False
+        dorefa:
+                Conv: "QuanConv"
+                loss_name: "cross_entropy"
+                bitwidth_options: [2, 4, 8]
+                default_bitwidth: 8
+                bitwidht_allocation: "random"
+                weight_quantization: "dorefa"
+                activation_quantization: "dorefa"
+                act_quant: "pact"  # Enable PACT activation quantization after ReLU
+                validation_function: "random_bitwidths"
+                training_method: "joint_quantization"
+                switchable_clipping: True
+                sat_weight_normalization: False
+        pact:
+                Conv: "QuanConv"
+                loss_name: "cross_entropy"
+                bitwidth_options: [2, 4, 8]
+                default_bitwidth: 8
+                bitwidht_allocation: "random"
+                weight_quantization: "dorefa"
+                activation_quantization: "pact"
+                act_quant: "pact"
+                validation_function: "random_bitwidths"
+                training_method: "joint_quantization"
+                switchable_clipping: True
+                sat_weight_normalization: False
+
+ResNet:
+        # Architecture settings
+        model_name: "resnet18"
+        block_type: "basic"
+        layers: [2, 2, 2, 2]
+        dropout_ratio: 0.2
+        fc_dim: 256
+
+        # Optimizer config
+        optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+
+        # LR scheduler
+        lr_scheduler:
+                name: "cosine"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 50
+                start_epoch: 0
+                min_lr: 0.000001
+
+        # Augmentation
+        fixed_augmenters:
+                time_augmenters: ["no"]
+                freq_augmenters: ["no"]
+
+MobileNetV2:
+        # Architecture settings
+        width_mult: 1.0
+        dropout_ratio: 0.2
+        fc_dim: 256
+
+  # Optimizer config
+        optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+
+  # LR scheduler
+        lr_scheduler:
+                name: "cosine"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 50
+                start_epoch: 0
+                decay_epochs: 2
+                decay_rate: 0.2
+
+        fixed_augmenters:
+                time_augmenters: ["no"]
+                freq_augmenters: ["no"]

@@ -7,7 +7,7 @@ vehicle_classification:
         val_index_file: /home/tkimura4/data/datasets/MOD/Parkland/time_data_partition/val_index.txt  
         test_index_file: /home/tkimura4/data/datasets/MOD/Parkland/time_data_partition/test_index.txt 
 
-base_experiment_dir: /home/misra8/sensing-nn/src2/experiments
+base_experiment_dir: /home/madhav5/sensing-nn/src2/experiments
 
 cross_entropy:
         name: "cross_entropy"
@@ -77,7 +77,7 @@ seq_len: 4
 
 
 quantization:
-        enable: True
+        enable: False
         # Conv: "QuanConv" # QuanConv (for Joint Quantization, and Single Precision Training), QuanConvImportance (for importance vector quantization)
         importance_vector_comprehensive_validation:
                 name: "importance_vector_comprehensive_validation"
@@ -106,18 +106,57 @@ quantization:
         dorefa:
                 Conv: "QuanConv"
                 loss_name: "cross_entropy" # cross_entropy, label_smoothing_ce 
-                bitwidth_options: [8]
+                bitwidth_options: [4, 8]
+                default_bitwidth: 8
                 bitwidht_allocation: "random"
                 weight_quantization: "dorefa"
-                activation_quantization: "dorefa"
-                validation_function: "simple_validation" # simple_validation, random_bitwidths
-                training_method: "vanilla_single_precision_training" # joint_quantization, vanilla_single_precision_training
+                activation_quantization: "pact"
+                act_quant: "pact"  # Enable PACT activation quantization after ReLU
+                validation_function: "random_bitwidths" # simple_validation, random_bitwidths
+                training_method: "joint_quantization" # joint_quantization, vanilla_single_precision_training
                 switchable_clipping: True
+                sat_weight_normalization: False
+        pact:
+                Conv: "QuanConv"
+                loss_name: "cross_entropy"
+                bitwidth_options: [4, 8]
+                default_bitwidth: 8
+                bitwidht_allocation: "random"
+                weight_quantization: "dorefa"
+                activation_quantization: "pact"
+                act_quant: "pact"
+                validation_function: "random_bitwidths"
+                training_method: "joint_quantization"
+                switchable_clipping: True
+                sat_weight_normalization: False
+        lsq:
+                Conv: "QuanConv"
+                loss_name: "cross_entropy"
+                bitwidth_options: [4, 8]
+                default_bitwidth: 8
+                bitwidht_allocation: "random"
+                weight_quantization: "lsq"
+                activation_quantization: "lsq"
+                validation_function: "random_bitwidths"
+                training_method: "joint_quantization"
+                switchable_clipping: False  # Not used for LSQ
+                sat_weight_normalization: False
+        lsqplus:
+                Conv: "QuanConv"
+                loss_name: "cross_entropy"
+                bitwidth_options: [4, 8]
+                default_bitwidth: 8
+                bitwidht_allocation: "random"
+                weight_quantization: "lsqplus"
+                activation_quantization: "lsqplus"
+                validation_function: "random_bitwidths"
+                training_method: "joint_quantization"
+                switchable_clipping: False  # Not used for LSQPlus
                 sat_weight_normalization: False
         importance_vector:
                 Conv: "QuanConvImportance"
                 loss_name: "importance_vector_loss" # cross_entropy, label_smoothing_ce, importance_vector_loss
-                bitwidth_options: [4, 8]
+                bitwidth_options: [2, 4, 8]
                 weight_quantization: "dorefa"
                 activation_quantization: "dorefa"
                 validation_function: "importance_vector_comprehensive_validation"
@@ -157,6 +196,35 @@ ResNet:
         layers: [2, 2, 2, 2]  # ResNet18
         # layers: [3, 4, 6, 3]  # ResNet34
         # layers: [3, 4, 6, 3]  # ResNet50 (with block_type: "bottleneck")
+        dropout_ratio: 0.2
+        fc_dim: 256
+
+  # Optimizer config
+        optimizer:
+                name: "AdamW"
+                start_lr: 0.0001
+                warmup_lr: 0.000001
+                min_lr: 0.000001
+                clip_grad: 5.0
+                weight_decay: 0.05
+
+  # LR scheduler
+        lr_scheduler:
+                name: "cosine"
+                warmup_prefix: True
+                warmup_epochs: 0
+                train_epochs: 50
+                start_epoch: 0
+                decay_epochs: 2
+                decay_rate: 0.2
+
+        fixed_augmenters:
+                time_augmenters: ["no"]
+                freq_augmenters: ["no"]
+
+MobileNetV2:
+        # Architecture settings
+        width_mult: 1.0
         dropout_ratio: 0.2
         fc_dim: 256
 

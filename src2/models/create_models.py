@@ -1,5 +1,6 @@
 import logging
 import torch
+import torch.nn.functional as F
 from pathlib import Path
 import sys
 
@@ -8,11 +9,12 @@ src2_path = Path(__file__).parent.parent
 sys.path.insert(0, str(src2_path))
 
 from models.ResNet import build_multimodal_resnet
+from models.MobileNetV2 import build_multimodal_mobilenet_v2
 
 
 def create_model(config):
     """
-    Create a multi-modal ResNet model based on the configuration
+    Create a multi-modal model based on the configuration
     
     Args:
         config: Configuration dictionary containing dataset and model parameters
@@ -64,24 +66,50 @@ def create_model(config):
         
         # Dynamically import the Conv class specified in config
         import models.QuantModules as QuantModules
+        activation_quantization = quantization_method_config.get("activation_quantization")
+        if activation_quantization == "pact":
+            def _pact_forward(self, inp, nbit_a, alpha, *args, **kwargs):
+                inp = F.relu(inp)
+                input_val = QuantModules.quantize(torch.clamp(inp, max=alpha), nbit_a, alpha)
+                return input_val
+
+            QuantModules.PACT.forward = _pact_forward
         Conv = getattr(QuantModules, conv_class_name)
         logging.info(f"  Successfully loaded Conv class: {Conv.__name__}")
     else:
         logging.info("Quantization disabled - using standard Conv2d layers")
     
     # Create model
-    model = build_multimodal_resnet(
-        model_name=model_variant if model_variant else model_name,
-        modality_names=modality_names,
-        location_names=location_names,
-        modality_in_channels=modality_in_channels,
-        num_classes=num_classes,
-        fc_dim=fc_dim,
-        dropout_ratio=dropout_ratio,
-        use_standard_first_layer=True,
-        Conv=Conv,
-        BatchNorm=BatchNorm
-    )
+    selected_model_name = model_variant if model_variant else model_name
+    selected_model_name_lower = str(selected_model_name).lower()
+
+    if selected_model_name_lower in ["mobilenetv2", "mobilenet_v2", "mobilenet-v2"]:
+        width_mult = config.get("MobileNetV2", {}).get("width_mult", 1.0)
+        model = build_multimodal_mobilenet_v2(
+            modality_names=modality_names,
+            location_names=location_names,
+            modality_in_channels=modality_in_channels,
+            num_classes=num_classes,
+            fc_dim=fc_dim,
+            width_mult=width_mult,
+            dropout_ratio=dropout_ratio,
+            use_standard_first_layer=True,
+            Conv=Conv,
+            BatchNorm=BatchNorm,
+        )
+    else:
+        model = build_multimodal_resnet(
+            model_name=selected_model_name,
+            modality_names=modality_names,
+            location_names=location_names,
+            modality_in_channels=modality_in_channels,
+            num_classes=num_classes,
+            fc_dim=fc_dim,
+            dropout_ratio=dropout_ratio,
+            use_standard_first_layer=True,
+            Conv=Conv,
+            BatchNorm=BatchNorm,
+        )
     
     # Count parameters
     total_params = sum(p.numel() for p in model.parameters())
