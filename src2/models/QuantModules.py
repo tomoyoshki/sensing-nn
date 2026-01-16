@@ -574,23 +574,21 @@ class BaseQuanConv(nn.Module):
         """
         pass
     
-    def setup_quantize_funcs(self, quantization_config):
+    def setup_quantize_funcs(self, quantization_method_config):
         """
         Setup quantization functions from quantization configuration dictionary
         
         Args:
             quantization_config: Quantization configuration dictionary
         """
-        self.quantization_config = quantization_config
+       #self.quantization_config = quantization_config
         
-        # Set quantization_enabled from config (defaults to True if not specified)
-        self.quantization_enabled = quantization_config.get('quantization_enabled', True)
         
-        self.weight_quantization = quantization_config["weight_quantization"]
-        self.activation_quantization = quantization_config["activation_quantization"]
-        self.bitwidth_opts = quantization_config["bitwidth_options"]
-        self.switchable_clipping = quantization_config["switchable_clipping"]
-        self.sat_weight_normalization = quantization_config["sat_weight_normalization"]
+        self.weight_quantization =  quantization_method_config["weight_quantization"]
+        self.activation_quantization = quantization_method_config["activation_quantization"]
+        self.bitwidth_opts =  quantization_method_config["bitwidth_options"]
+        self.switchable_clipping =  quantization_method_config["switchable_clipping"]
+        self.sat_weight_normalization =  quantization_method_config["sat_weight_normalization"]
         
         # Store for _setup_quantizers
         
@@ -1219,3 +1217,166 @@ class QuanConvImportance(BaseQuanConv):
              must be one of: best_bitwidth, hard_gumbel_softmax, uniform_sampling")
         return output
 
+class SwitchableBatchNorm(nn.Module):
+    """
+    Switchable BatchNorm for AdaBits/Any-Precision style training.
+    
+    Maintains separate BatchNorm statistics for each bitwidth.
+    The active BN is selected based on the input conv layer's current bitwidth.
+    """
+    layer_registry = {}
+    layer_counter = 0
+    
+    def __init__(self, out_channels):
+        super(SwitchableBatchNorm, self).__init__()
+        self.out_channels = out_channels
+        self.bitwidth_options = None
+        self.bns = None
+        self.bn_float = nn.BatchNorm2d(out_channels)  # Fallback for 32-bit
+        
+        # Layer identification
+        self.layer_name = f"switch_bn_{SwitchableBatchNorm.layer_counter}"
+        SwitchableBatchNorm.layer_counter += 1
+        SwitchableBatchNorm.layer_registry[self.layer_name] = self
+        
+        # Associated conv layer
+        self.input_conv = None
+        
+        # Config storage
+        self.quantization_config = None
+    
+    def set_input_conv(self, input_conv):
+        """Set the corresponding input conv layer for bitwidth lookup."""
+        self.input_conv = input_conv
+    
+    def setup_quantize_funcs(self, quant_config):
+        """
+        Initialize switchable BN layers for each bitwidth option.
+        
+        Args:
+            quant_config: Quantization configuration dictionary with 'bitwidth_options'
+        """
+        self.quantization_config = quant_config
+        self.bitwidth_options = list(quant_config.get('bitwidth_options', [8]))
+        
+        # Ensure 32-bit (float) is always available
+        if 32 not in self.bitwidth_options:
+            self.bitwidth_options.append(32)
+        
+        # Create separate BN for each bitwidth
+        self.bns = nn.ModuleDict({
+            str(bw): nn.BatchNorm2d(self.out_channels) 
+            for bw in self.bitwidth_options
+        })
+    
+    def get_current_bitwidth(self):
+        """Get the current bitwidth from the associated input conv."""
+        if self.input_conv is not None and hasattr(self.input_conv, 'curr_bitwidth'):
+            return self.input_conv.curr_bitwidth or 32
+        return 32
+    
+    def forward(self, x):
+        if self.bns is None:
+            # Fallback to float BN if not configured
+            return self.bn_float(x)
+        
+        bitwidth = self.get_current_bitwidth()
+        
+        # Use the BN corresponding to current bitwidth
+        if str(bitwidth) in self.bns:
+            return self.bns[str(bitwidth)](x)
+        else:
+            # Fallback to float BN for unknown bitwidths
+            return self.bn_float(x)
+
+
+class TransitionalBatchNorm(nn.Module):
+    """
+    Transitional BatchNorm for BitMixer-style training.
+    
+    Maintains separate BatchNorm statistics for each (input_bitwidth, output_bitwidth) pair.
+    This captures the transition between different precisions at layer boundaries.
+    """
+    layer_registry = {}
+    layer_counter = 0
+    
+    def __init__(self, out_channels):
+        super(TransitionalBatchNorm, self).__init__()
+        self.out_channels = out_channels
+        self.bitwidth_options = None
+        self.bns = None
+        self.bn_float = nn.BatchNorm2d(out_channels)  # Fallback
+        
+        # Layer identification
+        self.layer_name = f"trans_bn_{TransitionalBatchNorm.layer_counter}"
+        TransitionalBatchNorm.layer_counter += 1
+        TransitionalBatchNorm.layer_registry[self.layer_name] = self
+        
+        # Associated conv layers (input and output)
+        self.input_conv = None
+        self.output_conv = None
+        
+        # Config storage
+        self.quantization_config = None
+    
+    def set_input_conv(self, input_conv):
+        """Set the corresponding input conv layer."""
+        self.input_conv = input_conv
+    
+    def set_output_conv(self, output_conv):
+        """Set the corresponding output conv layer."""
+        self.output_conv = output_conv
+    
+    def set_convs(self, input_conv, output_conv):
+        """Set both input and output conv layers."""
+        self.input_conv = input_conv
+        self.output_conv = output_conv
+    
+    def setup_quantize_funcs(self, quant_config):
+        """
+        Initialize transitional BN layers for each (input_bw, output_bw) pair.
+        
+        Args:
+            quant_config: Quantization configuration dictionary with 'bitwidth_options'
+        """
+        self.quantization_config = quant_config
+        self.bitwidth_options = list(quant_config.get('bitwidth_options', [8]))
+        
+        # Ensure 32-bit (float) is always available
+        if 32 not in self.bitwidth_options:
+            self.bitwidth_options.append(32)
+        
+        # Create BN for each (input_bitwidth, output_bitwidth) pair
+        self.bns = nn.ModuleDict()
+        for bw_in in self.bitwidth_options:
+            for bw_out in self.bitwidth_options:
+                key = f"{bw_in}_{bw_out}"
+                self.bns[key] = nn.BatchNorm2d(self.out_channels)
+    
+    def get_current_bitwidths(self):
+        """Get current bitwidths from associated input and output convs."""
+        input_bw = 32
+        output_bw = 32
+        
+        if self.input_conv is not None and hasattr(self.input_conv, 'curr_bitwidth'):
+            input_bw = self.input_conv.curr_bitwidth or 32
+        
+        if self.output_conv is not None and hasattr(self.output_conv, 'curr_bitwidth'):
+            output_bw = self.output_conv.curr_bitwidth or 32
+        
+        return input_bw, output_bw
+    
+    def forward(self, x):
+        if self.bns is None:
+            # Fallback to float BN if not configured
+            return self.bn_float(x)
+        
+        input_bw, output_bw = self.get_current_bitwidths()
+        key = f"{input_bw}_{output_bw}"
+        
+        # Use the BN corresponding to current transition
+        if key in self.bns:
+            return self.bns[key](x)
+        else:
+            # Fallback to float BN for unknown transitions
+            return self.bn_float(x)

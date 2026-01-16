@@ -76,6 +76,19 @@ def create_model(config):
             QuantModules.PACT.forward = _pact_forward
         Conv = getattr(QuantModules, conv_class_name)
         logging.info(f"  Successfully loaded Conv class: {Conv.__name__}")
+
+        bn_type = quantization_method_config.get(
+            "bn_type", config.get("quantization", {}).get("bn_type", "float")
+        )
+        if bn_type == "switchable":
+            BatchNorm = QuantModules.SwitchableBatchNorm
+        elif bn_type == "transitional":
+            BatchNorm = QuantModules.TransitionalBatchNorm
+        elif bn_type == "float":
+            BatchNorm = torch.nn.BatchNorm2d
+        else:
+            raise ValueError(f"Invalid BatchNorm type: {bn_type}")
+
     else:
         logging.info("Quantization disabled - using standard Conv2d layers")
     
@@ -110,6 +123,41 @@ def create_model(config):
             Conv=Conv,
             BatchNorm=BatchNorm,
         )
+
+    # Configure switchable/transitional BN after model creation
+    if quantization_enabled and BatchNorm is not None:
+        import models.QuantModules as QuantModules
+
+        def _is_conv(module):
+            conv_types = []
+            if Conv is not None:
+                conv_types.append(Conv)
+            conv_types.append(torch.nn.Conv2d)
+            return isinstance(module, tuple(set(conv_types)))
+
+        if BatchNorm in (QuantModules.SwitchableBatchNorm, QuantModules.TransitionalBatchNorm):
+            quant_config = quantization_method_config
+            modules_in_order = list(model.modules())
+            last_conv = None
+            for idx, module in enumerate(modules_in_order):
+                if isinstance(module, Conv):
+                    last_conv = module
+                    continue
+
+                if isinstance(module, QuantModules.SwitchableBatchNorm):
+                    if last_conv is not None:
+                        module.set_input_conv(last_conv)
+                    module.setup_quantize_funcs(quant_config)
+
+                if isinstance(module, QuantModules.TransitionalBatchNorm):
+                    input_conv = last_conv
+                    output_conv = None
+                    for next_module in modules_in_order[idx + 1:]:
+                        if isinstance(module, Conv):
+                            output_conv = next_module
+                            break
+                    module.set_convs(input_conv, output_conv)
+                    module.setup_quantize_funcs(quant_config)
     
     # Count parameters
     total_params = sum(p.numel() for p in model.parameters())

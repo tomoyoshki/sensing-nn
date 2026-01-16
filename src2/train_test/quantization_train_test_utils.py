@@ -1466,6 +1466,20 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
                 'quantization_method': quantization_method
             }, best_model_path)
             logging.info(f"  Best model saved! (Val Acc: {best_val_acc:.4f})")
+
+        # Save checkpoint every 10 epochs for later testing
+        if (epoch + 1) % 10 == 0:
+            checkpoint_path = models_dir / f"checkpoint_epoch_{epoch + 1}.pth"
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_acc': epoch_val_acc,
+                'val_loss': epoch_val_loss,
+                'config': config,
+                'quantization_method': quantization_method
+            }, checkpoint_path)
+            logging.info(f"  Checkpoint saved at epoch {epoch + 1}")
         
         # Save last epoch
         last_model_path = models_dir / "last_epoch.pth"

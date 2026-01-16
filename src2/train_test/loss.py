@@ -67,6 +67,15 @@ def get_loss_function(config=None, loss_name=None, model=None, **kwargs):
         # Try to get loss config from global 'loss_name' key
         loss_name = quantization_method_config.get('loss_name', 'cross_entropy')
         loss_kwargs = config.get(loss_name, None)
+        if loss_name == "kurtosis":
+            loss_kwargs = dict(loss_kwargs or {})
+            for key in (
+                "kurtosis_weight",
+                "kurtosis_target",
+                "kurtosis_eps",
+            ):
+                if key in quantization_method_config:
+                    loss_kwargs[key] = quantization_method_config[key]
 
     # Log loss function details
     logging.info(f"Loss function: {loss_name}")
@@ -91,9 +100,28 @@ def get_loss_function(config=None, loss_name=None, model=None, **kwargs):
         
         logging.info(f"  Using ImportanceVectorLoss with target_avg_bitwidth={target_avg_bitwidth}, budget_coeff={budget_coeff}")
         return ImportanceVectorLoss(base_loss, budget_coeff, target_avg_bitwidth), loss_name
+    elif loss_name in ("kurtosis", "kurtosis_loss"):
+        if model is None:
+            raise ValueError("Kurtosis loss requires model to be provided")
+        loss_kwargs = loss_kwargs or {}
+        kurtosis_weight = loss_kwargs.get("kurtosis_weight", 0.1)
+        kurtosis_target = loss_kwargs.get("kurtosis_target", 1.8)
+        if isinstance(kurtosis_weight, str):
+            kurtosis_weight = float(kurtosis_weight)
+        if isinstance(kurtosis_target, str):
+            kurtosis_target = float(kurtosis_target)
+        eps = loss_kwargs.get("kurtosis_eps", 1e-8)
+        if isinstance(eps, str):
+            eps = float(eps)
+        return KurtosisLoss(
+            model=model,
+            kurtosis_weight=kurtosis_weight,
+            kurtosis_target=kurtosis_target,
+            eps=eps
+        ), loss_name
     else:
         raise ValueError(f"Unknown loss function: {loss_name}. "
-                        f"Supported: 'cross_entropy', 'label_smoothing_ce', 'importance_vector_loss'")
+                        f"Supported: 'cross_entropy', 'label_smoothing_ce', 'importance_vector_loss', 'kurtosis'")
 
 
 def convert_to_one_hot(labels, num_classes):
@@ -360,3 +388,77 @@ class ImportanceVectorLoss(nn.Module):
         }
         
         return total_loss, loss_components
+
+
+def compute_weight_kurtosis_regularization(
+    model,
+    target_kurtosis=1.8,
+    eps=1e-8,
+):
+    """
+    Compute kurtosis regularization over weight tensors.
+    """
+    device = next(model.parameters()).device
+    kurtosis_sum = torch.tensor(0.0, device=device)
+    count = 0
+
+    for module in model.modules():
+        if not hasattr(module, "weight"):
+            continue
+        weight = module.weight
+        if not isinstance(weight, torch.Tensor) or weight.dim() < 2:
+            continue
+
+        mean = weight.mean()
+        var = weight.var(unbiased=False)
+        centered = weight - mean
+        kurtosis = (centered ** 4).mean() / (var ** 2 + eps)
+        kurtosis_sum = kurtosis_sum + (kurtosis - target_kurtosis) ** 2
+        count += 1
+
+    if count == 0:
+        return torch.tensor(0.0, device=device)
+
+    denom = float(count)
+    return kurtosis_sum / denom
+
+
+class KurtosisLoss(nn.Module):
+    """
+    Task loss + kurtosis regularization on weights.
+    """
+
+    def __init__(
+        self,
+        model,
+        kurtosis_weight=0.1,
+        kurtosis_target=1.8,
+        eps=1e-8,
+    ):
+        super().__init__()
+        self.model = model
+        self.kurtosis_weight = kurtosis_weight
+        self.kurtosis_target = kurtosis_target
+        self.eps = eps
+        self.task_loss_fn = nn.CrossEntropyLoss()
+
+    def forward(self, outputs, labels):
+        if len(labels.shape) == 2 and labels.shape[1] > 1:
+            loss_labels = torch.argmax(labels, dim=1)
+        else:
+            loss_labels = labels
+
+        task_loss = self.task_loss_fn(outputs, loss_labels)
+
+        kurtosis_reg = compute_weight_kurtosis_regularization(
+            self.model,
+            target_kurtosis=self.kurtosis_target,
+            eps=self.eps,
+        )
+
+        return (
+            task_loss
+            + self.kurtosis_weight * kurtosis_reg
+        )
+
+

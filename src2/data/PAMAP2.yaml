@@ -245,6 +245,19 @@ label_smoothing_ce:
         name: "label_smoothing_ce"
         label_smoothing: 0.1
 
+kurtosis:
+        name: "kurtosis"
+        kurtosis_weight: 0.1
+        kurtosis_target: 1.8
+        kurtosis_eps: 1e-8
+
+importance_vector_loss:
+        name: "importance_vector_loss"
+        lambda_variance: 0.1
+        variance_metric: "loss" # Not used anymore
+        target_avg_bitwidth: 6.0
+        budget_coeff: 0.01
+
 loss_name: "cross_entropy"
 
 batch_size: 128
@@ -257,14 +270,16 @@ normalization:
         minmax_range: [0, 1]
 
 quantization:
-        enable: False
+        enable: True
+        bn_type: "float"  # float, switchable, transitional
+        # Conv: "QuanConv" # QuanConv (for Joint Quantization, and Single Precision Training), QuanConvImportance (for importance vector quantization)
         importance_vector_comprehensive_validation:
                 name: "importance_vector_comprehensive_validation"
                 number_of_configs: 8
-                bitwidth_options: [2, 4, 8]
+                bitwidth_options: [4,8]
                 bin_tolerance: 0.5
         random_bitwidths:
-                bitwidth_options: [2, 4, 8]
+                bitwidth_options: [8,16,32]
                 name: "random_bitwidths"
                 number_of_configs: 8
                 bin_tolerance: 0.5
@@ -274,40 +289,113 @@ quantization:
         vanilla_single_precision_training:
                 bitwidth_options: [8]
         any_precision:
-                joint_quantization_batch_size: 2
-                bitwidth_options: [8, 16, 32]
+                Conv: "QuanConv"
+                loss_name: "cross_entropy"
+                bitwidth_options: [8,16,32]
+                weight_quantization: "lsq"
+                activation_quantization: "lsq"
+                validation_function: "random_bitwidths"
+                training_method: "joint_quantization"
+                switchable_clipping: False
+                sat_weight_normalization: False
+                bn_type: "switchable"
+        robustquant:
+                Conv: "QuanConv"
+                bitwidth_options: [8,16,32]
                 weight_quantization: "dorefa"
                 activation_quantization: "dorefa"
                 validation_function: "random_bitwidths"
                 training_method: "joint_quantization"
                 switchable_clipping: True
                 sat_weight_normalization: False
-        dorefa:
+                loss_name: "kurtosis"
+                kurtosis_regularization: True
+                kurtosis_target: 1.8
+                kurtosis_weight: 0.1
+        adabits:
                 Conv: "QuanConv"
-                loss_name: "cross_entropy"
-                bitwidth_options: [2, 4, 8]
-                default_bitwidth: 8
-                bitwidht_allocation: "random"
-                weight_quantization: "dorefa"
-                activation_quantization: "dorefa"
-                act_quant: "pact"  # Enable PACT activation quantization after ReLU
-                validation_function: "random_bitwidths"
-                training_method: "joint_quantization"
-                switchable_clipping: True
-                sat_weight_normalization: False
-        pact:
-                Conv: "QuanConv"
-                loss_name: "cross_entropy"
-                bitwidth_options: [2, 4, 8]
+                loss_name: "cross_entropy" # cross_entropy, label_smoothing_ce 
+                bitwidth_options: [4, 8]
                 default_bitwidth: 8
                 bitwidht_allocation: "random"
                 weight_quantization: "dorefa"
                 activation_quantization: "pact"
-                act_quant: "pact"
-                validation_function: "random_bitwidths"
-                training_method: "joint_quantization"
+                act_quant: "pact"  # Enable PACT activation quantization after ReLU
+                validation_function: "random_bitwidths" # simple_validation, random_bitwidths
+                training_method: "joint_quantization" # joint_quantization, vanilla_single_precision_training
                 switchable_clipping: True
                 sat_weight_normalization: False
+        # pact:
+        #         Conv: "QuanConv"
+        #         loss_name: "cross_entropy"
+        #         bitwidth_options: [4, 8]
+        #         default_bitwidth: 8
+        #         bitwidht_allocation: "random"
+        #         weight_quantization: "dorefa"
+        #         activation_quantization: "pact"
+        #         act_quant: "pact"
+        #         validation_function: "random_bitwidths"
+        #         training_method: "joint_quantization"
+        #         switchable_clipping: True
+        #         sat_weight_normalization: False
+        # lsq:
+        #         Conv: "QuanConv"
+        #         loss_name: "cross_entropy"
+        #         bitwidth_options: [4, 8]
+        #         default_bitwidth: 8
+        #         bitwidht_allocation: "random"
+        #         weight_quantization: "lsq"
+        #         activation_quantization: "lsq"
+        #         validation_function: "random_bitwidths"
+        #         training_method: "joint_quantization"
+        #         switchable_clipping: False  # Not used for LSQ
+        #         sat_weight_normalization: False
+        # lsqplus:
+        #         Conv: "QuanConv"
+        #         loss_name: "cross_entropy"
+        #         bitwidth_options: [4, 8]
+        #         default_bitwidth: 8
+        #         bitwidht_allocation: "random"
+        #         weight_quantization: "lsqplus"
+        #         activation_quantization: "lsqplus"
+        #         validation_function: "random_bitwidths"
+        #         training_method: "joint_quantization"
+        #         switchable_clipping: False  # Not used for LSQPlus
+        #         sat_weight_normalization: False
+        importance_vector:
+                Conv: "QuanConvImportance"
+                loss_name: "importance_vector_loss" # cross_entropy, label_smoothing_ce, importance_vector_loss
+                bitwidth_options: [2, 4, 8]
+                weight_quantization: "dorefa"
+                activation_quantization: "dorefa"
+                validation_function: "importance_vector_comprehensive_validation"
+                training_method: "joint_quantization_with_importance_vector"
+                number_of_configs: 2
+                switchable_clipping: True
+                sat_weight_normalization: False
+                
+                # Importance vector specific params
+                importance_vector:
+                        sampling_strategy: "soft_gumbel_softmax" # 'best_bitwidth', 'soft_gumbel_softmax', 'uniform_sampling'
+                        
+                
+                # Temperature scheduler for Gumbel-Softmax
+                # Used by: models/Temperature_Scheduler.py
+                # Similar to LR scheduler, call temp_scheduler.step() at end of each epoch
+                temp_scheduler:
+                        # Scheduler type: 'cosine', 'exponential', 'linear', 'step', 'cyclic', 'constant'
+                        name: "cosine"
+                        temp_start: 1.0     # High temperature = more exploration
+                        temp_min: 0.1       # Low temperature = more exploitation
+                        # num_epochs is taken from lr_scheduler.train_epochs automatically
+                        
+                        # Additional params for specific schedulers:
+                        # For 'exponential': decay_rate (optional, computed if not provided)
+                        # For 'step': milestones: [30, 60, 80], gamma: 0.5
+                        # For 'cyclic': cycle_length: 20
+                
+                # Visualization frequency
+                visualize_importance_every: 2  # epochs
 
 ResNet:
         # Architecture settings
