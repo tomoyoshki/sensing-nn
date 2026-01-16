@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
 
+
 def get_conv_class_from_model(model):
     """
     Extract the Conv class being used in the model by inspecting its modules.
@@ -110,6 +111,48 @@ def setup_quantization_layers(model, quant_config):
     logging.info(f"  Weight quantization: {quant_config.get('weight_quantization', 'N/A')}")
     logging.info(f"  Activation quantization: {quant_config.get('activation_quantization', 'N/A')}")
     logging.info(f"  Bitwidth options: {quant_config.get('bitwidth_options', 'N/A')}")
+    
+    return model
+
+
+def setup_quantization_for_testing(model, config):
+    """
+    Setup quantization layers for testing, similar to how it's done in training.
+    
+    This function:
+    1. Extracts quantization configuration from config
+    2. Sets up quantization layers (creates importance_vector parameters)
+    3. Moves model to the appropriate device
+    
+    Args:
+        model: PyTorch model
+        config: Configuration dictionary
+    
+    Returns:
+        model: Model with quantization layers configured and moved to device
+    """
+    device = torch.device(config.get('device', 'cuda:0') if torch.cuda.is_available() else 'cpu')
+    
+    # Extract quantization configuration
+    quantization_enabled = config.get('quantization', {}).get('enable', False)
+    if not quantization_enabled:
+        raise ValueError("Quantization is not enabled in config. Use standard test() function.")
+    
+    quantization_method = config.get('quantization_method', None)
+    assert quantization_method is not None, "Quantization method is not provided in the config"
+    logging.info(f"Using quantization method: {quantization_method}")
+    
+    # Get nested quantization config (same as in training)
+    if quantization_method not in config['quantization']:
+        raise ValueError(f"Quantization method '{quantization_method}' not found in config. "
+                        f"Available methods: {list(config['quantization'].keys())}")
+    
+    quant_config = config['quantization'][quantization_method]
+    
+    # Setup quantization layers FIRST
+    # This creates importance_vector parameters for QuanConvImportance layers
+    model = setup_quantization_layers(model, quant_config)
+    model = model.to(device)
     
     return model
 
@@ -1461,6 +1504,20 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
                 'quantization_method': quantization_method
             }, best_model_path)
             logging.info(f"  Best model saved! (Val Acc: {best_val_acc:.4f})")
+        
+        # Save checkpoint every 10 epochs
+        if (epoch + 1) % 10 == 0:
+            checkpoint_path = models_dir / f"checkpoint_epoch_{epoch + 1}.pth"
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_acc': epoch_val_acc,
+                'val_loss': epoch_val_loss,
+                'config': config,
+                'quantization_method': quantization_method
+            }, checkpoint_path)
+            logging.info(f"  Checkpoint saved at epoch {epoch + 1}")
         
         # Save last epoch
         last_model_path = models_dir / "last_epoch.pth"
