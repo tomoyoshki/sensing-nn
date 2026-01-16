@@ -84,7 +84,7 @@ seq_len: 4
 
 quantization:
         enable: True
-        bn_type: "float"  # float, switchable, transitional
+
         # Conv: "QuanConv" # QuanConv (for Joint Quantization, and Single Precision Training), QuanConvImportance (for importance vector quantization)
         importance_vector_comprehensive_validation:
                 name: "importance_vector_comprehensive_validation"
@@ -106,7 +106,7 @@ quantization:
                 loss_name: "cross_entropy"
                 bitwidth_options: [8,16,32]
                 weight_quantization: "lsq"
-                activation_quantization: "lsq"
+                activation_quantization: "dorefa"
                 validation_function: "random_bitwidths"
                 training_method: "joint_quantization"
                 switchable_clipping: False
