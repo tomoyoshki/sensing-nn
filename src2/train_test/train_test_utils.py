@@ -662,7 +662,7 @@ def test(model, test_loader, config, experiment_dir, checkpoint_path=None,
     
     # Load checkpoint if provided
     if checkpoint_path is not None:
-        checkpoint = torch.load(checkpoint_path, map_location=device)
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint['model_state_dict'])
         logging.info(f"Loaded checkpoint from: {checkpoint_path}")
         if 'epoch' in checkpoint:

@@ -154,7 +154,6 @@ def main():
         'model_variant': config.get('model_variant', 'None'),
         'dataset': Path(config.get('yaml_path', 'Unknown')).stem,
         'batch_size': config.get('batch_size', 'Unknown'),
-        'num_epochs': config.get('num_epochs', 'Unknown'),
         'learning_rate': learning_rate,
         'optimizer': optimizer_name,
         'scheduler': scheduler_name,
@@ -171,6 +170,7 @@ def main():
         hparams['loss_function'] = loss_name
         hparams['quantization_enabled'] = 'True'
         hparams['quantization_method'] = quantization_method
+        hparams['num_epochs'] = config.get(model_name, {}).get('lr_scheduler', {}).get('train_epochs', 'Unknown')
         
         # Get bitwidth options from the quantization method config
         bitwidth_options = quantization_method_config.get('bitwidth_options', [])
@@ -216,6 +216,7 @@ def main():
                 model=model,
                 train_loader=train_loader,
                 val_loader=val_loader,
+                test_loader=test_loader,
                 config=config,
                 experiment_dir=experiment_dir,
                 loss_fn=loss_fn,

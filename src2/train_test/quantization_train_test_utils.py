@@ -85,6 +85,34 @@ def set_random_bitwidth_all_layers(model, bitwidth_options):
             bw = bitwidth_options[torch.randint(0, len(bitwidth_options), (1,)).item()]
             module.set_bitwidth(bw)
 
+def set_all_bitwidths_given_list(model, bitwidth_list):
+    """
+    Set bitwidths for all quantized Conv layers in the model from a list.
+    
+    Args:
+        model: PyTorch model containing quantized Conv layers
+        bitwidth_list: List of bitwidths, one per quantized Conv layer (in module order)
+    
+    Raises:
+        ValueError: If no quantized Conv layers found
+        AssertionError: If bitwidth_list length doesn't match number of layers
+    """
+    conv_class = get_conv_class_from_model(model)
+    if conv_class is None:
+        raise ValueError("No quantized Conv layers found in model - some flags or args are wrong")
+    
+    # Count conv layers and set bitwidths
+    conv_layer_idx = 0
+    for module in model.modules():
+        if isinstance(module, conv_class):
+            assert conv_layer_idx < len(bitwidth_list), \
+                f"Bitwidth list (len={len(bitwidth_list)}) is not long enough for layer {conv_layer_idx}"
+            module.set_bitwidth(bitwidth_list[conv_layer_idx])
+            conv_layer_idx += 1
+    
+    # Verify we used all bitwidths
+    assert conv_layer_idx == len(bitwidth_list), \
+        f"Bitwidth list length ({len(bitwidth_list)}) doesn't match number of conv layers ({conv_layer_idx})"
 
 def setup_quantization_layers(model, quant_config):
     """
@@ -115,44 +143,67 @@ def setup_quantization_layers(model, quant_config):
     return model
 
 
-def setup_quantization_for_testing(model, config):
+def setup_quantization_for_testing(model, config, test_function, device):
     """
-    Setup quantization layers for testing, similar to how it's done in training.
+    Setup quantization layers for testing based on the test function.
     
     This function:
-    1. Extracts quantization configuration from config
-    2. Sets up quantization layers (creates importance_vector parameters)
-    3. Moves model to the appropriate device
+    1. Checks if quantization is needed based on test_function
+    2. Extracts quantization configuration from config if needed
+    3. Sets up quantization layers (creates importance_vector parameters)
+    4. Moves model to the appropriate device
     
     Args:
         model: PyTorch model
         config: Configuration dictionary
+        test_function: Test function name ('float', 'single_precision_quantized', 
+                      'random_bitwidth', 'single_precision_and_random_bitwidth')
+        device: torch.device to move model to
     
     Returns:
-        model: Model with quantization layers configured and moved to device
+        model: Model with quantization layers configured (if needed) and moved to device
     """
-    device = torch.device(config.get('device', 'cuda:0') if torch.cuda.is_available() else 'cpu')
+    # Check if quantization setup is needed based on test function
+
+    valid_test_functions = ['float', 'single_precision_quantized', 'random_bitwidth', 
+                           'single_precision_and_random_bitwidth']
+    valid_quantized_tessting_functions = ['single_precision_quantized', 'random_bitwidth', 
+                                          'single_precision_and_random_bitwidth']
+    if test_function not in valid_test_functions:
+        raise ValueError(f"Invalid test function: {test_function}, "
+                        f"must be one of: {valid_test_functions}")
+
+    quantization_enabled = config.get('quantization', {}).get('enable', False)
+    if test_function in valid_quantized_tessting_functions and not quantization_enabled:
+        raise ValueError("Quantization is not enabled in config. "
+                        "Cannot use quantized test functions without quantization enabled.")
+    
+
+    # Float test - no quantization layers needed
+    if test_function == 'float':
+        logging.info("Float test selected - no quantization layers needed")
+        model = model.to(device)
+        return model
+    
+    # For quantized tests, setup quantization layers
+    logging.info(f"Setting up quantization layers for {test_function} testing...")
     
     # Extract quantization configuration
-    quantization_enabled = config.get('quantization', {}).get('enable', False)
-    if not quantization_enabled:
-        raise ValueError("Quantization is not enabled in config. Use standard test() function.")
-    
     quantization_method = config.get('quantization_method', None)
     assert quantization_method is not None, "Quantization method is not provided in the config"
     logging.info(f"Using quantization method: {quantization_method}")
     
     # Get nested quantization config (same as in training)
-    if quantization_method not in config['quantization']:
-        raise ValueError(f"Quantization method '{quantization_method}' not found in config. "
-                        f"Available methods: {list(config['quantization'].keys())}")
-    
     quant_config = config['quantization'][quantization_method]
     
     # Setup quantization layers FIRST
     # This creates importance_vector parameters for QuanConvImportance layers
+    # or alpha parameters for PACT
+    # or bitwidth parameters for LSQ
     model = setup_quantization_layers(model, quant_config)
     model = model.to(device)
+    
+    logging.info("Quantization layers setup successfully")
     
     return model
 
@@ -197,7 +248,7 @@ def validate_simple(model, val_loader, loss_fn, device, augmenter, apply_augment
 
 def validate_random_bitwidths(model, val_loader, loss_fn, device, 
                                augmenter, apply_augmentation_fn, num_configs, 
-                               bitwidth_options, bin_tolerance=0.5):
+                               bitwidth_options):
     """
     Validate model with multiple random bitwidth configurations and report statistics.
     
@@ -210,7 +261,6 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
         apply_augmentation_fn: Function to apply augmentation
         num_configs: Number of random configurations to test
         bitwidth_options: List of bitwidth options
-        bin_tolerance: Tolerance for grouping bitwidths into bins (default: 0.5)
     
     Returns:
         dict: Statistics including mean, min, max, std for accuracy, loss, and bitwidth
@@ -220,7 +270,6 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
     
     logging.info(f"Validating with {num_configs} random bitwidth configurations...")
     logging.info(f" validate_random_bitwidths: Bitwidth options: {bitwidth_options}")
-    logging.info(f" validate_random_bitwidths: Bin tolerance: {bin_tolerance}")
     
     for i in range(num_configs):
         # Set random bitwidths for all layers
@@ -250,38 +299,6 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
     losses = [r['loss'] for r in results]
     avg_bitwidths = [r['avg_bitwidth'] for r in results]
     
-    # Calculate bin-level statistics
-    # Create bins based on unique bitwidths (rounded to 1 decimal)
-    unique_bitwidths = np.unique(np.round(avg_bitwidths, 1))
-    
-    bin_stats = []
-    # Assign each data point to the closest bin center (no overlapping bins)
-    avg_bitwidths_array = np.array(avg_bitwidths)
-    accuracies_array = np.array(accuracies)
-    
-    for bw in unique_bitwidths:
-        # Find data points closest to this bin center
-        distances = np.abs(avg_bitwidths_array - bw)
-        
-        # Assign each point to its closest bin
-        # For each data point, check if this bin is the closest
-        mask = np.array([np.abs(avg_bw - bw) == np.min([np.abs(avg_bw - ub) for ub in unique_bitwidths]) 
-                         for avg_bw in avg_bitwidths_array])
-        
-        if np.sum(mask) > 0:
-            bin_accs = accuracies_array[mask]
-            bin_stats.append({
-                'bitwidth': float(bw),
-                'mean_acc': float(np.mean(bin_accs)),
-                'std_acc': float(np.std(bin_accs)),
-                'min_acc': float(np.min(bin_accs)),
-                'max_acc': float(np.max(bin_accs)),
-                'count': int(np.sum(mask))
-            })
-    
-    # Calculate average validation std across all bins
-    avg_val_std = np.mean([b['std_acc'] for b in bin_stats]) if bin_stats else 0.0
-    
     stats = {
         'mean_acc': np.mean(accuracies),
         'min_acc': np.min(accuracies),
@@ -299,10 +316,7 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
         'loss': np.mean(losses),
         # Store raw data for plotting
         'all_accuracies': accuracies,
-        'all_bitwidths': avg_bitwidths,
-        # Store bin-level statistics
-        'bin_stats': bin_stats,
-        'avg_val_std': avg_val_std
+        'all_bitwidths': avg_bitwidths
     }
     
     # Log summary statistics
@@ -313,15 +327,6 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
                 f"Max: {stats['max_loss']:.4f}, Std: {stats['std_loss']:.4f}")
     logging.info(f"  Bitwidth - Mean: {stats['mean_bitwidth']:.2f}, Min: {stats['min_bitwidth']:.2f}, "
                 f"Max: {stats['max_bitwidth']:.2f}, Std: {stats['std_bitwidth']:.4f}")
-    
-    # Log bin-level statistics
-    if bin_stats:
-        logging.info(f"  Bin Statistics ({len(bin_stats)} bins, tolerance=±{bin_tolerance}):")
-        for bin_stat in bin_stats:
-            logging.info(f"    Bitwidth {bin_stat['bitwidth']:.1f}: "
-                        f"Acc={bin_stat['mean_acc']:.4f}±{bin_stat['std_acc']:.4f} "
-                        f"(n={bin_stat['count']})")
-        logging.info(f"  Average Validation Std across bins: {avg_val_std:.4f}")
     
     return stats
 
@@ -537,7 +542,7 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
     }
 
 
-def plot_bitwidth_vs_accuracy(bitwidths, accuracies, epoch, title="Bitwidth vs Accuracy", bin_tolerance=0.5):
+def plot_bitwidth_vs_accuracy(bitwidths, accuracies, epoch, title="Bitwidth vs Accuracy"):
     """
     Create a scatter plot or candlestick-style plot of bitwidth vs accuracy.
     
@@ -548,7 +553,6 @@ def plot_bitwidth_vs_accuracy(bitwidths, accuracies, epoch, title="Bitwidth vs A
         accuracies: List of corresponding accuracies
         epoch: Current epoch number (for title)
         title: Plot title
-        bin_tolerance: Tolerance for grouping bitwidths into bins (default: 0.5)
     
     Returns:
         matplotlib.figure.Figure: The created figure
@@ -1038,7 +1042,7 @@ def train_epoch_importance_vector(model, train_loader, optimizer, temp_scheduler
     }
 
 
-def train_with_quantization(model, train_loader, val_loader, config, experiment_dir,
+def train_with_quantization(model, train_loader, val_loader, test_loader, config, experiment_dir,
                             loss_fn, augmenter, apply_augmentation_fn):
     """
     Main training function for quantization-aware training.
@@ -1048,6 +1052,7 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
     - Optimizer and scheduler creation (AFTER quantization setup)
     - Training loop with appropriate training method (joint quantization, etc.)
     - Validation with appropriate validation function (random bitwidths, etc.)
+    - Optional test evaluation during training (if test_mode is enabled)
     - Checkpointing and best model tracking
     
     Note: Optimizer and scheduler are created internally AFTER setup_quantization_layers()
@@ -1057,6 +1062,7 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
         model: PyTorch model to train
         train_loader: Training data loader
         val_loader: Validation data loader
+        test_loader: Test data loader (optional, used if test_mode is enabled)
         config: Full configuration dictionary
         experiment_dir: Path to experiment directory
         loss_fn: Loss function
@@ -1128,7 +1134,7 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
     else:
         temperature_scheduler = None
 
-    temperature_scheduler = build_temp_scheduler(model, quant_config, num_epochs)
+    # temperature_scheduler = build_temp_scheduler(model, quant_config, num_epochs)
     # Training history
     train_history = {
         'train_loss': [],
@@ -1137,9 +1143,10 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
         'val_acc': [],
         'val_mean_acc': [],
         'val_std_acc': [],
+        'test_mean_acc': [],
+        'test_std_acc': [],
+        'test_mean_loss': [],
         'learning_rates': [],
-        'bitwidth_bin_stats': [],  # Store bin stats for each epoch
-        'avg_val_std_history': [],  # Store avg val std for each epoch
         # Loss components for importance vector training
         'train_task_loss': [],
         'train_variance_loss': [],
@@ -1235,10 +1242,9 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
         # ====================================================================
         if validation_function == "random_bitwidths":
             # Get validation config from quantization.random_bitwidths
-            val_config = config.get('quantization', {}).get('random_bitwidths', {})
-            num_configs = val_config.get('number_of_configs', 4)
-            bitwidth_options = val_config.get('bitwidth_options', [4, 6, 8])
-            bin_tolerance = val_config.get('bin_tolerance', 0.5)  # Configurable tolerance
+            bitwidth_options = config['quantization'][quantization_method]['bitwidth_options']
+            assert bitwidth_options is not None, "Bitwidth options are not set in the config. \n"
+            num_configs = config['quantization']['random_bitwidths']['number_of_configs']
             
             val_stats = validate_random_bitwidths(
                 model=model,
@@ -1249,7 +1255,6 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
                 apply_augmentation_fn=apply_augmentation_fn,
                 num_configs=num_configs,
                 bitwidth_options=bitwidth_options,
-                bin_tolerance=bin_tolerance
             )
             
             epoch_val_loss = val_stats['mean_loss']
@@ -1257,8 +1262,6 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
             
             train_history['val_mean_acc'].append(val_stats['mean_acc'])
             train_history['val_std_acc'].append(val_stats['std_acc'])
-            train_history['bitwidth_bin_stats'].append(val_stats.get('bin_stats', []))
-            train_history['avg_val_std_history'].append(val_stats.get('avg_val_std', 0.0))
         elif validation_function == "simple_validation":
             # Simple validation with fixed bitwidth
             bitwidth_options = quant_config.get('bitwidth_options', [8])
@@ -1346,6 +1349,57 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
             writer.add_scalar('Bitwidth/min_bitwidth', val_stats['min_bitwidth'], epoch)
             writer.add_scalar('Bitwidth/max_bitwidth', val_stats['max_bitwidth'], epoch)
         
+        # ====================================================================
+        # Test Evaluation (Optional - if test_mode is enabled)
+        # ====================================================================
+        if config.get('test_mode', False) and test_loader is not None:
+            logging.info("\n" + "=" * 80)
+            logging.info("TEST EVALUATION")
+            logging.info("=" * 80)
+            
+            # Get test configuration (same as validation)
+            bitwidth_options = config['quantization'][quantization_method]['bitwidth_options']
+            logging.info(f"Bitwidth options INSIDE TEST EVALUATION: {bitwidth_options}")
+            num_test_configs = 10  # Fixed at 10 for test evaluation
+            
+            # Run test evaluation using validate_random_bitwidths
+            test_stats = validate_random_bitwidths(
+                model=model,
+                val_loader=test_loader,  # Using test_loader as the data loader
+                loss_fn=loss_fn,
+                device=device,
+                augmenter=augmenter,
+                apply_augmentation_fn=apply_augmentation_fn,
+                num_configs=num_test_configs,
+                bitwidth_options=bitwidth_options,
+            )
+            
+            # Store test results in history
+            train_history['test_mean_acc'].append(test_stats['mean_acc'])
+            train_history['test_std_acc'].append(test_stats['std_acc'])
+            train_history['test_mean_loss'].append(test_stats['mean_loss'])
+            
+            # Log test statistics to console
+            logging.info("Test Set Statistics:")
+            logging.info(f"  Test Mean Acc: {test_stats['mean_acc']:.4f}, "
+                        f"Std Acc: {test_stats['std_acc']:.4f}, "
+                        f"Mean Loss: {test_stats['mean_loss']:.4f}")
+            logging.info(f"  Test Acc Range: [{test_stats['min_acc']:.4f}, {test_stats['max_acc']:.4f}]")
+            logging.info(f"  Test Loss Range: [{test_stats['min_loss']:.4f}, {test_stats['max_loss']:.4f}]")
+            logging.info(f"  Test Mean Bitwidth: {test_stats['mean_bitwidth']:.2f}, "
+                        f"Std Bitwidth: {test_stats['std_bitwidth']:.4f}")
+            
+            # TensorBoard logging for test metrics
+            writer.add_scalar('Test/mean_acc', test_stats['mean_acc'], epoch)
+            writer.add_scalar('Test/std_acc', test_stats['std_acc'], epoch)
+            writer.add_scalar('Test/mean_loss', test_stats['mean_loss'], epoch)
+            writer.add_scalar('Test/min_acc', test_stats['min_acc'], epoch)
+            writer.add_scalar('Test/max_acc', test_stats['max_acc'], epoch)
+            writer.add_scalar('Test/mean_bitwidth', test_stats['mean_bitwidth'], epoch)
+            writer.add_scalar('Test/std_bitwidth', test_stats['std_bitwidth'], epoch)
+            
+            logging.info("=" * 80 + "\n")
+        
         # Additional validation metrics for importance_vector_comprehensive
         if validation_function == "importance_vector_comprehensive":
             # Log all three validation modes
@@ -1402,8 +1456,7 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
                     bitwidths=val_stats['all_bitwidths'],
                     accuracies=val_stats['all_accuracies'],
                     epoch=epoch,
-                    title="Bitwidth vs Validation Accuracy",
-                    bin_tolerance=bin_tolerance
+                    title="Bitwidth vs Validation Accuracy"
                 )
                 writer.add_figure('Bitwidth_Analysis/bitwidth_vs_accuracy', bitwidth_acc_fig, epoch)
                 plt.close(bitwidth_acc_fig)

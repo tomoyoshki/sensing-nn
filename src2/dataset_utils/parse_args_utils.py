@@ -3,6 +3,147 @@ import yaml
 from pathlib import Path
 
 
+def parse_test_args():
+    """
+    Parse command line arguments specific to testing.
+    
+    Returns:
+        args: Parsed arguments
+    """
+    parser = argparse.ArgumentParser(
+        description='Test a trained model'
+    )
+    
+    # Checkpoint loading modes
+    mode_group = parser.add_mutually_exclusive_group(required=False)
+    mode_group.add_argument(
+        '--checkpoint_path',
+        type=str,
+        help='Path to specific checkpoint file to test'
+    )
+    mode_group.add_argument(
+        '--auto_latest',
+        action='store_true',
+        help='Automatically find and test the most recent experiment'
+    )
+    
+    # Run Checkpoints (requires --experiments_dir)
+    run_checkpoint_group = parser.add_mutually_exclusive_group(required=False)
+    run_checkpoint_group.add_argument(
+        '--run_checkpoint',
+        type=int,
+        nargs='+',
+        help='Run specific checkpoint(s) by epoch number (e.g., --run_checkpoint 10 20 30)'
+    )
+    run_checkpoint_group.add_argument(
+        '--run_all_checkpoints',
+        action='store_true',
+        help='Run all checkpoint_epoch_*.pth files in the experiment models directory'
+    )
+    run_checkpoint_group.add_argument(
+        '--use_best',
+        action='store_true',
+        help='Use best model checkpoint (default: True). If False, uses last epoch.'
+    )
+
+    run_checkpoint_group.add_argument(
+        '--use_last_epoch',
+        action='store_true',
+        help='Use last epoch checkpoint (default: False). If True, uses last epoch.'
+    )
+    
+    
+    parser.add_argument(
+        '--gpu',
+        type=int,
+        default=0,
+        help='GPU to use'
+    )
+    
+    parser.add_argument(
+        '--experiments_dir',
+        type=str,
+        default='/home/misra8/sensing-nn/src2/experiments',
+        help='Base directory for experiments'
+    )
+
+    parser.add_argument(
+        '--test_function',
+        type=str,
+        required=True,
+        help='Test function to use, float, single_precision_quantized, random_bitwidth'
+    )
+
+    # Bitwidth override options (mutually exclusive)
+    bitwidth_override_group = parser.add_mutually_exclusive_group(required=False)
+    bitwidth_override_group.add_argument(
+        '--override_single_bitwidth',
+        type=int,
+        nargs='+',
+        default=None,
+        help=(
+            "For multiple entries, all will be tested one by one - This will override the bitwidth options used during training - \n"
+            "Currently do not put a bitwidth that it was not trained on it will throw an error, model will crash\n"
+            "Example usage:\n"
+            "  --override_single_bitwidth 4 6 8\n"
+            "Note: Cannot be used with --override_bitwidth_options or --num_test_configs"
+        )
+    )
+    bitwidth_override_group.add_argument(
+        '--override_bitwidth_options',
+        type=int,
+        nargs='+',
+        default=None,
+        help=(
+            "List of bitwidth options for random bitwidth testing.\n"
+            "Example usage:\n"
+            "  --override_bitwidth_options 4 6 8\n"
+            "This will override the bitwidth options used during training - \n"
+            "Currently do not put a bitwidth that it was not trained on it will throw an error, model will crash\n"
+            "Note: Cannot be used with --override_single_bitwidth"
+        )
+    )
+
+    parser.add_argument(
+        '--num_test_configs',
+        type=int,
+        default=4,
+        help='Number of random bitwidth configurations to test (for random_bitwidth test function). Ignored when --override_single_bitwidth is used.'
+    )
+
+    parser.add_argument(
+        '--bitwidth_bin_size',
+        type=float,
+        nargs='+',  # Accept one or more values
+        metavar='VALUE',
+        default=None,
+        required=False,
+        help=(
+            "Specify one or more bitwidth ranges as pairs of [min, max] values.\n"
+            "Each range requires exactly two values (min, max).\n"
+            "Examples:\n"
+            "  Single range:\n"
+            "    --bitwidth_bin_size 2.5 3.5\n"
+            "  Multiple ranges:\n"
+            "    --bitwidth_bin_size 2.0 3.0 3.5 4.5 5.0 6.0\n"
+            "    (Creates 3 ranges: [2.0, 3.0], [3.5, 4.5], [5.0, 6.0])\n"
+            "Total number of values must be even (pairs of min/max)."
+        )
+    )
+
+    
+    args = parser.parse_args()
+    
+    # Validate and parse bitwidth_bin_size into pairs
+    if args.bitwidth_bin_size is not None:
+        from train_test.quantization_test_utils import validate_and_parse_bitwidth_ranges
+        args.bitwidth_bin_size = validate_and_parse_bitwidth_ranges(
+            args.bitwidth_bin_size, 
+            parser
+        )
+    
+    return args
+
 def parse_args():
     """
     Parse command line arguments for model training/testing.
@@ -66,6 +207,14 @@ def parse_args():
         help='Quantization method to use (e.g., dorefa, any_precision). Only used if quantization is enabled in config.'
     )
     
+    parser.add_argument(
+        '--test_mode',
+        action='store_true',
+        default=True,
+        required=False,
+        help='Enable test set evaluation during training (runs after each validation step)'
+    )
+    
     return parser.parse_args()
 
 
@@ -118,5 +267,6 @@ def get_config():
     config['device'] = f'cuda:{args.gpu}'
     config['model_variant'] = args.model_variant
     config['quantization_method'] = args.quantization_method
+    config['test_mode'] = args.test_mode
     return config
 

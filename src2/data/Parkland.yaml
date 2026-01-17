@@ -85,10 +85,8 @@ quantization:
                 bitwidth_options: [4,8]
                 bin_tolerance: 0.5
         random_bitwidths:
-                bitwidth_options: [4,8]
                 name: "random_bitwidths"
                 number_of_configs: 8
-                bin_tolerance: 0.5
         joint_quantization:
                 joint_quantization_batch_size: 2
                 every_epoch_new_bitwidth_config: True
@@ -106,12 +104,12 @@ quantization:
         dorefa:
                 Conv: "QuanConv"
                 loss_name: "cross_entropy" # cross_entropy, label_smoothing_ce 
-                bitwidth_options: [8]
+                bitwidth_options: [4,8]
                 bitwidht_allocation: "random"
                 weight_quantization: "dorefa"
                 activation_quantization: "dorefa"
-                validation_function: "simple_validation" # simple_validation, random_bitwidths
-                training_method: "vanilla_single_precision_training" # joint_quantization, vanilla_single_precision_training
+                validation_function: "random_bitwidths" # simple_validation, random_bitwidths
+                training_method: "joint_quantization" # joint_quantization, vanilla_single_precision_training
                 switchable_clipping: True
                 sat_weight_normalization: False
         importance_vector:
@@ -207,7 +205,7 @@ ResNet:
                 name: "cosine"
                 warmup_prefix: True
                 warmup_epochs: 0
-                train_epochs: 50
+                train_epochs: 30
                 start_epoch: 0
                 decay_epochs: 2
                 decay_rate: 0.2

@@ -29,7 +29,7 @@ def filter_kwargs(func, kwargs):
     valid_params = set(sig.parameters.keys())
     return {k: v for k, v in kwargs.items() if k in valid_params}
 
-def get_loss_function(config=None, loss_name=None, model=None, **kwargs):
+def get_loss_function(config=None, model=None):
     """
     Factory function to get the appropriate loss function from config or arguments.
     

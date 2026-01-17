@@ -33,8 +33,8 @@ def create_model(config):
     
     # Classification parameters
     num_classes = config.get("vehicle_classification", {}).get("num_classes", 1000)
-    fc_dim = config.get("fc_dim", 512)
-    dropout_ratio = config.get("dropout_ratio", 0)
+    fc_dim = config.get("fc_dim", 512) # config.get(model_name, {}).get("fc_dim", 512) is correct way to get fc_dim
+    dropout_ratio = config.get("dropout_ratio", 0) # config.get(model_name,{}).get("dropout_ratio", 0) is correct way to get dropout_ratio
     model_variant = config.get("model_variant", None)
     
     logging.info(f"Creating {model_name} model...")
@@ -53,9 +53,12 @@ def create_model(config):
     if quantization_enabled:
         # Import quantization modules
         # conv_class_name = config["quantization"].get("Conv", "QuanConv")
-        quantization_method_name = config.get("quantization_method", "dorefa")
+        quantization_method_name = config.get("quantization_method",None)
+        assert quantization_method_name is not None, "Quantization method name is not provided in the config"
         quantization_method_config = config["quantization"].get(quantization_method_name, {})
-        conv_class_name = quantization_method_config.get("Conv", "QuanConv")
+        # breakpoint()
+        conv_class_name = quantization_method_config.get("Conv",None)
+        assert conv_class_name is not None, f"Conv class name is not provided in the config for quantization method: {quantization_method_name}"
 
         
         logging.info(f"Quantization enabled:")
@@ -64,7 +67,10 @@ def create_model(config):
         
         # Dynamically import the Conv class specified in config
         import models.QuantModules as QuantModules
-        Conv = getattr(QuantModules, conv_class_name)
+        try:
+            Conv = getattr(QuantModules, conv_class_name)
+        except AttributeError:
+            raise ValueError(f"Conv class {conv_class_name} not found in QuantModules. Available classes: {list(QuantModules.__dict__.keys())}")
         logging.info(f"  Successfully loaded Conv class: {Conv.__name__}")
     else:
         logging.info("Quantization disabled - using standard Conv2d layers")
@@ -82,6 +88,8 @@ def create_model(config):
         Conv=Conv,
         BatchNorm=BatchNorm
     )
+
+    # model = build_vit(config)
     
     # Count parameters
     total_params = sum(p.numel() for p in model.parameters())
