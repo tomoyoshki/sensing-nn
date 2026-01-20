@@ -569,10 +569,10 @@ def generate_scheme_for_target_relative_memory(model, conv_class, bitwidth_optio
 
 
 def generate_schemes_in_relative_memory_bin(model, conv_class, bitwidth_options, 
-                                            bin_min, bin_max, num_schemes,
+                                            relative_memory_consumption_bin_min, relative_memory_consumption_bin_max, num_schemes,
                                             max_attempts_per_scheme=100):
     """
-    Generate multiple quantization schemes with relative memory in [bin_min, bin_max].
+    Generate multiple quantization schemes with relative memory in [relative_memory_consumption_bin_min, relative_memory_consumption_bin_max].
     
     Uses rejection sampling: generates a scheme, checks if it's in range,
     if not regenerates (up to max_attempts_per_scheme times).
@@ -604,7 +604,7 @@ def generate_schemes_in_relative_memory_bin(model, conv_class, bitwidth_options,
             total_attempts += 1
             
             # Sample target uniformly in the bin range
-            target_relative_memory = np.random.uniform(bin_min, bin_max)
+            target_relative_memory = np.random.uniform(relative_memory_consumption_bin_min, relative_memory_consumption_bin_max)
             scheme = generate_scheme_for_target_relative_memory(
                 model, conv_class, bitwidth_options, target_relative_memory
             )
@@ -612,7 +612,7 @@ def generate_schemes_in_relative_memory_bin(model, conv_class, bitwidth_options,
             # Verify the scheme is actually in range
             actual_rel_mem = compute_relative_memory(scheme, weight_counts, max_bitwidth=max_bw)
             
-            if bin_min <= actual_rel_mem <= bin_max:
+            if relative_memory_consumption_bin_min <= actual_rel_mem <= relative_memory_consumption_bin_max:
                 if attempt == 0:
                     successful_first_try += 1
                 schemes.append(scheme)

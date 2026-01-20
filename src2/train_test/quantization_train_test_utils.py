@@ -786,7 +786,7 @@ def train_epoch_vanilla_single_precision(model, train_loader, optimizer, loss_fn
 
 
 def train_epoch_joint_quantization(model, train_loader, optimizer, loss_fn, 
-                                   quant_config, augmenter, apply_augmentation_fn, 
+                                   config, augmenter, apply_augmentation_fn, 
                                    device, writer, epoch, clip_grad=None):
     """
     Train one epoch using joint quantization strategy.
@@ -813,9 +813,15 @@ def train_epoch_joint_quantization(model, train_loader, optimizer, loss_fn,
     model.train()
     
     # Extract joint quantization parameters
-    joint_quant_config = quant_config.get('joint_quantization', {})
-    joint_quantization_batch_size = joint_quant_config.get('joint_quantization_batch_size', 2)
-    bitwidth_options = quant_config.get('bitwidth_options', [4, 6, 8])
+    quantization_method_name = config.get('quantization_method',None)
+    quant_config = config.get('quantization', {})
+    if quant_config is None:
+        raise ValueError("Quantization config is not provided in the config")
+    if quantization_method_name is None:
+        raise ValueError("Quantization method name is not provided in the config")
+    quantization_method_config = config.get('quantization', {}).get(quantization_method_name, {})
+    joint_quantization_batch_size = quant_config.get('joint_quantization', {}).get('joint_quantization_batch_size', 2)
+    bitwidth_options = quantization_method_config.get('bitwidth_options', [4, 6, 8])
     
     train_loss = 0.0
     train_correct = 0
@@ -1222,7 +1228,7 @@ def train_with_quantization(model, train_loader, val_loader, test_loader, config
                 train_loader=train_loader,
                 optimizer=optimizer,
                 loss_fn=loss_fn,
-                quant_config=quant_config,
+                config=config,
                 augmenter=augmenter,
                 apply_augmentation_fn=apply_augmentation_fn,
                 device=device,

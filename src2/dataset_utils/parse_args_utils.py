@@ -135,7 +135,7 @@ def parse_test_args():
     args = parser.parse_args()
     
     # Validate and parse bitwidth_bin_size into pairs
-    if args.bitwidth_bin_size is not None:
+    if args.relative_memory_consumption_bin_size is not None:
         from train_test.quantization_test_utils import validate_and_parse_bitwidth_ranges
         args.bitwidth_bin_size = validate_and_parse_bitwidth_ranges(
             args.bitwidth_bin_size, 

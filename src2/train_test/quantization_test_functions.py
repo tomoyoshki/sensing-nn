@@ -97,11 +97,11 @@ def test_simple(model, test_loader, loss_fn, device, augmenter, apply_augmentati
 
 def test_random_bitwidths(model, test_loader, loss_fn, device, 
                           augmenter, apply_augmentation_fn, num_quantization_schemes, 
-                          bitwidth_options, bitwidth_bin_size=None):
+                          bitwidth_options, relative_memory_consumption_bin_size=None):
     """
     Test model with multiple random bitwidth quantization schemes and report statistics.
     
-    When bitwidth_bin_size is provided, generates schemes with target relative memory
+    When relative_memory_consumption_bin_size is provided, generates schemes with target relative memory
     consumption within the specified range using smart sampling (greedy algorithm).
     Relative memory is computed as current_config_memory / max_8bit_memory.
     Otherwise, uses uniform random sampling from bitwidth_options.
@@ -115,7 +115,7 @@ def test_random_bitwidths(model, test_loader, loss_fn, device,
         apply_augmentation_fn: Function to apply augmentation
         num_quantization_schemes: Number of different quantization schemes to test
         bitwidth_options: List of bitwidth options (e.g., [2, 4, 8])
-        bitwidth_bin_size: Tuple of (min, max) for target relative memory range (0 to 1).
+        relative_memory_consumption_bin_size: Tuple of (min, max) for target relative memory range (0 to 1).
                           If None, uses uniform random sampling from bitwidth_options.
     
     Returns:
@@ -126,7 +126,7 @@ def test_random_bitwidths(model, test_loader, loss_fn, device,
     
     logging.info(f"Testing with {num_quantization_schemes} different quantization schemes...")
     logging.info(f"  Bitwidth options: {bitwidth_options}")
-    logging.info(f"  Relative memory target range: {bitwidth_bin_size}")
+    logging.info(f"  Relative memory target range: {relative_memory_consumption_bin_size}")
     
     # Get number of quantized layers in model
     conv_class = get_conv_class_from_model(model)
@@ -134,16 +134,16 @@ def test_random_bitwidths(model, test_loader, loss_fn, device,
     logging.info(f"  Number of quantized layers: {num_layers}")
     
     # Generate quantization schemes based on whether bin_size is provided
-    if bitwidth_bin_size is not None:
+    if relative_memory_consumption_bin_size is not None:
         # Smart sampling: generate schemes with relative memory in the target range
-        bin_min, bin_max = bitwidth_bin_size
-        logging.info(f"  Using targeted sampling with relative memory in [{bin_min}, {bin_max}]")
+        relative_memory_consumption_bin_min, relative_memory_consumption_bin_max = relative_memory_consumption_bin_size
+        logging.info(f"  Using targeted sampling with relative memory in [{relative_memory_consumption_bin_min}, {relative_memory_consumption_bin_max}]")
         quantization_schemes = generate_schemes_in_relative_memory_bin(
             model=model,
             conv_class=conv_class,
             bitwidth_options=bitwidth_options,
-            bin_min=bin_min,
-            bin_max=bin_max,
+            bin_min=relative_memory_consumption_bin_min,
+            bin_max=relative_memory_consumption_bin_max,
             num_schemes=num_quantization_schemes
         )
         use_pregenerated_schemes = True
@@ -337,14 +337,14 @@ def load_and_test_random_bitwidths(model, checkpoint_path, test_loader, loss_fn,
     num_quantization_schemes = test_args.num_test_configs
     
     # Get bitwidth_bin_size from test_args (can be None for uniform random sampling)
-    bitwidth_bin_size = test_args.bitwidth_bin_size
+    relative_memory_consumption_bin_size = test_args.relative_memory_consumption_bin_size
     
     # If bitwidth_bin_size is None, run single test with uniform random sampling
-    if bitwidth_bin_size is None:
+    if relative_memory_consumption_bin_size is None:
         logging.info(f"Running random bitwidth test with {num_quantization_schemes} schemes (uniform random sampling)...")
         logging.info(f"  Bitwidth options: {bitwidth_options}")
         logging.info(f"  Number of quantization schemes: {num_quantization_schemes}")
-        logging.info(f"  Bitwidth bin size: None (uniform random sampling)")
+        logging.info(f"  Relative memory consumption bin size: None (uniform random sampling)")
         
         test_results = test_random_bitwidths(
             model=model,
@@ -355,29 +355,29 @@ def load_and_test_random_bitwidths(model, checkpoint_path, test_loader, loss_fn,
             apply_augmentation_fn=apply_augmentation_fn,
             num_quantization_schemes=num_quantization_schemes,
             bitwidth_options=bitwidth_options,
-            bitwidth_bin_size=None
+            relative_memory_consumption_bin_size=None
         )
         
         # Wrap results in a dictionary for consistency with multi-range case
         return {"uniform_random": test_results}
     
     # Otherwise, validate and iterate over bitwidth ranges
-    assert isinstance(bitwidth_bin_size, list), "Bitwidth ranges should be a list of tuples"
+    assert isinstance(relative_memory_consumption_bin_size, list), "Relative memory consumption ranges should be a list of tuples"
     
     # Log test configuration
-    logging.info(f"Running random bitwidth test with {num_quantization_schemes} schemes per range...")
+    logging.info(f"Running random relative memory consumption test with {num_quantization_schemes} schemes per range...")
     logging.info(f"  Bitwidth options: {bitwidth_options}")
     logging.info(f"  Number of quantization schemes per range: {num_quantization_schemes}")
-    logging.info(f"  Number of bitwidth ranges: {len(bitwidth_bin_size)}")
-    for i, (bin_min, bin_max) in enumerate(bitwidth_bin_size):
+    logging.info(f"  Number of relative memory consumption ranges: {len(relative_memory_consumption_bin_size)}")
+    for i, (bin_min, bin_max) in enumerate(relative_memory_consumption_bin_size):
         logging.info(f"    Range {i+1}: [{bin_min}, {bin_max}]")
     
     # Run random bitwidth test for each range
     all_test_results = {}
-    for range_idx, bitwidth_range in enumerate(bitwidth_bin_size):
+    for range_idx, bitwidth_range in enumerate(relative_memory_consumption_bin_size):
         bin_min, bin_max = bitwidth_range
         logging.info(f"\n{'='*80}")
-        logging.info(f"Testing Range {range_idx + 1}/{len(bitwidth_bin_size)}: [{bin_min}, {bin_max}]")
+        logging.info(f"Testing Range {range_idx + 1}/{len(relative_memory_consumption_bin_size)}: [{bin_min}, {bin_max}]")
         logging.info(f"{'='*80}")
         
         range_results = test_random_bitwidths(
@@ -389,7 +389,7 @@ def load_and_test_random_bitwidths(model, checkpoint_path, test_loader, loss_fn,
             apply_augmentation_fn=apply_augmentation_fn,
             num_quantization_schemes=num_quantization_schemes,
             bitwidth_options=bitwidth_options,
-            bitwidth_bin_size=bitwidth_range
+            relative_memory_consumption_bin_size=relative_memory_consumption_bin_size
         )
         
         # Store results with range as key
@@ -399,7 +399,7 @@ def load_and_test_random_bitwidths(model, checkpoint_path, test_loader, loss_fn,
         logging.info(f"Completed testing for range [{bin_min}, {bin_max}]")
     
     logging.info(f"\n{'='*80}")
-    logging.info(f"All {len(bitwidth_bin_size)} ranges tested successfully")
+    logging.info(f"All {len(relative_memory_consumption_bin_size)} ranges tested successfully")
     logging.info(f"{'='*80}")
     
     return all_test_results
