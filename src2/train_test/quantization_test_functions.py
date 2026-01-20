@@ -18,10 +18,11 @@ from train_test.quantization_train_test_utils import (
     get_conv_class_from_model,
     get_average_bitwidth,
     set_random_bitwidth_all_layers,
-    set_all_bitwidths_given_list
+    set_all_bitwidths_given_list,
+    get_relative_memory_consumption
 )
 from train_test.quantization_test_utils import (
-    generate_configs_in_bin,
+    generate_schemes_in_relative_memory_bin,
     get_num_quantized_layers
 )
 
@@ -100,8 +101,9 @@ def test_random_bitwidths(model, test_loader, loss_fn, device,
     """
     Test model with multiple random bitwidth quantization schemes and report statistics.
     
-    When bitwidth_bin_size is provided, generates schemes with target average
-    bitwidths within the specified range using smart sampling (greedy algorithm).
+    When bitwidth_bin_size is provided, generates schemes with target relative memory
+    consumption within the specified range using smart sampling (greedy algorithm).
+    Relative memory is computed as current_config_memory / max_8bit_memory.
     Otherwise, uses uniform random sampling from bitwidth_options.
     
     Args:
@@ -113,18 +115,18 @@ def test_random_bitwidths(model, test_loader, loss_fn, device,
         apply_augmentation_fn: Function to apply augmentation
         num_quantization_schemes: Number of different quantization schemes to test
         bitwidth_options: List of bitwidth options (e.g., [2, 4, 8])
-        bitwidth_bin_size: Tuple of (min, max) for target average bitwidth range.
+        bitwidth_bin_size: Tuple of (min, max) for target relative memory range (0 to 1).
                           If None, uses uniform random sampling from bitwidth_options.
     
     Returns:
-        dict: Statistics including mean, min, max, std for accuracy, loss, and bitwidth
+        dict: Statistics including mean, min, max, std for accuracy, loss, and relative memory
     """
     model.eval()
     results = []
     
     logging.info(f"Testing with {num_quantization_schemes} different quantization schemes...")
     logging.info(f"  Bitwidth options: {bitwidth_options}")
-    logging.info(f"  Bitwidth bin size: {bitwidth_bin_size}")
+    logging.info(f"  Relative memory target range: {bitwidth_bin_size}")
     
     # Get number of quantized layers in model
     conv_class = get_conv_class_from_model(model)
@@ -133,15 +135,16 @@ def test_random_bitwidths(model, test_loader, loss_fn, device,
     
     # Generate quantization schemes based on whether bin_size is provided
     if bitwidth_bin_size is not None:
-        # Smart sampling: generate schemes with averages in the target range
+        # Smart sampling: generate schemes with relative memory in the target range
         bin_min, bin_max = bitwidth_bin_size
-        logging.info(f"  Using targeted sampling with average in [{bin_min}, {bin_max}]")
-        quantization_schemes = generate_configs_in_bin(
-            num_layers=num_layers,
+        logging.info(f"  Using targeted sampling with relative memory in [{bin_min}, {bin_max}]")
+        quantization_schemes = generate_schemes_in_relative_memory_bin(
+            model=model,
+            conv_class=conv_class,
             bitwidth_options=bitwidth_options,
             bin_min=bin_min,
             bin_max=bin_max,
-            num_configs=num_quantization_schemes
+            num_schemes=num_quantization_schemes
         )
         use_pregenerated_schemes = True
     else:
@@ -159,8 +162,9 @@ def test_random_bitwidths(model, test_loader, loss_fn, device,
             # Original behavior: uniform random per layer
             set_random_bitwidth_all_layers(model, bitwidth_options)
         
-        # Get average bitwidth for this scheme
-        avg_bitwidth = get_average_bitwidth(model)
+        # Get relative memory consumption for this scheme
+        # breakpoint()
+        relative_memory_consumption = get_relative_memory_consumption(model, max_bitwidth=max(bitwidth_options))
         
         # Run test
         test_result = validate(
@@ -171,12 +175,12 @@ def test_random_bitwidths(model, test_loader, loss_fn, device,
         results.append({
             'accuracy': test_result['accuracy'],
             'loss': test_result['loss'],
-            'avg_bitwidth': avg_bitwidth if avg_bitwidth is not None else 0.0
+            'relative_memory_consumption': relative_memory_consumption if relative_memory_consumption is not None else 0.0
         })
         
         # Only log first 10 schemes to avoid cluttering logs
         if i < 10 or i == num_quantization_schemes - 1:
-            bitwidth_str = f", Avg Bitwidth={avg_bitwidth:.2f}" if avg_bitwidth is not None else ""
+            bitwidth_str = f", Avg Bitwidth={relative_memory_consumption:.2f}" if relative_memory_consumption is not None else ""
             logging.info(f"  Scheme {i+1}/{num_quantization_schemes}: Acc={test_result['accuracy']:.4f}, "
                         f"Loss={test_result['loss']:.4f}{bitwidth_str}")
 

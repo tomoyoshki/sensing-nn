@@ -112,7 +112,7 @@ def parse_test_args():
     )
 
     parser.add_argument(
-        '--bitwidth_bin_size',
+        '--relative_memory_consumption_bin_size',
         type=float,
         nargs='+',  # Accept one or more values
         metavar='VALUE',
@@ -123,10 +123,10 @@ def parse_test_args():
             "Each range requires exactly two values (min, max).\n"
             "Examples:\n"
             "  Single range:\n"
-            "    --bitwidth_bin_size 2.5 3.5\n"
+            "    --relative_memory_consumption_bin_size 0.5 0.7\n"
             "  Multiple ranges:\n"
-            "    --bitwidth_bin_size 2.0 3.0 3.5 4.5 5.0 6.0\n"
-            "    (Creates 3 ranges: [2.0, 3.0], [3.5, 4.5], [5.0, 6.0])\n"
+            "    --relative_memory_consumption_bin_size 0.5 0.7 0.7 0.9 0.9 1.0\n"
+            "    (Creates 3 ranges: [0.5, 0.7], [0.7, 0.9], [0.9, 1.0])\n"
             "Total number of values must be even (pairs of min/max)."
         )
     )

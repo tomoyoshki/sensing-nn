@@ -85,6 +85,47 @@ def set_random_bitwidth_all_layers(model, bitwidth_options):
             bw = bitwidth_options[torch.randint(0, len(bitwidth_options), (1,)).item()]
             module.set_bitwidth(bw)
 
+
+def get_relative_memory_consumption(model, max_bitwidth=8):
+    """
+    Calculate the relative memory consumption compared to full max_bitwidth precision.
+    
+    Relative memory = current_memory / max_memory
+    where:
+        current_memory = Σ (Nw_i × bw_i) for each layer i
+        max_memory = Σ (Nw_i × max_bitwidth) for each layer i
+
+    Args:
+        model: PyTorch model containing quantized Conv layers
+        max_bitwidth: Reference maximum bitwidth (default: 8)
+
+    Returns:
+        float: Relative memory consumption (0 to 1), or None if not applicable.
+    """
+    conv_class = get_conv_class_from_model(model)
+    if conv_class is None:
+        return None
+
+    total_weights = 0.0
+    current_memory = 0.0
+    
+    for module in model.modules():
+        if isinstance(module, conv_class):
+            Nw = module.weight.numel()
+            total_weights += Nw
+
+            bw = module.get_bitwidth()
+            if bw is None:
+                continue
+            current_memory += Nw * float(bw)
+
+    if total_weights == 0.0:
+        return None
+
+    max_memory = total_weights * float(max_bitwidth)
+    
+    return current_memory / max_memory
+
 def set_all_bitwidths_given_list(model, bitwidth_list):
     """
     Set bitwidths for all quantized Conv layers in the model from a list.
@@ -276,7 +317,8 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
         set_random_bitwidth_all_layers(model, bitwidth_options)
         
         # Get average bitwidth for this configuration
-        avg_bitwidth = get_average_bitwidth(model)
+        relative_memory_consumption = get_relative_memory_consumption(model, max_bitwidth=max(bitwidth_options))
+        # avg_bitwidth = get_average_bitwidth(model)
         
         # Run validation
         val_result = validate(
@@ -287,17 +329,17 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
         results.append({
             'accuracy': val_result['accuracy'],
             'loss': val_result['loss'],
-            'avg_bitwidth': avg_bitwidth if avg_bitwidth is not None else 0.0
+            'relative_memory_consumption': relative_memory_consumption if relative_memory_consumption is not None else 0.0
         })
         
-        bitwidth_str = f", Avg Bitwidth={avg_bitwidth:.2f}" if avg_bitwidth is not None else ""
+        bitwidth_str = f", Relative Memory Consumption={relative_memory_consumption:.2f}" if relative_memory_consumption is not None else ""
         logging.info(f"  Config {i+1}/{num_configs}: Acc={val_result['accuracy']:.4f}, "
                     f"Loss={val_result['loss']:.4f}{bitwidth_str}")
     
     # Calculate statistics
     accuracies = [r['accuracy'] for r in results]
     losses = [r['loss'] for r in results]
-    avg_bitwidths = [r['avg_bitwidth'] for r in results]
+    relative_memory_consumptions = [r['relative_memory_consumption'] for r in results]
     
     stats = {
         'mean_acc': np.mean(accuracies),
@@ -308,15 +350,15 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
         'min_loss': np.min(losses),
         'max_loss': np.max(losses),
         'std_loss': np.std(losses),
-        'mean_bitwidth': np.mean(avg_bitwidths),
-        'min_bitwidth': np.min(avg_bitwidths),
-        'max_bitwidth': np.max(avg_bitwidths),
-        'std_bitwidth': np.std(avg_bitwidths),
+        'mean_relative_memory_consumption': np.mean(relative_memory_consumptions),
+        'min_relative_memory_consumption': np.min(relative_memory_consumptions),
+        'max_relative_memory_consumption': np.max(relative_memory_consumptions),
+        'std_relative_memory_consumption': np.std(relative_memory_consumptions),
         'accuracy': np.mean(accuracies),  # For compatibility with standard validation
         'loss': np.mean(losses),
         # Store raw data for plotting
         'all_accuracies': accuracies,
-        'all_bitwidths': avg_bitwidths
+        'all_relative_memory_consumptions': relative_memory_consumptions
     }
     
     # Log summary statistics
@@ -325,8 +367,8 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
                 f"Max: {stats['max_acc']:.4f}, Std: {stats['std_acc']:.4f}")
     logging.info(f"  Loss - Mean: {stats['mean_loss']:.4f}, Min: {stats['min_loss']:.4f}, "
                 f"Max: {stats['max_loss']:.4f}, Std: {stats['std_loss']:.4f}")
-    logging.info(f"  Bitwidth - Mean: {stats['mean_bitwidth']:.2f}, Min: {stats['min_bitwidth']:.2f}, "
-                f"Max: {stats['max_bitwidth']:.2f}, Std: {stats['std_bitwidth']:.4f}")
+    logging.info(f"  Relative Memory Consumption - Mean: {stats['mean_relative_memory_consumption']:.2f}, Min: {stats['min_relative_memory_consumption']:.2f}, "
+                f"Max: {stats['max_relative_memory_consumption']:.2f}, Std: {stats['std_relative_memory_consumption']:.4f}")
     
     return stats
 
@@ -1343,11 +1385,11 @@ def train_with_quantization(model, train_loader, val_loader, test_loader, config
             writer.add_scalar('Validation/min_acc', val_stats['min_acc'], epoch)
             writer.add_scalar('Validation/max_acc', val_stats['max_acc'], epoch)
             
-            # Log bitwidth statistics
-            writer.add_scalar('Bitwidth/mean_bitwidth', val_stats['mean_bitwidth'], epoch)
-            writer.add_scalar('Bitwidth/std_bitwidth', val_stats['std_bitwidth'], epoch)
-            writer.add_scalar('Bitwidth/min_bitwidth', val_stats['min_bitwidth'], epoch)
-            writer.add_scalar('Bitwidth/max_bitwidth', val_stats['max_bitwidth'], epoch)
+            # Log relative memory consumption statistics
+            writer.add_scalar('Relative_Memory_Consumption/mean_relative_memory_consumption', val_stats['mean_relative_memory_consumption'], epoch)
+            writer.add_scalar('Relative_Memory_Consumption/std_relative_memory_consumption', val_stats['std_relative_memory_consumption'], epoch)
+            writer.add_scalar('Relative_Memory_Consumption/min_relative_memory_consumption', val_stats['min_relative_memory_consumption'], epoch)
+            writer.add_scalar('Relative_Memory_Consumption/max_relative_memory_consumption', val_stats['max_relative_memory_consumption'], epoch)
         
         # ====================================================================
         # Test Evaluation (Optional - if test_mode is enabled)

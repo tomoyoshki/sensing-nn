@@ -53,6 +53,7 @@ from train_test.quantization_test_functions import (
     load_and_test_single_precision,
     load_and_test_random_bitwidths
 )
+from train_test.normalize import setup_normalization
 
 from train_test.quantization_test_utils import (
     find_latest_experiment,
@@ -126,6 +127,12 @@ def main():
     logging.info("\nCreating dataloaders...")
     train_loader, val_loader, test_loader = create_dataloaders(config=config)
     logging.info(f"  Test batches: {len(test_loader)}")
+
+    logging.info("\nSetting up normalization...")
+    train_loader, val_loader, test_loader = setup_normalization(
+        train_loader, val_loader, test_loader, config
+    )
+    logging.info("Normalization setup complete")
     
     # ========================================================================
     # 3. Create Augmenter - Shared across all checkpoints
@@ -218,6 +225,7 @@ def main():
                 )
                 
             elif test_args.test_function == 'random_bitwidth':
+                # breakpoint()
                 test_results = load_and_test_random_bitwidths(
                     model=model,
                     checkpoint_path=checkpoint_path,

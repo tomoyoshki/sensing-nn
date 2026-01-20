@@ -413,111 +413,215 @@ def validate_and_parse_bitwidth_ranges(bitwidth_values, parser=None):
     return ranges
 
 
-def generate_bitwidth_config_for_target_avg(num_layers, bitwidth_options, target_avg):
+def get_layer_weight_counts(model, conv_class):
     """
-    Generate a list of bitwidths for each layer such that their average 
-    equals target_avg (or as close as possible).
-    
-    For 2 options: uses exact linear interpolation
-    For 3+ options: uses greedy upgrade from minimum (uses all bitwidth levels)
+    Extract the number of weights for each quantized conv layer in the model.
     
     Args:
-        num_layers: Number of quantized layers in the model
-        bitwidth_options: List of available bitwidths (e.g., [2, 4, 8])
-        target_avg: Target average bitwidth
+        model: PyTorch model containing quantized Conv layers
+        conv_class: The quantized Conv class type
     
     Returns:
-        list: Shuffled list of bitwidths, one per layer
+        list: Number of weights per layer (in module order)
+    """
+    weight_counts = []
+    for module in model.modules():
+        if isinstance(module, conv_class):
+            weight_counts.append(module.weight.numel())
+    return weight_counts
+
+
+def compute_relative_memory(scheme, weight_counts, max_bitwidth=8):
+    """
+    Compute relative memory consumption for a quantization scheme.
+    
+    Relative memory = (Σ Nw_i × bw_i) / (Σ Nw_i × max_bitwidth)
+    
+    Args:
+        scheme: List of bitwidths, one per layer (quantization scheme)
+        weight_counts: List of weight counts per layer
+        max_bitwidth: Maximum bitwidth (default 8 for 8-bit reference)
+    
+    Returns:
+        float: Relative memory consumption (0 to 1, where 1 = max_bitwidth for all)
+    """
+    assert len(scheme) == len(weight_counts), \
+        f"Scheme length ({len(scheme)}) must match weight_counts length ({len(weight_counts)})"
+    
+    current_memory = sum(nw * bw for nw, bw in zip(weight_counts, scheme))
+    max_memory = sum(nw * max_bitwidth for nw in weight_counts)
+    
+    if max_memory == 0:
+        return 0.0
+    
+    return current_memory / max_memory
+
+
+def generate_scheme_for_target_relative_memory(model, conv_class, bitwidth_options, target_relative_memory):
+    """
+    Generate a quantization scheme (bitwidth per layer) that achieves a target relative memory.
+    
+    Relative memory = current_memory / max_memory, where max_memory is at max_bitwidth.
+    
+    For 2 options: uses weighted linear interpolation
+    For 3+ options: uses greedy upgrade from minimum (weighted by layer sizes)
+    
+    Args:
+        model: PyTorch model containing quantized Conv layers
+        conv_class: The quantized Conv class type
+        bitwidth_options: List of available bitwidths (e.g., [2, 4, 8])
+        target_relative_memory: Target relative memory (0 to 1, where 1 = max bitwidth all layers)
+    
+    Returns:
+        list: Quantization scheme (bitwidth per layer)
     """
     options = sorted(bitwidth_options)
-    target_sum = int(np.round(num_layers * target_avg))
+    max_bw = options[-1]  # Reference bitwidth (typically 8)
+    min_bw = options[0]
     
-    # Clamp target_sum to achievable range
-    min_sum = num_layers * options[0]
-    max_sum = num_layers * options[-1]
-    target_sum = np.clip(target_sum, min_sum, max_sum)
+    # Get weight counts for each layer
+    weight_counts = get_layer_weight_counts(model, conv_class)
+    num_layers = len(weight_counts)
+    
+    if num_layers == 0:
+        return []
+    
+    # Compute memory bounds
+    max_memory = sum(nw * max_bw for nw in weight_counts)
+    min_memory = sum(nw * min_bw for nw in weight_counts)
+    
+    # Target memory in absolute terms
+    target_memory = target_relative_memory * max_memory
+    target_memory = np.clip(target_memory, min_memory, max_memory)
     
     if len(options) == 2:
-        # Exact solution for 2 options using linear interpolation
-        # n_low * b_low + n_high * b_high = target_sum
-        # n_low + n_high = num_layers
-        # => n_high = (target_sum - num_layers * b_low) / (b_high - b_low)
+        # Weighted linear interpolation for 2 bitwidth options
+        # We need to decide which layers get high bitwidth vs low bitwidth
+        # such that total memory = target_memory
+        # 
+        # Sort layers by weight count (largest first) and greedily assign
         b_low, b_high = options
-        n_high = int(np.round((target_sum - num_layers * b_low) / (b_high - b_low)))
-        n_high = np.clip(n_high, 0, num_layers)
-        n_low = num_layers - n_high
-        config = [b_low] * n_low + [b_high] * n_high
-    else:
-        # Greedy approach for 3+ options
-        # Start with all layers at minimum bitwidth, then upgrade layers
-        # one at a time until we reach the target sum
-        config = [options[0]] * num_layers
-        current_sum = min_sum
         
-        # Randomize order of layers to upgrade (adds randomness to which layers get higher bitwidths)
+        # Start with all low bitwidth
+        scheme = [b_low] * num_layers
+        current_memory = min_memory
+        
+        # Sort layer indices by weight count (largest first for efficiency)
+        sorted_indices = sorted(range(num_layers), key=lambda i: weight_counts[i], reverse=True)
+        np.random.shuffle(sorted_indices)  # Add randomness
+        
+        for idx in sorted_indices:
+            if current_memory >= target_memory:
+                break
+            delta = weight_counts[idx] * (b_high - b_low)
+            if current_memory + delta <= target_memory:
+                scheme[idx] = b_high
+                current_memory += delta
+            else:
+                # Check if upgrading gets us closer to target
+                if abs(current_memory + delta - target_memory) < abs(current_memory - target_memory):
+                    scheme[idx] = b_high
+                    current_memory += delta
+    else:
+        # Greedy approach for 3+ options (weighted by layer sizes)
+        # Start with all layers at minimum bitwidth
+        scheme = [options[0]] * num_layers
+        current_memory = min_memory
+        
+        # Randomize order of layers to upgrade
         layer_order = np.random.permutation(num_layers).tolist()
         
-        while current_sum < target_sum:
+        while current_memory < target_memory:
             upgraded = False
             for layer_idx in layer_order:
-                if current_sum >= target_sum:
+                if current_memory >= target_memory:
                     break
-                    
-                curr_bw = config[layer_idx]
+                
+                curr_bw = scheme[layer_idx]
                 curr_bw_idx = options.index(curr_bw)
+                nw = weight_counts[layer_idx]
                 
                 if curr_bw_idx < len(options) - 1:
-                    # Find best upgrade: largest that doesn't overshoot, 
+                    # Find best upgrade: largest that doesn't overshoot,
                     # or smallest if all upgrades overshoot but gets us closer
                     best_new_bw = None
                     for next_bw in options[curr_bw_idx + 1:]:
-                        delta = next_bw - curr_bw
-                        if current_sum + delta <= target_sum:
+                        delta = nw * (next_bw - curr_bw)
+                        if current_memory + delta <= target_memory:
                             best_new_bw = next_bw  # Keep looking for larger upgrade
                         else:
                             if best_new_bw is None:
                                 # All upgrades overshoot; take smallest if it gets us closer
-                                if abs(current_sum + delta - target_sum) < abs(current_sum - target_sum):
+                                if abs(current_memory + delta - target_memory) < abs(current_memory - target_memory):
                                     best_new_bw = next_bw
                             break
                     
                     if best_new_bw is not None:
-                        config[layer_idx] = best_new_bw
-                        current_sum += (best_new_bw - curr_bw)
+                        old_bw = scheme[layer_idx]
+                        scheme[layer_idx] = best_new_bw
+                        current_memory += nw * (best_new_bw - old_bw)
                         upgraded = True
             
             if not upgraded:
                 break
     
-    np.random.shuffle(config)
-    return config
+    return scheme
 
 
-def generate_configs_in_bin(num_layers, bitwidth_options, bin_min, bin_max, num_configs):
+def generate_schemes_in_relative_memory_bin(model, conv_class, bitwidth_options, 
+                                            bin_min, bin_max, num_schemes,
+                                            max_attempts_per_scheme=100):
     """
-    Generate multiple bitwidth configurations with averages strictly in [bin_min, bin_max].
+    Generate multiple quantization schemes with relative memory in [bin_min, bin_max].
     
-    For each configuration:
-    1. Samples a target average uniformly from the bin range
-    2. Uses generate_bitwidth_config_for_target_avg to create the configuration
+    Uses rejection sampling: generates a scheme, checks if it's in range,
+    if not regenerates (up to max_attempts_per_scheme times).
+    
+    Relative memory is the ratio of current scheme memory to max-bitwidth memory.
     
     Args:
-        num_layers: Number of quantized layers in the model
+        model: PyTorch model containing quantized Conv layers
+        conv_class: The quantized Conv class type
         bitwidth_options: List of available bitwidths (e.g., [2, 4, 8])
-        bin_min: Minimum average bitwidth (inclusive)
-        bin_max: Maximum average bitwidth (inclusive)
-        num_configs: Number of configurations to generate
+        bin_min: Minimum relative memory (inclusive, 0 to 1)
+        bin_max: Maximum relative memory (inclusive, 0 to 1)
+        num_schemes: Number of quantization schemes to generate
+        max_attempts_per_scheme: Max regeneration attempts per scheme (default: 10)
     
     Returns:
-        list of lists: Each inner list is a bitwidth configuration (one per layer)
+        list of lists: Each inner list is a quantization scheme (bitwidth per layer)
     """
-    configs = []
-    for _ in range(num_configs):
-        # Sample target uniformly in the bin range
-        target_avg = np.random.uniform(bin_min, bin_max)
-        config = generate_bitwidth_config_for_target_avg(num_layers, bitwidth_options, target_avg)
-        configs.append(config)
-    return configs
+    # Pre-compute weight counts and max bitwidth for efficiency
+    weight_counts = get_layer_weight_counts(model, conv_class)
+    max_bw = max(bitwidth_options)
+    
+    schemes = []
+    total_attempts = 0
+    successful_first_try = 0
+    
+    for i in range(num_schemes):
+        for attempt in range(max_attempts_per_scheme):
+            total_attempts += 1
+            
+            # Sample target uniformly in the bin range
+            target_relative_memory = np.random.uniform(bin_min, bin_max)
+            scheme = generate_scheme_for_target_relative_memory(
+                model, conv_class, bitwidth_options, target_relative_memory
+            )
+            
+            # Verify the scheme is actually in range
+            actual_rel_mem = compute_relative_memory(scheme, weight_counts, max_bitwidth=max_bw)
+            
+            if bin_min <= actual_rel_mem <= bin_max:
+                if attempt == 0:
+                    successful_first_try += 1
+                schemes.append(scheme)
+                break
+        else:
+            # Max attempts reached, use last generated scheme (best effort)
+            schemes.append(scheme)
+    
+    return schemes
 
 
 def get_num_quantized_layers(model, conv_class):
