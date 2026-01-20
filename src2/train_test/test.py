@@ -139,7 +139,7 @@ def main():
     # ========================================================================
     logging.info("\nCreating augmenter...")
     # Create augmenter for data transformation (time -> frequency domain)
-    augmenter = create_augmenter(config, augmentation_mode="fixed")
+    augmenter = create_augmenter(config, augmentation_mode="with_energy_and_entropy")
     logging.info("Augmenter created successfully")
     
     # ========================================================================

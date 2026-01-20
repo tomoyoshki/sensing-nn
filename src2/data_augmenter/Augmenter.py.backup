@@ -54,7 +54,7 @@ class Augmenter:
         else:
             raise Exception(f"Invalid augmentation option: {option}")
 
-    def forward_fixed(self, time_loc_inputs, labels, return_importance_scores=False):
+    def forward_fixed(self, time_loc_inputs, labels):
         """
         Add noise to the input_dict depending on the noise position.
         We only add noise to the time domeain, but not the feature level.
@@ -78,67 +78,8 @@ class Augmenter:
             augmented_freq_loc_inputs, augmented_mod_labels, augmented_labels = augmenter(
                 augmented_freq_loc_inputs, augmented_labels
             )
-        # breakpoint()
-        if return_importance_scores:
-            # Calculate magnitude from real and imaginary components
-            # Input shape: [b, c, i, s] where c contains pairs of (real, imag)
-            # Output shape: [b, c/2, i, s]
-            importance_scores_dict = dict()
-            
-            for loc in augmented_freq_loc_inputs:
-                importance_scores_dict[loc] = dict()
-                for mod in augmented_freq_loc_inputs[loc]:
-                    freq_data = augmented_freq_loc_inputs[loc][mod]  # [b, c, i, s]
-                    b, c, i, s = freq_data.shape
-                    
-                    # Reshape to separate real and imaginary: [b, c/2, 2, i, s]
-                    freq_data_reshaped = freq_data.reshape(b, c // 2, 2, i, s)
-                    
-                    # Calculate magnitude: sqrt(real^2 + imag^2)
-                    # freq_data_reshaped[:, :, 0] = real part
-                    # freq_data_reshaped[:, :, 1] = imaginary part
-                    magnitude = torch.sqrt(freq_data_reshaped[:, :, 0] ** 2 + freq_data_reshaped[:, :, 1] ** 2)
-                    
-                    # Remove DC component (bin 0) and keep only non-redundant frequencies (bins 1 to s//2)
-                    # For real signals, bins s//2+1 to s-1 are mirror images
-                    magnitude = magnitude[..., 1:s//2 + 1]
-                    
-                    # magnitude shape: [b, c/2, i, s//2]
-                    # Calculate importance scores for each frequency bin across time segments (dim=2)
-                    
-                    # 1. Energy: mean of squared magnitude across time segments
-                    energy = torch.mean(magnitude ** 2, dim=2)  # [b, c/2, s//2]
-                    
-                    # 2. Entropy: information entropy across time segments
-                    # Normalize to get probabilities along the time segment dimension
-                    magnitude_sum = torch.sum(magnitude, dim=2, keepdim=True) + 1e-10  # [b, c/2, 1, s//2]
-                    prob = magnitude / magnitude_sum  # [b, c/2, i, s//2]
-                    
-                    # Calculate entropy: -sum(p * log(p)) across time dimension
-                    log_prob = torch.log(prob + 1e-10)
-                    entropy = -torch.sum(prob * log_prob, dim=2)  # [b, c/2, s//2]
-                    
-                    # Normalize entropy by log(T) where T is number of time segments
-                    # This bounds entropy between 0 and 1
-                    normalized_entropy = entropy / (torch.log(torch.tensor(i, dtype=torch.float32)) + 1e-10)  # [b, c/2, s//2]
-                    
-                    # 3. Importance score = Energy * (1 - normalized_entropy)
-                    # High energy + low entropy = high importance, score between 0 and energy
-                    importance_per_sample = energy * (1 - normalized_entropy)  # [b, c/2, s//2]
-                    
-                    # 4. Aggregate across batch (dim=0) and sensors (dim=1) to get per-frequency-bin scores
-                    importance_scores_freq = torch.sum(importance_per_sample, dim=(0, 1))  # [s//2]
-                    
-                    # Store importance scores (as tensor with gradient tracking)
-                    importance_scores_dict[loc][mod] = importance_scores_freq
-            
-            # Return as list [data, importance_scores] to allow mutability
-            return [augmented_freq_loc_inputs, importance_scores_dict], augmented_labels
-        
-        return augmented_freq_loc_inputs, augmented_labels
 
-    def forward_with_energy_and_entropy(self, time_loc_inputs, labels):
-        return self.forward_fixed(time_loc_inputs, labels, return_importance_scores=True)
+        return augmented_freq_loc_inputs, augmented_labels
 
     def forward_random(self, time_loc_inputs, labels=None, return_aug_id=False, return_aug_mods=False):
         """
@@ -195,7 +136,6 @@ class Augmenter:
         else:
             return freq_loc_inputs, labels
 
-
     def move_to_target_device(self, time_loc_inputs, labels):
         """Move both the data and labels to the target device"""
         target_device = self.args.device
@@ -209,27 +149,17 @@ class Augmenter:
 
         return time_loc_inputs, labels
 
-    def fft_preprocess(self, time_loc_inputs, return_importance_scores=False):
+    def fft_preprocess(self, time_loc_inputs):
         """Run FFT on the time-domain input.
         time_loc_inputs: [b, c, i, s]
         freq_loc_inputs: [b, c, i, s]
-        
-        Dimensions:
-            b = batch size
-            c = channels (becomes c1*c2 after FFT for real/imaginary components)
-            i = number of time segments (i.e. number of frames)
-            s = number of samples per segment (i.e. number of samples per frame, becomes frequency bins after FFT)
-        
-        Args:
-            time_loc_inputs: dict of time-domain signals
-            return_importance_scores: if True, returns tuple of (freq_loc_inputs, importance_scores)
+        i -> number of time segments (i.e. number of frames)
+        s -> number of samples per segment (i.e. number of samples per frame)
         """
         freq_loc_inputs = dict()
-        # importance_scores = dict() if return_importance_scores else None
 
         for loc in time_loc_inputs:
             freq_loc_inputs[loc] = dict()
-                
             for mod in time_loc_inputs[loc]:
                 if time_loc_inputs[loc][mod].dim() < 4:
                     time_loc_inputs[loc][mod] = time_loc_inputs[loc][mod].reshape(time_loc_inputs[loc][mod].shape[0], 1, self.args.dataset_config["num_segments"], -1)
@@ -239,7 +169,11 @@ class Augmenter:
                 b, c1, c2, i, s = loc_mod_freq_output.shape
                 loc_mod_freq_output = loc_mod_freq_output.reshape(b, c1 * c2, i, s)
                 freq_loc_inputs[loc][mod] = loc_mod_freq_output
+
         return freq_loc_inputs
+
+    def fft_preprocess_with_energy_and_entropy(self, time_loc_inputs):
+        pass
 
     def to(self, device):
         """Move all components to the target device"""

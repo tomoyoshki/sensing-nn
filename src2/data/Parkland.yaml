@@ -88,7 +88,7 @@ quantization:
                 name: "random_bitwidths"
                 number_of_configs: 8
         joint_quantization:
-                joint_quantization_batch_size: 2
+                joint_quantization_batch_size: 8
                 every_epoch_new_bitwidth_config: True
         vanilla_single_precision_training:
                 bitwidth_options: [8]
@@ -104,7 +104,7 @@ quantization:
         dorefa:
                 Conv: "QuanConv"
                 loss_name: "cross_entropy" # cross_entropy, label_smoothing_ce 
-                bitwidth_options: [4,8]
+                bitwidth_options: [2,4,8]
                 bitwidht_allocation: "random"
                 weight_quantization: "dorefa"
                 activation_quantization: "dorefa"

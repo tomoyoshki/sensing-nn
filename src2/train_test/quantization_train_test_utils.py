@@ -728,6 +728,13 @@ def train_epoch_vanilla_single_precision(model, train_loader, optimizer, loss_fn
         if augmenter is not None and apply_augmentation_fn is not None:
             data, labels = apply_augmentation_fn(augmenter, data, labels)
         
+        # Handle importance scores if returned as list [data, importance_scores]
+        if isinstance(data, list) and len(data) == 2:
+            importance_scores = data[1]
+            data = data[0]
+        else:
+            importance_scores = None
+        
         # Move to device
         labels = labels.to(device)
         if isinstance(data, dict):
@@ -737,6 +744,12 @@ def train_epoch_vanilla_single_precision(model, train_loader, optimizer, loss_fn
                     data[loc][mod] = data[loc][mod].to(device)
         else:
             data = data.to(device)
+        
+        # Move importance scores to device if present
+        if importance_scores is not None and isinstance(importance_scores, dict):
+            for loc in importance_scores:
+                for mod in importance_scores[loc]:
+                    importance_scores[loc][mod] = importance_scores[loc][mod].to(device)
         
         # Forward pass
         optimizer.zero_grad()
@@ -840,6 +853,13 @@ def train_epoch_joint_quantization(model, train_loader, optimizer, loss_fn,
         if augmenter is not None and apply_augmentation_fn is not None:
             data, labels = apply_augmentation_fn(augmenter, data, labels)
         
+        # Handle importance scores if returned as list [data, importance_scores]
+        if isinstance(data, list) and len(data) == 2:
+            importance_scores = data[1]
+            data = data[0]
+        else:
+            importance_scores = None
+        
         # Move to device
         labels = labels.to(device)
         if isinstance(data, dict):
@@ -849,6 +869,12 @@ def train_epoch_joint_quantization(model, train_loader, optimizer, loss_fn,
                     data[loc][mod] = data[loc][mod].to(device)
         else:
             data = data.to(device)
+        
+        # Move importance scores to device if present
+        if importance_scores is not None and isinstance(importance_scores, dict):
+            for loc in importance_scores:
+                for mod in importance_scores[loc]:
+                    importance_scores[loc][mod] = importance_scores[loc][mod].to(device)
         
         # Joint quantization: accumulate loss over multiple forward passes
         accumulated_loss = 0.0
@@ -908,186 +934,186 @@ def train_epoch_joint_quantization(model, train_loader, optimizer, loss_fn,
     }
 
 
-def train_epoch_importance_vector(model, train_loader, optimizer, temp_scheduler, loss_fn, 
-                                   quant_config, augmenter, apply_augmentation_fn, 
-                                   device, writer, epoch, num_epochs, clip_grad=None):
-    """
-    Train one epoch using importance vector-based adaptive quantization.
+# def train_epoch_importance_vector(model, train_loader, optimizer, temp_scheduler, loss_fn, 
+#                                    quant_config, augmenter, apply_augmentation_fn, 
+#                                    device, writer, epoch, num_epochs, clip_grad=None):
+#     """
+#     Train one epoch using importance vector-based adaptive quantization.
     
-    For each batch, performs K forward passes with different bitwidth configurations
-    sampled from learned importance distributions. Uses multi-component loss with
-    variance regularization to encourage robustness across bitwidth choices.
+#     For each batch, performs K forward passes with different bitwidth configurations
+#     sampled from learned importance distributions. Uses multi-component loss with
+#     variance regularization to encourage robustness across bitwidth choices.
     
-    Args:
-        model: PyTorch model to train (with QuanConvImportance layers)
-        train_loader: Training data loader
-        optimizer: Optimizer (optimizes both network weights and importance vectors)
-        temp_scheduler: Temperature scheduler (updates temperature in all layers)
-        loss_fn: Loss function (should be ImportanceVectorLoss)
-        quant_config: Quantization configuration dictionary
-        augmenter: Data augmenter object
-        apply_augmentation_fn: Function to apply augmentation
-        device: Device to run training on
-        writer: TensorBoard writer
-        epoch: Current epoch number
-        num_epochs: Total number of epochs (for temperature annealing)
-        clip_grad: Gradient clipping value (optional)
+#     Args:
+#         model: PyTorch model to train (with QuanConvImportance layers)
+#         train_loader: Training data loader
+#         optimizer: Optimizer (optimizes both network weights and importance vectors)
+#         temp_scheduler: Temperature scheduler (updates temperature in all layers)
+#         loss_fn: Loss function (should be ImportanceVectorLoss)
+#         quant_config: Quantization configuration dictionary
+#         augmenter: Data augmenter object
+#         apply_augmentation_fn: Function to apply augmentation
+#         device: Device to run training on
+#         writer: TensorBoard writer
+#         epoch: Current epoch number
+#         num_epochs: Total number of epochs (for temperature annealing)
+#         clip_grad: Gradient clipping value (optional)
     
-    Returns:
-        dict: Training metrics (loss, accuracy, task_loss, variance_loss, budget_loss, temperature)
-    """
+#     Returns:
+#         dict: Training metrics (loss, accuracy, task_loss, variance_loss, budget_loss, temperature)
+#     """
     
-    model.train()
+#     model.train()
 
-    # Running totals for metrics
-    train_loss = 0.0
-    train_task_loss = 0.0
-    train_variance_loss = 0.0
-    train_budget_loss = 0.0
-    train_raw_variance = 0.0
-    train_correct = 0
-    train_total = 0
-    num_batches = 0
+#     # Running totals for metrics
+#     train_loss = 0.0
+#     train_task_loss = 0.0
+#     train_variance_loss = 0.0
+#     train_budget_loss = 0.0
+#     train_raw_variance = 0.0
+#     train_correct = 0
+#     train_total = 0
+#     num_batches = 0
 
-    conv_class = model.get_conv_class()
-    mode = quant_config.get('importance_vector', {}).get('sampling_strategy', 'hard_gumbel_softmax')
-    conv_class.set_all_layers_mode(model, mode)
+#     conv_class = model.get_conv_class()
+#     mode = quant_config.get('importance_vector', {}).get('sampling_strategy', 'hard_gumbel_softmax')
+#     conv_class.set_all_layers_mode(model, mode)
     
-    # Create tqdm progress bar
-    pbar = tqdm(train_loader, desc=f"Epoch {epoch+1} Training", 
-                leave=True, dynamic_ncols=True)
+#     # Create tqdm progress bar
+#     pbar = tqdm(train_loader, desc=f"Epoch {epoch+1} Training", 
+#                 leave=True, dynamic_ncols=True)
     
-    num_configs = quant_config.get('number_of_configs', 8)
-    assert num_configs > 1, "Number of configurations must be greater than 1"
+#     num_configs = quant_config.get('number_of_configs', 8)
+#     assert num_configs > 1, "Number of configurations must be greater than 1"
     
-    logging.info(f"Training with importance vector (num_configs={num_configs}, mode={mode})")
+#     logging.info(f"Training with importance vector (num_configs={num_configs}, mode={mode})")
     
-    for batch_idx, batch_data in enumerate(pbar):
-        # Unpack batch
-        if len(batch_data) == 3:
-            data, labels, idx = batch_data
-        else:
-            data, labels = batch_data[0], batch_data[1]
+#     for batch_idx, batch_data in enumerate(pbar):
+#         # Unpack batch
+#         if len(batch_data) == 3:
+#             data, labels, idx = batch_data
+#         else:
+#             data, labels = batch_data[0], batch_data[1]
         
-        # Apply augmentation if provided
-        if augmenter is not None and apply_augmentation_fn is not None:
-            data, labels = apply_augmentation_fn(augmenter, data, labels)
+#         # Apply augmentation if provided
+#         if augmenter is not None and apply_augmentation_fn is not None:
+#             data, labels = apply_augmentation_fn(augmenter, data, labels)
         
-        # Move to device
-        labels = labels.to(device)
-        if isinstance(data, dict):
-            # Multi-modal data
-            for loc in data:
-                for mod in data[loc]:
-                    data[loc][mod] = data[loc][mod].to(device)
-        else:
-            data = data.to(device)
+#         # Move to device
+#         labels = labels.to(device)
+#         if isinstance(data, dict):
+#             # Multi-modal data
+#             for loc in data:
+#                 for mod in data[loc]:
+#                     data[loc][mod] = data[loc][mod].to(device)
+#         else:
+#             data = data.to(device)
         
-        # Prepare labels for loss computation
-        if len(labels.shape) == 2 and labels.shape[1] > 1:
-            loss_labels = torch.argmax(labels, dim=1)
-        else:
-            loss_labels = labels
+#         # Prepare labels for loss computation
+#         if len(labels.shape) == 2 and labels.shape[1] > 1:
+#             loss_labels = torch.argmax(labels, dim=1)
+#         else:
+#             loss_labels = labels
         
-        # ================================================================
-        # Multi-config forward passes (like joint_quantization)
-        # Each forward pass samples different bitwidths from importance
-        # ================================================================
-        outputs_list = []
-        labels_list = []
+#         # ================================================================
+#         # Multi-config forward passes (like joint_quantization)
+#         # Each forward pass samples different bitwidths from importance
+#         # ================================================================
+#         outputs_list = []
+#         labels_list = []
         
-        for _ in range(num_configs):
-            # Forward pass - bitwidths are sampled based on mode
-            # (each forward will sample different bitwidths from importance distribution)
-            outputs = model(data)
-            outputs_list.append(outputs)
-            labels_list.append(loss_labels)
+#         for _ in range(num_configs):
+#             # Forward pass - bitwidths are sampled based on mode
+#             # (each forward will sample different bitwidths from importance distribution)
+#             outputs = model(data)
+#             outputs_list.append(outputs)
+#             labels_list.append(loss_labels)
         
-        # ================================================================
-        # Compute multi-component loss using ImportanceVectorLoss
-        # Returns (total_loss, loss_components) when given lists
-        # ================================================================
-        loss, loss_components = loss_fn(outputs_list, labels_list, model=model)
+#         # ================================================================
+#         # Compute multi-component loss using ImportanceVectorLoss
+#         # Returns (total_loss, loss_components) when given lists
+#         # ================================================================
+#         loss, loss_components = loss_fn(outputs_list, labels_list, model=model)
         
-        # Backward pass
-        optimizer.zero_grad()
-        loss.backward()
+#         # Backward pass
+#         optimizer.zero_grad()
+#         loss.backward()
         
-        # Gradient clipping
-        if clip_grad is not None:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad)
+#         # Gradient clipping
+#         if clip_grad is not None:
+#             torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad)
         
-        optimizer.step()
+#         optimizer.step()
         
-        # ================================================================
-        # Accumulate metrics from loss components
-        # ================================================================
-        batch_size = labels.size(0)
-        train_loss += loss_components['total_loss'] * batch_size
-        train_task_loss += loss_components['task_loss'] * batch_size
-        train_variance_loss += loss_components['variance_loss'] * batch_size
-        train_budget_loss += loss_components['budget_loss'] * batch_size
-        train_raw_variance += loss_components['raw_variance'] * batch_size
+#         # ================================================================
+#         # Accumulate metrics from loss components
+#         # ================================================================
+#         batch_size = labels.size(0)
+#         train_loss += loss_components['total_loss'] * batch_size
+#         train_task_loss += loss_components['task_loss'] * batch_size
+#         train_variance_loss += loss_components['variance_loss'] * batch_size
+#         train_budget_loss += loss_components['budget_loss'] * batch_size
+#         train_raw_variance += loss_components['raw_variance'] * batch_size
         
-        # Use mean accuracy from loss_components (averaged across K configs)
-        train_correct += loss_components['mean_accuracy'] * batch_size
-        train_total += batch_size
-        num_batches += 1
+#         # Use mean accuracy from loss_components (averaged across K configs)
+#         train_correct += loss_components['mean_accuracy'] * batch_size
+#         train_total += batch_size
+#         num_batches += 1
         
-        # Update progress bar with current metrics
-        current_acc = train_correct / train_total if train_total > 0 else 0
-        current_loss = train_loss / train_total if train_total > 0 else 0
-        current_task_loss = train_task_loss / train_total if train_total > 0 else 0
-        current_var_loss = train_variance_loss / train_total if train_total > 0 else 0
+#         # Update progress bar with current metrics
+#         current_acc = train_correct / train_total if train_total > 0 else 0
+#         current_loss = train_loss / train_total if train_total > 0 else 0
+#         current_task_loss = train_task_loss / train_total if train_total > 0 else 0
+#         current_var_loss = train_variance_loss / train_total if train_total > 0 else 0
         
-        pbar.set_postfix({
-            'loss': f'{current_loss:.4f}',
-            'task': f'{current_task_loss:.4f}',
-            'var': f'{current_var_loss:.4f}',
-            'acc': f'{current_acc:.4f}',
-            'temp': f'{temp_scheduler.get_last_temp():.3f}'
-        })
+#         pbar.set_postfix({
+#             'loss': f'{current_loss:.4f}',
+#             'task': f'{current_task_loss:.4f}',
+#             'var': f'{current_var_loss:.4f}',
+#             'acc': f'{current_acc:.4f}',
+#             'temp': f'{temp_scheduler.get_last_temp():.3f}'
+#         })
         
-        # Log to TensorBoard every 50 batches
-        if batch_idx % 50 == 0 and writer is not None:
-            global_step = epoch * len(train_loader) + batch_idx
-            writer.add_scalar('Train/Batch_Total_Loss', loss_components['total_loss'], global_step)
-            writer.add_scalar('Train/Batch_Task_Loss', loss_components['task_loss'], global_step)
-            writer.add_scalar('Train/Batch_Variance_Loss', loss_components['variance_loss'], global_step)
-            writer.add_scalar('Train/Batch_Budget_Loss', loss_components['budget_loss'], global_step)
-            writer.add_scalar('Train/Batch_Raw_Variance', loss_components['raw_variance'], global_step)
-            writer.add_scalar('Train/Batch_Mean_Accuracy', loss_components['mean_accuracy'], global_step)
-            writer.add_scalar('Train/Batch_Accuracy_Std', loss_components['accuracy_std'], global_step)
-            writer.add_scalar('Train/Temperature', temp_scheduler.get_last_temp(), global_step)
+#         # Log to TensorBoard every 50 batches
+#         if batch_idx % 50 == 0 and writer is not None:
+#             global_step = epoch * len(train_loader) + batch_idx
+#             writer.add_scalar('Train/Batch_Total_Loss', loss_components['total_loss'], global_step)
+#             writer.add_scalar('Train/Batch_Task_Loss', loss_components['task_loss'], global_step)
+#             writer.add_scalar('Train/Batch_Variance_Loss', loss_components['variance_loss'], global_step)
+#             writer.add_scalar('Train/Batch_Budget_Loss', loss_components['budget_loss'], global_step)
+#             writer.add_scalar('Train/Batch_Raw_Variance', loss_components['raw_variance'], global_step)
+#             writer.add_scalar('Train/Batch_Mean_Accuracy', loss_components['mean_accuracy'], global_step)
+#             writer.add_scalar('Train/Batch_Accuracy_Std', loss_components['accuracy_std'], global_step)
+#             writer.add_scalar('Train/Temperature', temp_scheduler.get_last_temp(), global_step)
     
-    # Calculate epoch metrics
-    epoch_train_loss = train_loss / train_total
-    epoch_train_acc = train_correct / train_total
-    epoch_task_loss = train_task_loss / train_total
-    epoch_variance_loss = train_variance_loss / train_total
-    epoch_budget_loss = train_budget_loss / train_total
-    epoch_raw_variance = train_raw_variance / train_total
-    epoch_temperature = temp_scheduler.get_last_temp()
+#     # Calculate epoch metrics
+#     epoch_train_loss = train_loss / train_total
+#     epoch_train_acc = train_correct / train_total
+#     epoch_task_loss = train_task_loss / train_total
+#     epoch_variance_loss = train_variance_loss / train_total
+#     epoch_budget_loss = train_budget_loss / train_total
+#     epoch_raw_variance = train_raw_variance / train_total
+#     epoch_temperature = temp_scheduler.get_last_temp()
 
-    logging.info(f"Epoch Temperature: {epoch_temperature:.3f}")
-    # Temperature scheduler step
-    temp_scheduler.step()
+#     logging.info(f"Epoch Temperature: {epoch_temperature:.3f}")
+#     # Temperature scheduler step
+#     temp_scheduler.step()
     
-    # Log epoch-level metrics
-    logging.info(f"  Epoch Loss Components - Total: {epoch_train_loss:.4f}, "
-                f"Task: {epoch_task_loss:.4f}, Variance: {epoch_variance_loss:.4f}, "
-                f"Budget: {epoch_budget_loss:.4f}")
-    logging.info(f"  Raw Variance: {epoch_raw_variance:.6f}, Mean Accuracy: {epoch_train_acc:.4f}")
+#     # Log epoch-level metrics
+#     logging.info(f"  Epoch Loss Components - Total: {epoch_train_loss:.4f}, "
+#                 f"Task: {epoch_task_loss:.4f}, Variance: {epoch_variance_loss:.4f}, "
+#                 f"Budget: {epoch_budget_loss:.4f}")
+#     logging.info(f"  Raw Variance: {epoch_raw_variance:.6f}, Mean Accuracy: {epoch_train_acc:.4f}")
     
-    return {
-        'loss': epoch_train_loss,
-        'accuracy': epoch_train_acc,
-        'task_loss': epoch_task_loss,
-        'variance_loss': epoch_variance_loss,
-        'budget_loss': epoch_budget_loss,
-        'raw_variance': epoch_raw_variance,
-        'temperature': epoch_temperature
-    }
+#     return {
+#         'loss': epoch_train_loss,
+#         'accuracy': epoch_train_acc,
+#         'task_loss': epoch_task_loss,
+#         'variance_loss': epoch_variance_loss,
+#         'budget_loss': epoch_budget_loss,
+#         'raw_variance': epoch_raw_variance,
+#         'temperature': epoch_temperature
+#     }
 
 
 def train_with_quantization(model, train_loader, val_loader, test_loader, config, experiment_dir,

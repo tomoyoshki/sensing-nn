@@ -337,6 +337,13 @@ def validate(model, val_loader, loss_fn, device, augmenter=None, apply_augmentat
             if augmenter is not None and apply_augmentation_fn is not None:
                 data, labels = apply_augmentation_fn(augmenter, data, labels)
             
+            # Handle importance scores if returned as list [data, importance_scores]
+            if isinstance(data, list) and len(data) == 2:
+                importance_scores = data[1]
+                data = data[0]
+            else:
+                importance_scores = None
+            
             # Move to device
             labels = labels.to(device)
             if isinstance(data, dict):
@@ -345,6 +352,12 @@ def validate(model, val_loader, loss_fn, device, augmenter=None, apply_augmentat
                         data[loc][mod] = data[loc][mod].to(device)
             else:
                 data = data.to(device)
+            
+            # Move importance scores to device if present
+            if importance_scores is not None and isinstance(importance_scores, dict):
+                for loc in importance_scores:
+                    for mod in importance_scores[loc]:
+                        importance_scores[loc][mod] = importance_scores[loc][mod].to(device)
             
             # Forward pass
             outputs = model(data)
@@ -483,6 +496,13 @@ def train(model, train_loader, val_loader, config, experiment_dir,
             if augmenter is not None and apply_augmentation_fn is not None:
                 data, labels = apply_augmentation_fn(augmenter, data, labels)
             
+            # Handle importance scores if returned as list [data, importance_scores]
+            if isinstance(data, list) and len(data) == 2:
+                importance_scores = data[1]
+                data = data[0]
+            else:
+                importance_scores = None
+            
             # Move to device
             labels = labels.to(device)
             if isinstance(data, dict):
@@ -492,6 +512,12 @@ def train(model, train_loader, val_loader, config, experiment_dir,
                         data[loc][mod] = data[loc][mod].to(device)
             else:
                 data = data.to(device)
+            
+            # Move importance scores to device if present
+            if importance_scores is not None and isinstance(importance_scores, dict):
+                for loc in importance_scores:
+                    for mod in importance_scores[loc]:
+                        importance_scores[loc][mod] = importance_scores[loc][mod].to(device)
             
             # Forward pass
             optimizer.zero_grad()
@@ -714,6 +740,13 @@ def test(model, test_loader, config, experiment_dir, checkpoint_path=None,
                 if augmenter is not None and apply_augmentation_fn is not None:
                     data, labels = apply_augmentation_fn(augmenter, data, labels)
                 
+                # Handle importance scores if returned as list [data, importance_scores]
+                if isinstance(data, list) and len(data) == 2:
+                    importance_scores = data[1]
+                    data = data[0]
+                else:
+                    importance_scores = None
+                
                 # Move to device
                 labels = labels.to(device)
                 if isinstance(data, dict):
@@ -722,6 +755,12 @@ def test(model, test_loader, config, experiment_dir, checkpoint_path=None,
                             data[loc][mod] = data[loc][mod].to(device)
                 else:
                     data = data.to(device)
+                
+                # Move importance scores to device if present
+                if importance_scores is not None and isinstance(importance_scores, dict):
+                    for loc in importance_scores:
+                        for mod in importance_scores[loc]:
+                            importance_scores[loc][mod] = importance_scores[loc][mod].to(device)
                 
                 # Forward pass
                 outputs = model(data)

@@ -24,7 +24,7 @@ def main():
     train_loader, val_loader, test_loader = create_dataloaders(config=config)
     logging.info("\nDataloaders created successfully!")
     
-    augmenter = create_augmenter(config, augmentation_mode="no")
+    augmenter = create_augmenter(config, augmentation_mode="with_energy_and_entropy")
     logging.info("Augmenter created successfully!")
     
     # Create model

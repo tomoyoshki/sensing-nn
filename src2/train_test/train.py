@@ -84,7 +84,7 @@ def main():
     scheduler_name = config.get(model_name, {}).get("lr_scheduler", {}).get("name", "Unknown")
     
     # For training, we typically want augmentation enabled
-    augmenter = create_augmenter(config, augmentation_mode="fixed")
+    augmenter = create_augmenter(config, augmentation_mode="with_energy_and_entropy")
     logging.info("Augmenter created successfully")
     
     # ========================================================================
