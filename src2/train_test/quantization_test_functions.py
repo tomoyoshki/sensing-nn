@@ -146,6 +146,13 @@ def test_random_bitwidths(model, test_loader, loss_fn, device,
             bin_max=bin_max,
             num_schemes=num_quantization_schemes
         )
+        if quantization_schemes is None:
+            logging.error(f"Failed to generate valid schemes for bin [{bin_min}, {bin_max}]")
+            return {
+                'accuracy': 0.0,
+                'loss': float('inf'),
+                'status': 'generation_failed'
+            }
         use_pregenerated_schemes = True
     else:
         # Uniform random sampling (original behavior)
@@ -357,6 +364,11 @@ def load_and_test_random_bitwidths(model, checkpoint_path, test_loader, loss_fn,
             bitwidth_options=bitwidth_options,
             bitwidth_bin_size=None
         )
+
+        # Log accuracy summary for uniform sampling (mean/std across schemes)
+        if isinstance(test_results, list) and len(test_results) > 0:
+            accs = np.array([r.get("accuracy", 0.0) for r in test_results], dtype=float)
+            logging.info(f"Uniform random accuracy: {accs.mean():.4f}±{accs.std():.4f} (n={len(test_results)})")
         
         # Wrap results in a dictionary for consistency with multi-range case
         return {"uniform_random": test_results}
@@ -391,6 +403,13 @@ def load_and_test_random_bitwidths(model, checkpoint_path, test_loader, loss_fn,
             bitwidth_options=bitwidth_options,
             bitwidth_bin_size=bitwidth_range
         )
+
+        # Log per-range accuracy summary (mean/std across schemes)
+        if isinstance(range_results, list) and len(range_results) > 0:
+            accs = np.array([r.get("accuracy", 0.0) for r in range_results], dtype=float)
+            logging.info(f"Range accuracy [{bin_min}, {bin_max}]: {accs.mean():.4f}±{accs.std():.4f} (n={len(range_results)})")
+        elif isinstance(range_results, dict) and range_results.get("status") == "generation_failed":
+            logging.error(f"Range [{bin_min}, {bin_max}] failed: scheme generation failed.")
         
         # Store results with range as key
         range_key = f"range_{bin_min}_{bin_max}"

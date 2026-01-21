@@ -24,6 +24,7 @@ from train_test.train_test_utils import (
 )
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from models.QuantModules import BitMixerController
 
 
 def get_conv_class_from_model(model):
@@ -927,6 +928,12 @@ def train_epoch_joint_quantization(model, train_loader, optimizer, loss_fn,
                 loss_labels = labels
             
             loss = loss_fn(outputs, loss_labels)
+            if not torch.isfinite(loss):
+                logging.error(
+                    f"Non-finite loss detected (loss={loss}) at epoch={epoch}, batch_idx={batch_idx}. "
+                    f"Aborting training epoch early to avoid NaN propagation."
+                )
+                return {"loss": float("nan"), "accuracy": 0.0, "status": "non_finite_loss"}
             accumulated_loss += loss
         
         # Average the loss
@@ -966,6 +973,96 @@ def train_epoch_joint_quantization(model, train_loader, optimizer, loss_fn,
         'loss': epoch_train_loss,
         'accuracy': epoch_train_acc
     }
+
+
+def train_epoch_bitmixer(
+    model,
+    train_loader,
+    optimizer,
+    loss_fn,
+    quant_config,
+    augmenter,
+    apply_augmentation_fn,
+    device,
+    writer,
+    epoch,
+    bitmixer_controller: BitMixerController,
+    bitmixer_epoch_for_sigma: int,
+    clip_grad=None,
+):
+    """
+    Train one epoch using BitMixer.
+
+    Behavior:
+    - Each batch: call BitMixerController.step(...) BEFORE forward() to set bitwidths
+      and enable/disable weight quantization per BitMixer stage.
+    - Single forward pass per batch (unlike joint_quantization's K passes).
+    """
+    model.train()
+
+    train_loss = 0.0
+    train_correct = 0
+    train_total = 0
+
+    for batch_idx, batch_data in enumerate(train_loader):
+        # Unpack batch
+        if len(batch_data) == 3:
+            data, labels, idx = batch_data
+        else:
+            data, labels = batch_data[0], batch_data[1]
+
+        # Apply augmentation if provided
+        if augmenter is not None and apply_augmentation_fn is not None:
+            data, labels = apply_augmentation_fn(augmenter, data, labels)
+
+        # Move to device
+        labels = labels.to(device)
+        if isinstance(data, dict):
+            for loc in data:
+                for mod in data[loc]:
+                    data[loc][mod] = data[loc][mod].to(device)
+        else:
+            data = data.to(device)
+
+        # BitMixer bitwidth assignment (per batch)
+        bitmixer_controller.step(bitmixer_epoch_for_sigma)
+
+        # Forward/backward
+        optimizer.zero_grad()
+        outputs = model(data)
+
+        if len(labels.shape) == 2 and labels.shape[1] > 1:
+            loss_labels = torch.argmax(labels, dim=1)
+        else:
+            loss_labels = labels
+
+        loss = loss_fn(outputs, loss_labels)
+        loss.backward()
+
+        if clip_grad is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad)
+
+        optimizer.step()
+
+        # Metrics
+        train_loss += loss.item() * labels.size(0)
+        predictions = torch.argmax(outputs, dim=1)
+        if len(labels.shape) == 2 and labels.shape[1] > 1:
+            labels_idx = torch.argmax(labels, dim=1)
+        else:
+            labels_idx = labels
+
+        train_correct += (predictions == labels_idx).sum().item()
+        train_total += labels.size(0)
+
+        if batch_idx % 50 == 0 and writer is not None:
+            global_step = epoch * len(train_loader) + batch_idx
+            writer.add_scalar('Train/Batch_Loss', loss.item(), global_step)
+
+    epoch_train_loss = train_loss / train_total
+    epoch_train_acc = train_correct / train_total
+
+    return {'loss': epoch_train_loss, 'accuracy': epoch_train_acc}
 
 
 def train_epoch_importance_vector(model, train_loader, optimizer, temp_scheduler, loss_fn, 
@@ -1277,6 +1374,33 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
     logging.info(f"Training method: {training_method}")
     logging.info(f"Validation function: {validation_function}")
     logging.info("=" * 80)
+
+    # --------------------------------------------------------------------
+    # BitMixer controller setup (if needed)
+    # --------------------------------------------------------------------
+    bitmixer_controller = None
+    bitmixer_cfg = quant_config.get("bitmixer", {})
+    if training_method == "bitmixer":
+        bitwidth_options = quant_config.get("bitwidth_options", [2, 3, 4, 8])
+        stage1_epochs = int(bitmixer_cfg.get("stage1_epochs", 0))
+        stage2_epochs = int(bitmixer_cfg.get("stage2_epochs", 0))
+        sigma_start = float(bitmixer_cfg.get("sigma_start", 1.0))
+        sigma_end = float(bitmixer_cfg.get("sigma_end", 0.25))
+        stage3_epochs = int(bitmixer_cfg.get("stage3_epochs", max(num_epochs - stage1_epochs - stage2_epochs, 1)))
+
+        # Initialize in Stage I/II/III depending on epoch; will update each epoch
+        bitmixer_controller = BitMixerController(
+            model=model,
+            bitwidth_options=bitwidth_options,
+            stage=1,
+            sigma_start=sigma_start,
+            sigma_end=sigma_end,
+            total_epochs=stage3_epochs,
+        )
+        logging.info(
+            f"BitMixer enabled: stage1_epochs={stage1_epochs}, stage2_epochs={stage2_epochs}, "
+            f"stage3_epochs={stage3_epochs}, sigma={sigma_start}->{sigma_end}"
+        )
     
     for epoch in range(num_epochs):
         # ====================================================================
@@ -1297,6 +1421,44 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
                 writer=writer,
                 epoch=epoch,
                 clip_grad=clip_grad
+            )
+        elif training_method == "bitmixer":
+            assert bitmixer_controller is not None, "BitMixerController was not initialized"
+
+            bitwidth_options = quant_config.get("bitwidth_options", [2, 3, 4, 8])
+            stage1_epochs = int(bitmixer_cfg.get("stage1_epochs", 0))
+            stage2_epochs = int(bitmixer_cfg.get("stage2_epochs", 0))
+            stage3_start = stage1_epochs + stage2_epochs
+
+            # Determine current stage by epoch
+            if epoch < stage1_epochs:
+                stage = 1
+                stage3_epoch = 0
+            elif epoch < stage3_start:
+                stage = 2
+                stage3_epoch = 0
+            else:
+                stage = 3
+                stage3_epoch = epoch - stage3_start
+
+            bitmixer_controller.stage = stage
+
+            logging.info(f"BitMixer stage for epoch {epoch+1}: stage={stage} (stage3_epoch={stage3_epoch})")
+
+            train_metrics = train_epoch_bitmixer(
+                model=model,
+                train_loader=train_loader,
+                optimizer=optimizer,
+                loss_fn=loss_fn,
+                quant_config=quant_config,
+                augmenter=augmenter,
+                apply_augmentation_fn=apply_augmentation_fn,
+                device=device,
+                writer=writer,
+                epoch=epoch,
+                bitmixer_controller=bitmixer_controller,
+                bitmixer_epoch_for_sigma=stage3_epoch,
+                clip_grad=clip_grad,
             )
         elif training_method == "vanilla_single_precision_training":
             train_metrics = train_epoch_vanilla_single_precision(

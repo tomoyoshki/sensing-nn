@@ -33,8 +33,13 @@ def create_model(config):
     location_names = config.get("location_names", [])
     modality_in_channels = config["loc_mod_in_freq_channels"]
     
-    # Classification parameters
-    num_classes = config.get("vehicle_classification", {}).get("num_classes", 1000)
+    # Classification parameters (support both activity_classification and vehicle_classification)
+    task_cfg = (
+        config.get("activity_classification")
+        or config.get("vehicle_classification")
+        or {}
+    )
+    num_classes = task_cfg.get("num_classes", 1000)
     fc_dim = config.get("fc_dim", 512)
     dropout_ratio = config.get("dropout_ratio", 0)
     model_variant = config.get("model_variant", None)
@@ -153,7 +158,7 @@ def create_model(config):
                     input_conv = last_conv
                     output_conv = None
                     for next_module in modules_in_order[idx + 1:]:
-                        if isinstance(module, Conv):
+                        if isinstance(next_module, Conv):
                             output_conv = next_module
                             break
                     module.set_convs(input_conv, output_conv)

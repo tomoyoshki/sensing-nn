@@ -86,17 +86,123 @@ def quantize(x, nbit, alpha=None):
         
     return DynamicQuantizer.apply(x, nbit)
 
+import random
+
+class BitMixerController:
+    """
+    Exact Bit-Mixer controller from ICCV 2021.
+
+    Responsibilities:
+    - Implements Stage I / II / III scheduling
+    - Sets per-layer or global bitwidths
+    - Enables/disables weight quantization
+    - Works with TransitionalBatchNorm automatically via conv.curr_bitwidth
+    """
+
+    def __init__(
+        self,
+        model,
+        bitwidth_options,
+        stage,
+        sigma_start=1.0,
+        sigma_end=0.25,
+        total_epochs=1,
+    ):
+        """
+        Args:
+            model: PyTorch model containing BaseQuanConv layers
+            bitwidth_options: e.g. [2, 3, 4, 8]
+            stage: 1, 2, or 3
+            sigma_start: initial σ for Stage III
+            sigma_end: final σ for Stage III
+            total_epochs: Stage III length (epochs)
+        """
+        assert stage in [1, 2, 3]
+        self.model = model
+        self.bitwidth_options = list(bitwidth_options)
+        self.stage = stage
+
+        # Stage III parameters
+        self.sigma_start = sigma_start
+        self.sigma_end = sigma_end
+        self.total_epochs = max(total_epochs, 1)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _set_global_bitwidth(self, bw, quantize_weights):
+        for m in self.model.modules():
+            if isinstance(m, BaseQuanConv):
+                m.quantize_weights_enabled = quantize_weights
+                m.set_bitwidth(bw)
+
+    def _set_layerwise_random_bitwidth(self, quantize_weights):
+        for m in self.model.modules():
+            if isinstance(m, BaseQuanConv):
+                m.quantize_weights_enabled = quantize_weights
+                bw = random.choice(self.bitwidth_options)
+                m.set_bitwidth(bw)
+
+    def _sigma(self, epoch):
+        """Linear σ schedule (paper uses decreasing σ)."""
+        # Avoid divide-by-zero when total_epochs == 1 (common during quick runs)
+        denom = max(self.total_epochs - 1, 1)
+        t = min(epoch / denom, 1.0)
+        return self.sigma_start + t * (self.sigma_end - self.sigma_start)
+
+    # ------------------------------------------------------------------
+    # Public API (CALL THIS EACH ITERATION)
+    # ------------------------------------------------------------------
+
+    def step(self, epoch):
+        """
+        Apply Bit-Mixer logic for ONE training iteration.
+
+        Call this once per batch BEFORE forward().
+        """
+
+        # ------------------------------
+        # Stage I
+        # ------------------------------
+        if self.stage == 1:
+            bw = random.choice(self.bitwidth_options)
+            self._set_global_bitwidth(bw, quantize_weights=False)
+            return
+
+        # ------------------------------
+        # Stage II
+        # ------------------------------
+        if self.stage == 2:
+            bw = random.choice(self.bitwidth_options)
+            self._set_global_bitwidth(bw, quantize_weights=True)
+            return
+
+        # ------------------------------
+        # Stage III (Bit-Mixer)
+        # ------------------------------
+        sigma = self._sigma(epoch)
+
+        if random.random() < sigma:
+            # Global bitwidth (Stage II behavior)
+            bw = random.choice(self.bitwidth_options)
+            self._set_global_bitwidth(bw, quantize_weights=True)
+        else:
+            # Layer-wise random bitwidths (true Bit-Mixer)
+            self._set_layerwise_random_bitwidth(quantize_weights=True)
+
+
 
 class LSQQuantizer(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, step_size, nbit, is_activation=False):
         qn = 0 if is_activation else -(2 ** (nbit - 1))
         qp = 2 ** (nbit - 1) - 1 if not is_activation else 2 ** nbit - 1
+        step_size = step_size.to(x.device)
 
         ctx.save_for_backward(x, step_size)
         ctx.other = (qn, qp, is_activation)
 
-        step_size = step_size.to(x.device)
         x = x / step_size
         x_clipped = torch.clamp(x.round(), qn, qp)
         return x_clipped * step_size
@@ -162,7 +268,7 @@ class LSQ(nn.Module):
     def _init_step(self, x, bw, idx):
         _, qp = self._qrange(bw)
         # LSQ init: alpha0 = 2*E|x| / sqrt(qp)  (common LSQ init)
-        alpha0 = (2.0 * x.detach().abs().mean() / math.sqrt(max(qp, 1))).clamp(min=1e-6)
+        alpha0 = (2.0 * x.detach().abs().mean() / math.sqrt(max(qp, 1)))
         with torch.no_grad():
             self.step_size[idx].copy_(alpha0.expand_as(self.step_size[idx]))
         self.initialized[idx] = True
@@ -555,6 +661,9 @@ class BaseQuanConv(nn.Module):
         self.quantize_w = None
         self.quantize_a = None
         self.quantization_enabled = False
+        # Used by BitMixer Stage I to disable weight quantization while keeping
+        # activation quantization / bitwidth setting active.
+        self.quantize_weights_enabled = True
         self.alpha_setup_flag = False
         self.weight_quantization = None
         self.activation_quantization = None
@@ -752,6 +861,8 @@ class BaseQuanConv(nn.Module):
         Returns:
             Quantized weight tensor
         """
+        if not getattr(self, "quantize_weights_enabled", True):
+            return self.weight
         if isinstance(self.quantize_w, (LSQ, LSQPlus)):
             return self.quantize_w(self.weight)
         else:

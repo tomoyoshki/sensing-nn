@@ -241,14 +241,6 @@ def main():
                     config=config,
                     test_args=test_args
                 )
-
-                # Persist results so the test_run dir isn't empty.
-                # (This also makes it easy to post-process later.)
-                json_path = test_run_dir / f"random_bitwidth_results_{checkpoint_path.stem}.json"
-                with open(json_path, "w") as f:
-                    json.dump(test_results, f, indent=2)
-                logging.info(f"Random bitwidth results saved to: {json_path}")
-                
             else:
                 raise ValueError(f"Invalid test function: {test_args.test_function}, "
                               f"must be one of: float, single_precision_quantized, random_bitwidth")

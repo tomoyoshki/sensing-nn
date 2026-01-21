@@ -490,9 +490,11 @@ def get_layer_weight_counts(model, conv_class):
 
 def compute_relative_memory(scheme, weight_counts, max_bitwidth=8):
     """
-    Compute relative memory consumption for a quantization scheme.
+    Compute relative BitOps consumption for a quantization scheme.
     
-    Relative memory = (Σ Nw_i × bw_i) / (Σ Nw_i × max_bitwidth)
+    Relative BitOps = (Σ Nw_i × bw_i²) / (Σ Nw_i × max_bitwidth²)
+    
+    Assumes weight and activation bitwidths are equal (bw_w = bw_a = bw).
     
     Args:
         scheme: List of bitwidths, one per layer (quantization scheme)
@@ -500,98 +502,73 @@ def compute_relative_memory(scheme, weight_counts, max_bitwidth=8):
         max_bitwidth: Maximum bitwidth (default 8 for 8-bit reference)
     
     Returns:
-        float: Relative memory consumption (0 to 1, where 1 = max_bitwidth for all)
+        float: Relative BitOps consumption (0 to 1, where 1 = max_bitwidth for all)
     """
     assert len(scheme) == len(weight_counts), \
         f"Scheme length ({len(scheme)}) must match weight_counts length ({len(weight_counts)})"
     
-    current_memory = sum(nw * bw for nw, bw in zip(weight_counts, scheme))
-    max_memory = sum(nw * max_bitwidth for nw in weight_counts)
+    current_bitops = sum(nw * bw ** 2 for nw, bw in zip(weight_counts, scheme))
+    max_bitops = sum(nw * max_bitwidth ** 2 for nw in weight_counts)
     
-    if max_memory == 0:
+    if max_bitops == 0:
         return 0.0
     
-    return current_memory / max_memory
+    return current_bitops / max_bitops
 
 
 def generate_scheme_for_target_relative_memory(model, conv_class, bitwidth_options, target_relative_memory):
     """
-    Generate a quantization scheme (bitwidth per layer) that achieves a target relative memory.
+    Generate a quantization scheme that achieves a target relative BitOps.
     
-    Relative memory = current_memory / max_memory, where max_memory is at max_bitwidth.
-    
-    For 2 options: uses weighted linear interpolation
-    For 3+ options: uses greedy upgrade from minimum (weighted by layer sizes)
-    
-    Args:
-        model: PyTorch model containing quantized Conv layers
-        conv_class: The quantized Conv class type
-        bitwidth_options: List of available bitwidths (e.g., [2, 4, 8])
-        target_relative_memory: Target relative memory (0 to 1, where 1 = max bitwidth all layers)
-    
-    Returns:
-        list: Quantization scheme (bitwidth per layer)
+    Relative BitOps = (Σ Nw_i × bw_i²) / (Σ Nw_i × max_bw²)
     """
     options = sorted(bitwidth_options)
-    max_bw = options[-1]  # Reference bitwidth (typically 8)
+    max_bw = options[-1]
     min_bw = options[0]
     
-    # Get weight counts for each layer
     weight_counts = get_layer_weight_counts(model, conv_class)
     num_layers = len(weight_counts)
     
     if num_layers == 0:
         return []
     
-    # Compute memory bounds
-    max_memory = sum(nw * max_bw for nw in weight_counts)
-    min_memory = sum(nw * min_bw for nw in weight_counts)
+    # BitOps bounds (squared bitwidths)
+    max_bitops = sum(nw * max_bw ** 2 for nw in weight_counts)
+    min_bitops = sum(nw * min_bw ** 2 for nw in weight_counts)
     
-    # Target memory in absolute terms
-    target_memory = target_relative_memory * max_memory
-    target_memory = np.clip(target_memory, min_memory, max_memory)
+    target_bitops = target_relative_memory * max_bitops  # ✅ Fixed
+    target_bitops = np.clip(target_bitops, min_bitops, max_bitops)
     
     if len(options) == 2:
-        # Weighted linear interpolation for 2 bitwidth options
-        # We need to decide which layers get high bitwidth vs low bitwidth
-        # such that total memory = target_memory
-        # 
-        # Sort layers by weight count (largest first) and greedily assign
         b_low, b_high = options
         
-        # Start with all low bitwidth
         scheme = [b_low] * num_layers
-        current_memory = min_memory
+        current_bitops = min_bitops
         
-        # Sort layer indices by weight count (largest first for efficiency)
-        sorted_indices = sorted(range(num_layers), key=lambda i: weight_counts[i], reverse=True)
-        np.random.shuffle(sorted_indices)  # Add randomness
+        sorted_indices = list(range(num_layers))
+        np.random.shuffle(sorted_indices)
         
         for idx in sorted_indices:
-            if current_memory >= target_memory:
+            if current_bitops >= target_bitops:
                 break
-            delta = weight_counts[idx] * (b_high - b_low)
-            if current_memory + delta <= target_memory:
+            delta = weight_counts[idx] * (b_high ** 2 - b_low ** 2)
+            if current_bitops + delta <= target_bitops:
                 scheme[idx] = b_high
-                current_memory += delta
+                current_bitops += delta
             else:
-                # Check if upgrading gets us closer to target
-                if abs(current_memory + delta - target_memory) < abs(current_memory - target_memory):
+                if abs(current_bitops + delta - target_bitops) < abs(current_bitops - target_bitops):
                     scheme[idx] = b_high
-                    current_memory += delta
+                    current_bitops += delta
     else:
-        # Greedy approach for 3+ options (weighted by layer sizes)
-        # Start with all layers at minimum bitwidth
         scheme = [options[0]] * num_layers
-        current_memory = min_memory
+        current_bitops = min_bitops
         
-        # Randomize order of layers to upgrade
         layer_order = np.random.permutation(num_layers).tolist()
         
-        while current_memory < target_memory:
+        while current_bitops < target_bitops:
             upgraded = False
             for layer_idx in layer_order:
-                if current_memory >= target_memory:
+                if current_bitops >= target_bitops:
                     break
                 
                 curr_bw = scheme[layer_idx]
@@ -599,24 +576,21 @@ def generate_scheme_for_target_relative_memory(model, conv_class, bitwidth_optio
                 nw = weight_counts[layer_idx]
                 
                 if curr_bw_idx < len(options) - 1:
-                    # Find best upgrade: largest that doesn't overshoot,
-                    # or smallest if all upgrades overshoot but gets us closer
                     best_new_bw = None
                     for next_bw in options[curr_bw_idx + 1:]:
-                        delta = nw * (next_bw - curr_bw)
-                        if current_memory + delta <= target_memory:
-                            best_new_bw = next_bw  # Keep looking for larger upgrade
+                        delta = nw * (next_bw ** 2 - curr_bw ** 2)
+                        if current_bitops + delta <= target_bitops:
+                            best_new_bw = next_bw
                         else:
                             if best_new_bw is None:
-                                # All upgrades overshoot; take smallest if it gets us closer
-                                if abs(current_memory + delta - target_memory) < abs(current_memory - target_memory):
+                                if abs(current_bitops + delta - target_bitops) < abs(current_bitops - target_bitops):
                                     best_new_bw = next_bw
                             break
                     
                     if best_new_bw is not None:
                         old_bw = scheme[layer_idx]
                         scheme[layer_idx] = best_new_bw
-                        current_memory += nw * (best_new_bw - old_bw)
+                        current_bitops += nw * (best_new_bw ** 2 - old_bw ** 2)
                         upgraded = True
             
             if not upgraded:
@@ -629,54 +603,36 @@ def generate_schemes_in_relative_memory_bin(model, conv_class, bitwidth_options,
                                             bin_min, bin_max, num_schemes,
                                             max_attempts_per_scheme=100):
     """
-    Generate multiple quantization schemes with relative memory in [bin_min, bin_max].
-    
-    Uses rejection sampling: generates a scheme, checks if it's in range,
-    if not regenerates (up to max_attempts_per_scheme times).
-    
-    Relative memory is the ratio of current scheme memory to max-bitwidth memory.
-    
-    Args:
-        model: PyTorch model containing quantized Conv layers
-        conv_class: The quantized Conv class type
-        bitwidth_options: List of available bitwidths (e.g., [2, 4, 8])
-        bin_min: Minimum relative memory (inclusive, 0 to 1)
-        bin_max: Maximum relative memory (inclusive, 0 to 1)
-        num_schemes: Number of quantization schemes to generate
-        max_attempts_per_scheme: Max regeneration attempts per scheme (default: 10)
+    Generate multiple quantization schemes with relative BitOps in [bin_min, bin_max].
     
     Returns:
-        list of lists: Each inner list is a quantization scheme (bitwidth per layer)
+        list: List of valid schemes, or None if generation failed
     """
-    # Pre-compute weight counts and max bitwidth for efficiency
     weight_counts = get_layer_weight_counts(model, conv_class)
     max_bw = max(bitwidth_options)
     
     schemes = []
-    total_attempts = 0
-    successful_first_try = 0
     
     for i in range(num_schemes):
+        scheme = None
         for attempt in range(max_attempts_per_scheme):
-            total_attempts += 1
-            
-            # Sample target uniformly in the bin range
             target_relative_memory = np.random.uniform(bin_min, bin_max)
             scheme = generate_scheme_for_target_relative_memory(
                 model, conv_class, bitwidth_options, target_relative_memory
             )
             
-            # Verify the scheme is actually in range
-            actual_rel_mem = compute_relative_memory(scheme, weight_counts, max_bitwidth=max_bw)
+            actual_rel_memory = compute_relative_memory(scheme, weight_counts, max_bitwidth=max_bw)
             
-            if bin_min <= actual_rel_mem <= bin_max:
-                if attempt == 0:
-                    successful_first_try += 1
+            if bin_min <= actual_rel_memory <= bin_max:
                 schemes.append(scheme)
                 break
         else:
-            # Max attempts reached, use last generated scheme (best effort)
-            schemes.append(scheme)
+            # Max attempts exhausted - return None to signal failure
+            logging.warning(
+                f"Failed to generate scheme {i+1}/{num_schemes} within bin [{bin_min}, {bin_max}] "
+                f"after {max_attempts_per_scheme} attempts"
+            )
+            return None
     
     return schemes
 

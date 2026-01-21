@@ -1,13 +1,14 @@
 # data paths  
-pretrain_index_file: /home/tkimura4/data/datasets/MOD/Parkland/time_data_partition/pretrain_index.txt 
+pretrain_index_file: /home/user/madhav/datasets/Parkland/time_data_partition/pretrain_index.txt
+
 vehicle_classification:
         num_classes: 7  # number of classes
         class_names: ["Polaris", "Warhog", "Truck", "motor", "tesla", "mustang", "walk"]
-        train_index_file: /home/tkimura4/data/datasets/MOD/Parkland/time_data_partition/train_index.txt 
-        val_index_file: /home/tkimura4/data/datasets/MOD/Parkland/time_data_partition/val_index.txt  
-        test_index_file: /home/tkimura4/data/datasets/MOD/Parkland/time_data_partition/test_index.txt 
+        train_index_file: /home/user/madhav/datasets/Parkland/time_data_partition/train_index.txt
+        val_index_file: /home/user/madhav/datasets/Parkland/time_data_partition/val_index.txt  
+        test_index_file: /home/user/madhav/datasets/Parkland/time_data_partition/test_index.txt 
 
-base_experiment_dir: /home/madhav5/sensing-nn/src2/experiments
+base_experiment_dir: /home/user/madhav/experiments
 
 cross_entropy:
         name: "cross_entropy"
@@ -92,7 +93,7 @@ quantization:
                 bitwidth_options: [4,8]
                 bin_tolerance: 0.5
         random_bitwidths:
-                bitwidth_options: [8,16,32]
+                bitwidth_options: [2,4,8]
                 name: "random_bitwidths"
                 number_of_configs: 8
                 bin_tolerance: 0.5
@@ -104,23 +105,23 @@ quantization:
         any_precision:
                 Conv: "QuanConv"
                 loss_name: "cross_entropy"
-                bitwidth_options: [8,16,32]
+                bitwidth_options: [2,4,8]
                 weight_quantization: "lsq"
-                activation_quantization: "dorefa"
+                activation_quantization: "lsq"
                 validation_function: "random_bitwidths"
                 training_method: "joint_quantization"
                 switchable_clipping: False
-                sat_weight_normalization: False
+                sat_weight_normalization: True
                 bn_type: "switchable"
         robustquant:
                 Conv: "QuanConv"
-                bitwidth_options: [8,16,32]
-                weight_quantization: "dorefa"
-                activation_quantization: "dorefa"
+                bitwidth_options: [2,4,8]
+                weight_quantization: "lsq"
+                activation_quantization: "lsq"
                 validation_function: "random_bitwidths"
                 training_method: "joint_quantization"
                 switchable_clipping: True
-                sat_weight_normalization: False
+                sat_weight_normalization: True
                 loss_name: "kurtosis"
                 kurtosis_regularization: True
                 kurtosis_target: 1.8
@@ -128,16 +129,31 @@ quantization:
         adabits:
                 Conv: "QuanConv"
                 loss_name: "cross_entropy" # cross_entropy, label_smoothing_ce 
-                bitwidth_options: [4, 8]
+                bitwidth_options: [2, 4, 8]
                 default_bitwidth: 8
                 bitwidht_allocation: "random"
-                weight_quantization: "dorefa"
-                activation_quantization: "pact"
-                act_quant: "pact"  # Enable PACT activation quantization after ReLU
+                weight_quantization: "lsq"
+                activation_quantization: "lsq"
                 validation_function: "random_bitwidths" # simple_validation, random_bitwidths
                 training_method: "joint_quantization" # joint_quantization, vanilla_single_precision_training
                 switchable_clipping: True
                 sat_weight_normalization: False
+        bitmixer:
+                Conv: "QuanConv"
+                loss_name: "cross_entropy"
+                bitwidth_options: [2, 4, 8]
+                weight_quantization: "lsq"
+                activation_quantization: "lsq"
+                validation_function: "random_bitwidths"
+                training_method: "bitmixer"
+                switchable_clipping: False
+                sat_weight_normalization: False
+                bn_type: "transitional"
+                bitmixer:
+                        stage1_epochs: 5
+                        stage2_epochs: 5
+                        sigma_start: 1.0
+                        sigma_end: 0.25
         # pact:
         #         Conv: "QuanConv"
         #         loss_name: "cross_entropy"
