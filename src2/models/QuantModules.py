@@ -607,6 +607,9 @@ class BaseQuanConv(nn.Module):
             nn.init.constant_(self.alpha, 10.0)
         elif self.activation_quantization in ["lsq", "lsqplus"]:
             self.alpha_setup_flag = False  # LSQ doesn't use alpha the same way
+        
+        # Enable quantization after setup is complete
+        self.quantization_enabled = True
     
     def _setup_quantizers(self):
         """Setup weight and activation quantizers"""

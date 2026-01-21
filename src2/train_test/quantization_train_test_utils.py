@@ -85,6 +85,98 @@ def set_random_bitwidth_all_layers(model, bitwidth_options):
             module.set_bitwidth(bw)
 
 
+def get_relative_memory_consumption(model, max_bitwidth=8):
+    """
+    Calculate the relative BitOps consumption compared to full max_bitwidth precision.
+    
+    BitOps (Bit Operations) = MACs × weight_bitwidth × activation_bitwidth
+    
+    For relative calculation (input shapes are the same across comparisons):
+        current_bitops = Σ (Nw_i × bw_w_i × bw_a_i) for each layer i
+        max_bitops = Σ (Nw_i × max_bitwidth²) for each layer i
+    
+    Since weight and activation use the same bitwidth in these quantization methods:
+        - For QuanConv (single bitwidth): bitops contribution = Nw × bw²
+        - For QuanConvSplit (split bitwidths for upper/lower frequency bands):
+          bitops contribution = 0.5 × Nw × (bw_upper² + bw_lower²)
+          (half the input is processed at each bitwidth)
+
+    Args:
+        model: PyTorch model containing quantized Conv layers
+        max_bitwidth: Reference maximum bitwidth (default: 8)
+
+    Returns:
+        float: Relative BitOps consumption (0 to 1), or None if not applicable.
+    """
+    conv_class = get_conv_class_from_model(model)
+    if conv_class is None:
+        return None
+
+    total_max_bitops = 0.0
+    current_bitops = 0.0
+    
+    for module in model.modules():
+        if isinstance(module, conv_class):
+            Nw = module.weight.numel()
+            
+            # Max bitops for this layer (assuming max_bitwidth for both weight and activation)
+            max_bitops_layer = Nw * float(max_bitwidth) ** 2
+            total_max_bitops += max_bitops_layer
+
+            bw = module.get_bitwidth()
+            if bw is None:
+                continue
+            
+            # Check if this is a split conv (returns tuple) or regular conv (returns int)
+            if isinstance(bw, tuple):
+                # QuanConvSplit: (bw_upper, bw_lower)
+                bw_upper, bw_lower = bw
+                if bw_upper is None or bw_lower is None:
+                    continue
+                # Half the input is processed at each bitwidth
+                # BitOps = 0.5 × Nw × bw_upper² + 0.5 × Nw × bw_lower²
+                current_bitops += 0.5 * Nw * (float(bw_upper) ** 2 + float(bw_lower) ** 2)
+            else:
+                # QuanConv: single bitwidth for both weight and activation
+                # BitOps = Nw × bw²
+                current_bitops += Nw * float(bw) ** 2
+
+    if total_max_bitops == 0.0:
+        return None
+
+    return current_bitops / total_max_bitops
+
+
+def set_all_bitwidths_given_list(model, bitwidth_list):
+    """
+    Set bitwidths for all quantized Conv layers in the model from a list.
+    
+    Args:
+        model: PyTorch model containing quantized Conv layers
+        bitwidth_list: List of bitwidths, one per quantized Conv layer (in module order)
+    
+    Raises:
+        ValueError: If no quantized Conv layers found
+        AssertionError: If bitwidth_list length doesn't match number of layers
+    """
+    conv_class = get_conv_class_from_model(model)
+    if conv_class is None:
+        raise ValueError("No quantized Conv layers found in model - some flags or args are wrong")
+    
+    # Count conv layers and set bitwidths
+    conv_layer_idx = 0
+    for module in model.modules():
+        if isinstance(module, conv_class):
+            assert conv_layer_idx < len(bitwidth_list), \
+                f"Bitwidth list (len={len(bitwidth_list)}) is not long enough for layer {conv_layer_idx}"
+            module.set_bitwidth(bitwidth_list[conv_layer_idx])
+            conv_layer_idx += 1
+    
+    # Verify we used all bitwidths
+    assert conv_layer_idx == len(bitwidth_list), \
+        f"Bitwidth list length ({len(bitwidth_list)}) doesn't match number of conv layers ({conv_layer_idx})"
+
+
 def setup_quantization_layers(model, quant_config):
     """
     Setup quantization functions for all quantized Conv layers in the model.
@@ -110,6 +202,71 @@ def setup_quantization_layers(model, quant_config):
     logging.info(f"  Weight quantization: {quant_config.get('weight_quantization', 'N/A')}")
     logging.info(f"  Activation quantization: {quant_config.get('activation_quantization', 'N/A')}")
     logging.info(f"  Bitwidth options: {quant_config.get('bitwidth_options', 'N/A')}")
+    
+    return model
+
+
+def setup_quantization_for_testing(model, config, test_function, device):
+    """
+    Setup quantization layers for testing based on the test function.
+    
+    This function:
+    1. Checks if quantization is needed based on test_function
+    2. Extracts quantization configuration from config if needed
+    3. Sets up quantization layers (creates importance_vector parameters)
+    4. Moves model to the appropriate device
+    
+    Args:
+        model: PyTorch model
+        config: Configuration dictionary
+        test_function: Test function name ('float', 'single_precision_quantized', 
+                      'random_bitwidth', 'single_precision_and_random_bitwidth')
+        device: torch.device to move model to
+    
+    Returns:
+        model: Model with quantization layers configured (if needed) and moved to device
+    """
+    # Check if quantization setup is needed based on test function
+
+    valid_test_functions = ['float', 'single_precision_quantized', 'random_bitwidth', 
+                           'single_precision_and_random_bitwidth']
+    valid_quantized_tessting_functions = ['single_precision_quantized', 'random_bitwidth', 
+                                          'single_precision_and_random_bitwidth']
+    if test_function not in valid_test_functions:
+        raise ValueError(f"Invalid test function: {test_function}, "
+                        f"must be one of: {valid_test_functions}")
+
+    quantization_enabled = config.get('quantization', {}).get('enable', False)
+    if test_function in valid_quantized_tessting_functions and not quantization_enabled:
+        raise ValueError("Quantization is not enabled in config. "
+                        "Cannot use quantized test functions without quantization enabled.")
+    
+
+    # Float test - no quantization layers needed
+    if test_function == 'float':
+        logging.info("Float test selected - no quantization layers needed")
+        model = model.to(device)
+        return model
+    
+    # For quantized tests, setup quantization layers
+    logging.info(f"Setting up quantization layers for {test_function} testing...")
+    
+    # Extract quantization configuration
+    quantization_method = config.get('quantization_method', None)
+    assert quantization_method is not None, "Quantization method is not provided in the config"
+    logging.info(f"Using quantization method: {quantization_method}")
+    
+    # Get nested quantization config (same as in training)
+    quant_config = config['quantization'][quantization_method]
+    
+    # Setup quantization layers FIRST
+    # This creates importance_vector parameters for QuanConvImportance layers
+    # or alpha parameters for PACT
+    # or bitwidth parameters for LSQ
+    model = setup_quantization_layers(model, quant_config)
+    model = model.to(device)
+    
+    logging.info("Quantization layers setup successfully")
     
     return model
 
@@ -167,10 +324,10 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
         apply_augmentation_fn: Function to apply augmentation
         num_configs: Number of random configurations to test
         bitwidth_options: List of bitwidth options
-        bin_tolerance: Tolerance for grouping bitwidths into bins (default: 0.5)
+        bin_tolerance: Tolerance for grouping relative memory into bins (default: 0.5)
     
     Returns:
-        dict: Statistics including mean, min, max, std for accuracy, loss, and bitwidth
+        dict: Statistics including mean, min, max, std for accuracy, loss, and relative memory
     """
     model.eval()
     results = []
@@ -183,8 +340,8 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
         # Set random bitwidths for all layers
         set_random_bitwidth_all_layers(model, bitwidth_options)
         
-        # Get average bitwidth for this configuration
-        avg_bitwidth = get_average_bitwidth(model)
+        # Get relative memory consumption for this configuration
+        relative_memory_consumption = get_relative_memory_consumption(model, max_bitwidth=max(bitwidth_options))
         
         # Run validation
         val_result = validate(
@@ -195,40 +352,40 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
         results.append({
             'accuracy': val_result['accuracy'],
             'loss': val_result['loss'],
-            'avg_bitwidth': avg_bitwidth if avg_bitwidth is not None else 0.0
+            'relative_memory_consumption': relative_memory_consumption if relative_memory_consumption is not None else 0.0
         })
         
-        bitwidth_str = f", Avg Bitwidth={avg_bitwidth:.2f}" if avg_bitwidth is not None else ""
+        memory_str = f", Relative Memory={relative_memory_consumption:.4f}" if relative_memory_consumption is not None else ""
         logging.info(f"  Config {i+1}/{num_configs}: Acc={val_result['accuracy']:.4f}, "
-                    f"Loss={val_result['loss']:.4f}{bitwidth_str}")
+                    f"Loss={val_result['loss']:.4f}{memory_str}")
     
     # Calculate statistics
     accuracies = [r['accuracy'] for r in results]
     losses = [r['loss'] for r in results]
-    avg_bitwidths = [r['avg_bitwidth'] for r in results]
+    relative_memory_consumptions = [r['relative_memory_consumption'] for r in results]
     
     # Calculate bin-level statistics
-    # Create bins based on unique bitwidths (rounded to 1 decimal)
-    unique_bitwidths = np.unique(np.round(avg_bitwidths, 1))
+    # Create bins based on unique relative memory values (rounded to 2 decimals)
+    unique_rel_mems = np.unique(np.round(relative_memory_consumptions, 2))
     
     bin_stats = []
     # Assign each data point to the closest bin center (no overlapping bins)
-    avg_bitwidths_array = np.array(avg_bitwidths)
+    rel_mem_array = np.array(relative_memory_consumptions)
     accuracies_array = np.array(accuracies)
     
-    for bw in unique_bitwidths:
+    for rm in unique_rel_mems:
         # Find data points closest to this bin center
-        distances = np.abs(avg_bitwidths_array - bw)
+        distances = np.abs(rel_mem_array - rm)
         
         # Assign each point to its closest bin
         # For each data point, check if this bin is the closest
-        mask = np.array([np.abs(avg_bw - bw) == np.min([np.abs(avg_bw - ub) for ub in unique_bitwidths]) 
-                         for avg_bw in avg_bitwidths_array])
+        mask = np.array([np.abs(rel_m - rm) == np.min([np.abs(rel_m - urm) for urm in unique_rel_mems]) 
+                         for rel_m in rel_mem_array])
         
         if np.sum(mask) > 0:
             bin_accs = accuracies_array[mask]
             bin_stats.append({
-                'bitwidth': float(bw),
+                'relative_memory': float(rm),
                 'mean_acc': float(np.mean(bin_accs)),
                 'std_acc': float(np.std(bin_accs)),
                 'min_acc': float(np.min(bin_accs)),
@@ -248,15 +405,15 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
         'min_loss': np.min(losses),
         'max_loss': np.max(losses),
         'std_loss': np.std(losses),
-        'mean_bitwidth': np.mean(avg_bitwidths),
-        'min_bitwidth': np.min(avg_bitwidths),
-        'max_bitwidth': np.max(avg_bitwidths),
-        'std_bitwidth': np.std(avg_bitwidths),
+        'mean_relative_memory_consumption': np.mean(relative_memory_consumptions),
+        'min_relative_memory_consumption': np.min(relative_memory_consumptions),
+        'max_relative_memory_consumption': np.max(relative_memory_consumptions),
+        'std_relative_memory_consumption': np.std(relative_memory_consumptions),
         'accuracy': np.mean(accuracies),  # For compatibility with standard validation
         'loss': np.mean(losses),
         # Store raw data for plotting
         'all_accuracies': accuracies,
-        'all_bitwidths': avg_bitwidths,
+        'all_relative_memory_consumptions': relative_memory_consumptions,
         # Store bin-level statistics
         'bin_stats': bin_stats,
         'avg_val_std': avg_val_std
@@ -268,14 +425,14 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
                 f"Max: {stats['max_acc']:.4f}, Std: {stats['std_acc']:.4f}")
     logging.info(f"  Loss - Mean: {stats['mean_loss']:.4f}, Min: {stats['min_loss']:.4f}, "
                 f"Max: {stats['max_loss']:.4f}, Std: {stats['std_loss']:.4f}")
-    logging.info(f"  Bitwidth - Mean: {stats['mean_bitwidth']:.2f}, Min: {stats['min_bitwidth']:.2f}, "
-                f"Max: {stats['max_bitwidth']:.2f}, Std: {stats['std_bitwidth']:.4f}")
+    logging.info(f"  Relative Memory - Mean: {stats['mean_relative_memory_consumption']:.4f}, Min: {stats['min_relative_memory_consumption']:.4f}, "
+                f"Max: {stats['max_relative_memory_consumption']:.4f}, Std: {stats['std_relative_memory_consumption']:.4f}")
     
     # Log bin-level statistics
     if bin_stats:
         logging.info(f"  Bin Statistics ({len(bin_stats)} bins, tolerance=±{bin_tolerance}):")
         for bin_stat in bin_stats:
-            logging.info(f"    Bitwidth {bin_stat['bitwidth']:.1f}: "
+            logging.info(f"    Relative Memory {bin_stat['relative_memory']:.4f}: "
                         f"Acc={bin_stat['mean_acc']:.4f}±{bin_stat['std_acc']:.4f} "
                         f"(n={bin_stat['count']})")
         logging.info(f"  Average Validation Std across bins: {avg_val_std:.4f}")
@@ -285,7 +442,7 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
 
 def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device, 
                                              augmenter, apply_augmentation_fn, 
-                                             num_configs):
+                                             num_configs, bitwidth_options=None):
     """
     Comprehensive validation for importance vector training with three modes:
     1. Random bitwidths (baseline comparison - uniform sampling)
@@ -300,24 +457,22 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
         augmenter: Data augmenter object
         apply_augmentation_fn: Function to apply augmentation
         num_configs: Number of configurations to test
+        bitwidth_options: List of bitwidth options (for determining max_bitwidth)
     
     Returns:
         dict: Comprehensive statistics for all three validation modes
     """
     conv_class = model.get_conv_class()
-    # Helper function to get average bitwidth for QuanConvImportance layers
+    
+    # Determine max_bitwidth for relative memory calculation
+    if bitwidth_options is None:
+        bitwidth_options = [8]  # Default to 8-bit
+    max_bw = max(bitwidth_options)
+    
+    # Helper function to get relative memory consumption for QuanConvImportance layers
     # Note: For stochastic modes, this reflects bitwidths from the last forward pass
-    def get_avg_bitwidth():
-        bitwidths = []
-        for module in model.modules():
-            if isinstance(module, conv_class):
-                if hasattr(module, 'curr_bitwidth') and module.curr_bitwidth is not None:
-                    bw = module.curr_bitwidth
-                    # Handle both tensor and scalar bitwidths (tensors come from Gumbel-Softmax sampling)
-                    if isinstance(bw, torch.Tensor):
-                        bw = bw.detach().cpu().item()
-                    bitwidths.append(bw)
-        return np.mean(bitwidths) if len(bitwidths) > 0 else 0.0
+    def get_rel_memory():
+        return get_relative_memory_consumption(model, max_bitwidth=max_bw)
     
     model.eval()
     
@@ -342,32 +497,32 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
             augmenter, apply_augmentation_fn
         )
         
-        # Get average bitwidth (from last batch)
-        avg_bitwidth = get_avg_bitwidth()
+        # Get relative memory consumption (from last batch)
+        rel_memory = get_rel_memory()
         
         random_results.append({
             'accuracy': val_result['accuracy'],
             'loss': val_result['loss'],
-            'avg_bitwidth': avg_bitwidth
+            'relative_memory_consumption': rel_memory if rel_memory is not None else 0.0
         })
         
-        bitwidth_str = f", Avg BW={avg_bitwidth:.2f}"
-        logging.info(f"  Config {i+1}/{num_configs}: Acc={val_result['accuracy']:.4f}{bitwidth_str}")
+        memory_str = f", Relative Memory={rel_memory:.4f}" if rel_memory is not None else ""
+        logging.info(f"  Config {i+1}/{num_configs}: Acc={val_result['accuracy']:.4f}{memory_str}")
     
     # Calculate random bitwidth statistics
     random_accs = [r['accuracy'] for r in random_results]
     random_losses = [r['loss'] for r in random_results]
-    random_bws = [r['avg_bitwidth'] for r in random_results]
+    random_rel_mems = [r['relative_memory_consumption'] for r in random_results]
     
     random_stats = {
         'mean_acc': np.mean(random_accs),
         'std_acc': np.std(random_accs),
         'mean_loss': np.mean(random_losses),
-        'mean_bitwidth': np.mean(random_bws),
+        'mean_relative_memory_consumption': np.mean(random_rel_mems),
     }
     
     logging.info(f"Random BW Stats: Acc={random_stats['mean_acc']:.4f}±{random_stats['std_acc']:.4f}, "
-                f"Loss={random_stats['mean_loss']:.4f}, BW={random_stats['mean_bitwidth']:.2f}")
+                f"Loss={random_stats['mean_loss']:.4f}, Rel Mem={random_stats['mean_relative_memory_consumption']:.4f}")
     
     # ========================================================================
     # Mode 2: Importance-Based Sampling (Stochastic from learned distribution)
@@ -439,16 +594,16 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
         model, val_loader, loss_fn, device,
         augmenter, apply_augmentation_fn
     )
-    avg_bitwidth = get_avg_bitwidth()
+    rel_memory = get_rel_memory()
     
     highest_conf_stats = {
         'accuracy': val_result['accuracy'],
         'loss': val_result['loss'],
-        'avg_bitwidth': avg_bitwidth
+        'relative_memory_consumption': rel_memory if rel_memory is not None else 0.0
     }
     
     logging.info(f"Highest Confidence Stats: Acc={highest_conf_stats['accuracy']:.4f}, "
-                f"Loss={highest_conf_stats['loss']:.4f}, BW={highest_conf_stats['avg_bitwidth']:.2f}")
+                f"Loss={highest_conf_stats['loss']:.4f}, Rel Mem={highest_conf_stats['relative_memory_consumption']:.4f}")
     
     # ========================================================================
     # Summary
@@ -456,9 +611,9 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
     logging.info("\n" + "=" * 80)
     logging.info("Validation Summary")
     logging.info("=" * 80)
-    logging.info(f"Random BW (uniform):     Acc={random_stats['mean_acc']:.4f}±{random_stats['std_acc']:.4f}, BW={random_stats['mean_bitwidth']:.2f}")
-    # logging.info(f"Importance Sampling:     Acc={importance_stats['mean_acc']:.4f}±{importance_stats['std_acc']:.4f}, BW={importance_stats['mean_bitwidth']:.2f}")
-    logging.info(f"Highest Confidence:      Acc={highest_conf_stats['accuracy']:.4f}, BW={highest_conf_stats['avg_bitwidth']:.2f}")
+    logging.info(f"Random BW (uniform):     Acc={random_stats['mean_acc']:.4f}±{random_stats['std_acc']:.4f}, Rel Mem={random_stats['mean_relative_memory_consumption']:.4f}")
+    # logging.info(f"Importance Sampling:     Acc={importance_stats['mean_acc']:.4f}±{importance_stats['std_acc']:.4f}, Rel Mem={importance_stats['mean_relative_memory_consumption']:.4f}")
+    logging.info(f"Highest Confidence:      Acc={highest_conf_stats['accuracy']:.4f}, Rel Mem={highest_conf_stats['relative_memory_consumption']:.4f}")
     logging.info("=" * 80)
     
     # Return comprehensive statistics
@@ -468,24 +623,24 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
             'mean_acc': random_stats['mean_acc'],
             'std_acc': random_stats['std_acc'],
             'mean_loss': random_stats['mean_loss'],
-            'mean_bitwidth': random_stats['mean_bitwidth'],
+            'mean_relative_memory_consumption': random_stats['mean_relative_memory_consumption'],
             'all_accuracies': random_accs,
-            'all_bitwidths': random_bws,
+            'all_relative_memory_consumptions': random_rel_mems,
         },
         # Mode 2: Importance sampling (stochastic)
         # 'importance': {
         #     'mean_acc': importance_stats['mean_acc'],
         #     'std_acc': importance_stats['std_acc'],
         #     'mean_loss': importance_stats['mean_loss'],
-        #     'mean_bitwidth': importance_stats['mean_bitwidth'],
+        #     'mean_relative_memory_consumption': importance_stats['mean_relative_memory_consumption'],
         #     'all_accuracies': importance_accs,
-        #     'all_bitwidths': importance_bws,
+        #     'all_relative_memory_consumptions': importance_rel_mems,
         # },
         # Mode 3: Highest confidence (deterministic argmax)
         'highest_conf': {
             'accuracy': highest_conf_stats['accuracy'],
             'loss': highest_conf_stats['loss'],
-            'avg_bitwidth': highest_conf_stats['avg_bitwidth'],
+            'relative_memory_consumption': highest_conf_stats['relative_memory_consumption'],
         },
         # Overall metrics (use highest_conf as main metric for model selection)
         'mean_acc': highest_conf_stats['accuracy'],
@@ -494,18 +649,18 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
     }
 
 
-def plot_bitwidth_vs_accuracy(bitwidths, accuracies, epoch, title="Bitwidth vs Accuracy", bin_tolerance=0.5):
+def plot_relative_memory_vs_accuracy(relative_memories, accuracies, epoch, title="Relative Memory vs Accuracy", bin_tolerance=0.5):
     """
-    Create a scatter plot or candlestick-style plot of bitwidth vs accuracy.
+    Create a scatter plot or candlestick-style plot of relative memory vs accuracy.
     
-    Groups results by bitwidth bins and shows mean and std deviation.
+    Groups results by relative memory bins and shows mean and std deviation.
     
     Args:
-        bitwidths: List of average bitwidths
+        relative_memories: List of relative memory consumptions
         accuracies: List of corresponding accuracies
         epoch: Current epoch number (for title)
         title: Plot title
-        bin_tolerance: Tolerance for grouping bitwidths into bins (default: 0.5)
+        bin_tolerance: Tolerance for grouping relative memories into bins (default: 0.5)
     
     Returns:
         matplotlib.figure.Figure: The created figure
@@ -513,13 +668,13 @@ def plot_bitwidth_vs_accuracy(bitwidths, accuracies, epoch, title="Bitwidth vs A
     fig, ax = plt.subplots(figsize=(10, 6))
     
     # Convert to numpy arrays
-    bitwidths = np.array(bitwidths)
+    relative_memories = np.array(relative_memories)
     accuracies = np.array(accuracies)
     
-    # Create bins based on unique bitwidths (rounded to 1 decimal)
-    unique_bitwidths = np.unique(np.round(bitwidths, 1))
+    # Create bins based on unique relative memories (rounded to 2 decimals)
+    unique_rel_mems = np.unique(np.round(relative_memories, 2))
     
-    if len(unique_bitwidths) > 1:
+    if len(unique_rel_mems) > 1:
         # Create bins - assign each point to its closest bin center
         bin_means = []
         bin_stds = []
@@ -527,14 +682,14 @@ def plot_bitwidth_vs_accuracy(bitwidths, accuracies, epoch, title="Bitwidth vs A
         bin_maxs = []
         bin_centers = []
         
-        for bw in unique_bitwidths:
+        for rm in unique_rel_mems:
             # Assign each point to its closest bin (no overlapping bins)
-            mask = np.array([np.abs(bw_val - bw) == np.min([np.abs(bw_val - ub) for ub in unique_bitwidths]) 
-                             for bw_val in bitwidths])
+            mask = np.array([np.abs(rm_val - rm) == np.min([np.abs(rm_val - urm) for urm in unique_rel_mems]) 
+                             for rm_val in relative_memories])
             
             if np.sum(mask) > 0:
                 bin_accs = accuracies[mask]
-                bin_centers.append(bw)
+                bin_centers.append(rm)
                 bin_means.append(np.mean(bin_accs))
                 bin_stds.append(np.std(bin_accs))
                 bin_mins.append(np.min(bin_accs))
@@ -547,7 +702,7 @@ def plot_bitwidth_vs_accuracy(bitwidths, accuracies, epoch, title="Bitwidth vs A
         bin_maxs = np.array(bin_maxs)
         
         # Plot individual points with transparency
-        ax.scatter(bitwidths, accuracies, alpha=0.3, s=50, c='lightblue', 
+        ax.scatter(relative_memories, accuracies, alpha=0.3, s=50, c='lightblue', 
                   edgecolors='blue', linewidth=0.5, label='Individual configs')
         
         # Plot mean line
@@ -563,13 +718,13 @@ def plot_bitwidth_vs_accuracy(bitwidths, accuracies, epoch, title="Bitwidth vs A
             ax.plot([bin_centers[i], bin_centers[i]], [bin_mins[i], bin_maxs[i]], 
                    'k-', alpha=0.3, linewidth=1, zorder=3)
     else:
-        # If only one bitwidth, just show scatter
-        ax.scatter(bitwidths, accuracies, alpha=0.6, s=100, c='blue', 
+        # If only one relative memory value, just show scatter
+        ax.scatter(relative_memories, accuracies, alpha=0.6, s=100, c='blue', 
                   edgecolors='darkblue', linewidth=1)
         ax.axhline(y=np.mean(accuracies), color='r', linestyle='--', 
                   linewidth=2, label=f'Mean: {np.mean(accuracies):.4f}')
     
-    ax.set_xlabel('Average Bitwidth', fontsize=12, fontweight='bold')
+    ax.set_xlabel('Relative Memory Consumption', fontsize=12, fontweight='bold')
     ax.set_ylabel('Validation Accuracy', fontsize=12, fontweight='bold')
     ax.set_title(f'{title} (Epoch {epoch + 1})', fontsize=14, fontweight='bold')
     ax.grid(True, alpha=0.3, linestyle='--')
@@ -577,7 +732,7 @@ def plot_bitwidth_vs_accuracy(bitwidths, accuracies, epoch, title="Bitwidth vs A
     
     # Add statistics text box
     stats_text = f'Mean Acc: {np.mean(accuracies):.4f} ± {np.std(accuracies):.4f}\n'
-    stats_text += f'Mean BW: {np.mean(bitwidths):.2f} ± {np.std(bitwidths):.2f}'
+    stats_text += f'Mean Rel Mem: {np.mean(relative_memories):.4f} ± {np.std(relative_memories):.4f}'
     ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
            fontsize=10, verticalalignment='top',
            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
@@ -1243,6 +1398,7 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
             # Get validation config
             val_config = config.get('quantization', {}).get('importance_vector_comprehensive_validation', {})
             num_configs = val_config.get('number_of_configs', 2)
+            bitwidth_options = quant_config.get('bitwidth_options', [8])
             
             val_stats = validate_importance_vector_comprehensive(
                 model=model,
@@ -1252,6 +1408,7 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
                 augmenter=augmenter,
                 apply_augmentation_fn=apply_augmentation_fn,
                 num_configs=num_configs,
+                bitwidth_options=bitwidth_options
             )
             
             # Use random bitwidth mean as the main metric (for model selection)
@@ -1302,14 +1459,14 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
             writer.add_scalar('Validation/min_acc', val_stats['min_acc'], epoch)
             writer.add_scalar('Validation/max_acc', val_stats['max_acc'], epoch)
             
-            # Log bitwidth statistics
-            writer.add_scalar('Bitwidth/mean_bitwidth', val_stats['mean_bitwidth'], epoch)
-            writer.add_scalar('Bitwidth/std_bitwidth', val_stats['std_bitwidth'], epoch)
-            writer.add_scalar('Bitwidth/min_bitwidth', val_stats['min_bitwidth'], epoch)
-            writer.add_scalar('Bitwidth/max_bitwidth', val_stats['max_bitwidth'], epoch)
+            # Log relative memory consumption statistics
+            writer.add_scalar('Relative_Memory_Consumption/mean_relative_memory_consumption', val_stats['mean_relative_memory_consumption'], epoch)
+            writer.add_scalar('Relative_Memory_Consumption/std_relative_memory_consumption', val_stats['std_relative_memory_consumption'], epoch)
+            writer.add_scalar('Relative_Memory_Consumption/min_relative_memory_consumption', val_stats['min_relative_memory_consumption'], epoch)
+            writer.add_scalar('Relative_Memory_Consumption/max_relative_memory_consumption', val_stats['max_relative_memory_consumption'], epoch)
         
         # Additional validation metrics for importance_vector_comprehensive
-        if validation_function == "importance_vector_comprehensive":
+        if validation_function == "importance_vector_comprehensive_validation":
             # Log all three validation modes
             writer.add_scalar('Validation/random_mean_acc', val_stats['random']['mean_acc'], epoch)
             writer.add_scalar('Validation/random_std_acc', val_stats['random']['std_acc'], epoch)
@@ -1317,10 +1474,10 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
             # writer.add_scalar('Validation/importance_std_acc', val_stats['importance']['std_acc'], epoch)
             writer.add_scalar('Validation/highest_conf_acc', val_stats['highest_conf']['accuracy'], epoch)
             
-            # Log bitwidth statistics for all modes
-            writer.add_scalar('Bitwidth/random_mean_bw', val_stats['random']['mean_bitwidth'], epoch)
-            # writer.add_scalar('Bitwidth/importance_mean_bw', val_stats['importance']['mean_bitwidth'], epoch)
-            writer.add_scalar('Bitwidth/highest_conf_bw', val_stats['highest_conf']['avg_bitwidth'], epoch)
+            # Log relative memory consumption statistics for all modes
+            writer.add_scalar('Relative_Memory_Consumption/random_mean_rel_mem', val_stats['random']['mean_relative_memory_consumption'], epoch)
+            # writer.add_scalar('Relative_Memory_Consumption/importance_mean_rel_mem', val_stats['importance']['mean_relative_memory_consumption'], epoch)
+            writer.add_scalar('Relative_Memory_Consumption/highest_conf_rel_mem', val_stats['highest_conf']['relative_memory_consumption'], epoch)
             
             # Create comparison plot
             try:
@@ -1358,18 +1515,18 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
             except Exception as e:
                 logging.warning(f"Could not create validation comparison plot: {e}")
             
-            # Create and log bitwidth vs accuracy plot (every 5 epochs or last epoch)
+            # Create and log relative memory vs accuracy plot (every 5 epochs or last epoch)
             if (epoch + 1) % 5 == 0 or epoch == num_epochs - 1:
-                bitwidth_acc_fig = plot_bitwidth_vs_accuracy(
-                    bitwidths=val_stats['all_bitwidths'],
+                rel_mem_acc_fig = plot_relative_memory_vs_accuracy(
+                    relative_memories=val_stats['all_relative_memory_consumptions'],
                     accuracies=val_stats['all_accuracies'],
                     epoch=epoch,
-                    title="Bitwidth vs Validation Accuracy",
+                    title="Relative Memory vs Validation Accuracy",
                     bin_tolerance=bin_tolerance
                 )
-                writer.add_figure('Bitwidth_Analysis/bitwidth_vs_accuracy', bitwidth_acc_fig, epoch)
-                plt.close(bitwidth_acc_fig)
-                logging.info(f"  Bitwidth vs Accuracy plot logged to TensorBoard")
+                writer.add_figure('Relative_Memory_Analysis/relative_memory_vs_accuracy', rel_mem_acc_fig, epoch)
+                plt.close(rel_mem_acc_fig)
+                logging.info(f"  Relative Memory vs Accuracy plot logged to TensorBoard")
         
         # Additional logging for importance vector training
         if training_method == "joint_quantization_with_importance_vector":

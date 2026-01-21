@@ -1,19 +1,29 @@
 """
 Testing Script
 
-This script tests a trained model with two modes:
+This script tests a trained model with multiple modes:
 1. Load a specific checkpoint via --checkpoint_path
 2. Auto-find the latest experiment with --auto_latest
+3. Test from an experiment directory with --experiments_dir
 
 Usage:
-    # Test with specific checkpoint
-    python test.py --checkpoint_path /path/to/checkpoint.pth
+    # Mode 1: Test with specific checkpoint
+    python test.py --checkpoint_path /path/to/checkpoint.pth --test_function float
     
-    # Auto-find latest experiment
-    python test.py --auto_latest --model resnet --yaml_path /path/to/config.yaml
+    # Mode 2: Auto-find latest experiment (commented out in current version)
+    # python test.py --auto_latest --model resnet --yaml_path /path/to/config.yaml --test_function float
     
-    # Test specific checkpoint with custom test function
-    python test.py --checkpoint_path /path/to/checkpoint.pth --use_best
+    # Mode 3: Test from experiment directory (uses best model by default)
+    python test.py --experiment_dir /path/to/experiment --test_function float
+    
+    # Mode 3a: Test specific checkpoint by epoch number
+    python test.py --experiment_dir /path/to/experiment --run_checkpoint 10 --test_function float
+    
+    # Mode 3b: Test multiple specific checkpoints by epoch numbers
+    python test.py --experiment_dir /path/to/experiment --run_checkpoint 10 20 30 --test_function float
+    
+    # Mode 3c: Test all checkpoints in the experiment
+    python test.py --experiment_dir /path/to/experiment --run_all_checkpoints --test_function float
 """
 
 import sys
@@ -22,168 +32,50 @@ import argparse
 import torch
 import yaml
 from pathlib import Path
+import datetime
+import json
 
 # Add src2 to path for imports
 src2_path = Path(__file__).parent.parent
 sys.path.insert(0, str(src2_path))
 
-from dataset_utils.parse_args_utils import get_config, load_yaml_config
+from dataset_utils.parse_args_utils import get_config, load_yaml_config, parse_test_args
 from dataset_utils.MultiModalDataLoader import create_dataloaders
 from data_augmenter import create_augmenter, apply_augmentation
 from models.create_models import create_model
 from train_test.loss import get_loss_function
 from train_test.train_test_utils import test
+from train_test.quantization_train_test_utils import setup_quantization_for_testing
+from train_test.quantization_test_functions import (
+    test_float,
+    test_simple,
+    test_random_bitwidths,
+    load_and_test_float,
+    load_and_test_single_precision,
+    load_and_test_random_bitwidths
+)
+from train_test.normalize import setup_normalization
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+from train_test.quantization_test_utils import (
+    find_latest_experiment,
+    find_all_epoch_checkpoints,
+    get_checkpoint_by_epoch,
+    load_config_from_experiment,
+    get_checkpoint_path,
+    setup_test_run_directory,
+    setup_checkpoint_from_path,
+    setup_checkpoints_from_experiment_dir,
+    setup_test_function_directory,
+    save_single_precision_results_to_csv,
+    validate_test_args
 )
 
-
-def parse_test_args():
-    """
-    Parse command line arguments specific to testing.
-    
-    Returns:
-        args: Parsed arguments
-    """
-    parser = argparse.ArgumentParser(
-        description='Test a trained model'
-    )
-    
-    # Checkpoint loading modes
-    mode_group = parser.add_mutually_exclusive_group(required=False)
-    mode_group.add_argument(
-        '--checkpoint_path',
-        type=str,
-        help='Path to specific checkpoint file to test'
-    )
-    mode_group.add_argument(
-        '--auto_latest',
-        action='store_true',
-        help='Automatically find and test the most recent experiment'
-    )
-    
-    # Model selection for auto_latest mode
-    parser.add_argument(
-        '--use_best',
-        action='store_true',
-        default=True,
-        help='Use best model checkpoint (default: True). If False, uses last epoch.'
-    )
-    
-    # Standard arguments (needed for auto_latest or if no checkpoint specified)
-    parser.add_argument(
-        '--model',
-        type=str,
-        help='Model name (e.g., ResNet, DeepSense)'
-    )
-    
-    parser.add_argument(
-        '--model_variant',
-        type=str,
-        help='Model variant (e.g., resnet18, resnet50)'
-    )
-    
-    parser.add_argument(
-        '--yaml_path',
-        type=str,
-        help='Path to YAML configuration file'
-    )
-    
-    parser.add_argument(
-        '--gpu',
-        type=int,
-        default=0,
-        help='GPU to use'
-    )
-    
-    parser.add_argument(
-        '--experiments_dir',
-        type=str,
-        default='/home/misra8/sensing-nn/src2/experiments',
-        help='Base directory for experiments'
-    )
-    
-    return parser.parse_args()
-
-
-def find_latest_experiment(experiments_dir):
-    """
-    Find the most recent experiment directory.
-    
-    Args:
-        experiments_dir: Base directory containing experiments
-    
-    Returns:
-        experiment_path: Path to the latest experiment directory
-    """
-    experiments_path = Path(experiments_dir)
-    
-    if not experiments_path.exists():
-        raise FileNotFoundError(f"Experiments directory not found: {experiments_dir}")
-    
-    # Get all experiment directories (format: YYYYMMDD_HHMMSS_*)
-    experiment_dirs = [d for d in experiments_path.iterdir() if d.is_dir()]
-    
-    if not experiment_dirs:
-        raise FileNotFoundError(f"No experiments found in: {experiments_dir}")
-    
-    # Sort by directory name (which includes timestamp)
-    experiment_dirs.sort(reverse=True)
-    latest_experiment = experiment_dirs[0]
-    
-    logging.info(f"Found latest experiment: {latest_experiment.name}")
-    
-    return latest_experiment
-
-
-def load_config_from_experiment(experiment_dir):
-    """
-    Load configuration from an experiment directory.
-    
-    Args:
-        experiment_dir: Path to experiment directory
-    
-    Returns:
-        config: Configuration dictionary
-    """
-    config_path = Path(experiment_dir) / "config.yaml"
-    
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found in experiment: {config_path}")
-    
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    
-    logging.info(f"Loaded config from: {config_path}")
-    
-    return config
-
-
-def get_checkpoint_path(experiment_dir, use_best=True):
-    """
-    Get the path to a checkpoint in an experiment directory.
-    
-    Args:
-        experiment_dir: Path to experiment directory
-        use_best: If True, return best_model.pth; else last_epoch.pth
-    
-    Returns:
-        checkpoint_path: Path to the checkpoint file
-    """
-    models_dir = Path(experiment_dir) / "models"
-    
-    if use_best:
-        checkpoint_path = models_dir / "best_model.pth"
-    else:
-        checkpoint_path = models_dir / "last_epoch.pth"
-    
-    if not checkpoint_path.exists():
-        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-    
-    return checkpoint_path
+# Configure logging (console only initially, file handler added later)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]  # Only console handler initially
+)
 
 
 def main():
@@ -198,77 +90,53 @@ def main():
     
     test_args = parse_test_args()
     
+    # Validate argument combinations
+    validate_test_args(test_args)
     # Determine mode and setup paths
-    if test_args.checkpoint_path:
-        # Mode 1: Specific checkpoint provided
-        logging.info("Mode: Testing specific checkpoint")
-        checkpoint_path = Path(test_args.checkpoint_path)
+    try:
+        if test_args.checkpoint_path:
+            # Mode 1: Specific checkpoint provided
+            experiment_dir, checkpoint_paths, config = setup_checkpoint_from_path(
+                test_args
+            )
         
-        if not checkpoint_path.exists():
-            logging.error(f"Checkpoint not found: {checkpoint_path}")
-            sys.exit(1)
-        
-        # Infer experiment directory from checkpoint path
-        # Expected structure: experiment_dir/models/checkpoint.pth
-        experiment_dir = checkpoint_path.parent.parent
-        
-        # Load config from experiment
-        config = load_config_from_experiment(experiment_dir)
-        
-    elif test_args.auto_latest:
-        # Mode 2: Auto-find latest experiment
-        logging.info("Mode: Auto-finding latest experiment")
-        
-        experiment_dir = find_latest_experiment(test_args.experiments_dir)
-        
-        # Load config from experiment
-        config = load_config_from_experiment(experiment_dir)
-        
-        # Get checkpoint path
-        checkpoint_path = get_checkpoint_path(experiment_dir, use_best=test_args.use_best)
-        
-    else:
-        # Mode 3: Use provided config, no checkpoint loading (test current model)
-        logging.info("Mode: Testing with provided config (no checkpoint)")
-        
-        if not test_args.model or not test_args.yaml_path:
-            logging.error("When not using --checkpoint_path or --auto_latest, "
-                        "you must provide --model and --yaml_path")
-            sys.exit(1)
-        
-        # Load config from arguments
-        config = load_yaml_config(test_args.yaml_path)
-        config['model'] = test_args.model
-        config['yaml_path'] = test_args.yaml_path
-        config['device'] = f'cuda:{test_args.gpu}'
-        if test_args.model_variant:
-            config['model_variant'] = test_args.model_variant
-        
-        # No checkpoint to load
-        checkpoint_path = None
-        
-        # Create a temporary experiment directory for results
-        from train_test.train_test_utils import setup_experiment_dir
-        experiment_dir, _ = setup_experiment_dir(config)
+        elif test_args.experiments_dir:
+            # Mode 2: Experiment directory with checkpoint selection
+            experiment_dir, checkpoint_paths, config = setup_checkpoints_from_experiment_dir(
+                test_args
+            )
+        else:
+            raise ValueError("Must provide either --checkpoint_path or --experiments_dir")
+    
+    except FileNotFoundError as e:
+        logging.error(str(e))
+        sys.exit(1)
     
     # Update device if GPU specified
     if test_args.gpu is not None:
         config['device'] = f'cuda:{test_args.gpu}'
     
     logging.info(f"Experiment directory: {experiment_dir}")
-    if checkpoint_path:
-        logging.info(f"Checkpoint: {checkpoint_path}")
+    logging.info(f"Number of checkpoints to test: {len(checkpoint_paths)}")
+    for cp in checkpoint_paths:
+        logging.info(f"  - {cp.name}")
     logging.info(f"Device: {config.get('device', 'cpu')}")
     
     # ========================================================================
-    # 2. Create Dataloaders (test set only)
+    # 2. Create Dataloaders (test set only) - Shared across all checkpoints
     # ========================================================================
     logging.info("\nCreating dataloaders...")
     train_loader, val_loader, test_loader = create_dataloaders(config=config)
     logging.info(f"  Test batches: {len(test_loader)}")
+
+    logging.info("\nSetting up normalization...")
+    train_loader, val_loader, test_loader = setup_normalization(
+        train_loader, val_loader, test_loader, config
+    )
+    logging.info("Normalization setup complete")
     
     # ========================================================================
-    # 3. Create Augmenter
+    # 3. Create Augmenter - Shared across all checkpoints
     # ========================================================================
     logging.info("\nCreating augmenter...")
     # Create augmenter for data transformation (time -> frequency domain)
@@ -276,58 +144,158 @@ def main():
     logging.info("Augmenter created successfully")
     
     # ========================================================================
-    # 4. Create Model
+    # 4. Setup Loss Function - Shared across all checkpoints
     # ========================================================================
-    logging.info("\nCreating model...")
+    # Create a temporary model for loss function setup
+    temp_model = create_model(config)
+    loss_fn, loss_fn_name = get_loss_function(config=config, model=temp_model)
+    logging.info(f"Loss function: {loss_fn_name}")
+    del temp_model
+    
+    device = torch.device(config.get('device', 'cuda:0') if torch.cuda.is_available() else 'cpu')
+    
+    # ========================================================================
+    # 5. Loop Through Checkpoints
+    # ========================================================================
+    all_results = {}
+    
     model = create_model(config)
     
     # ========================================================================
-    # 5. Setup Loss Function
+    # 5. Setup Quantization (if applicable) - ONCE for all checkpoints
     # ========================================================================
-    loss_fn = get_loss_function(config=config)
+    logging.info("\nSetting up model for testing...")
+    model = setup_quantization_for_testing(model, config, test_args.test_function, device)
     
     # ========================================================================
-    # 6. Run Testing
+    # 6. Loop Through Checkpoints
+    # ========================================================================
+    for checkpoint_idx, checkpoint_path in enumerate(checkpoint_paths):
+        logging.info("\n" + "=" * 80)
+        logging.info(f"TESTING CHECKPOINT {checkpoint_idx + 1}/{len(checkpoint_paths)}")
+        logging.info(f"Checkpoint: {checkpoint_path.name}")
+        logging.info("=" * 80 + "\n")
+        
+        # ========================================================================
+        # 6a. Setup Test Run Directory and File Logging for this checkpoint
+        # ========================================================================
+        logging.info("Setting up test run directory...")
+        # Use the shared helper that also creates logs.txt and attaches a file handler.
+        test_run_suffix = f"{test_args.test_function}_{checkpoint_path.stem}"
+        test_run_dir, log_file_path = setup_test_run_directory(experiment_dir, test_run_suffix)
+        logging.info(f"Test run directory: {test_run_dir}")
+        logging.info(f"Test log file: {log_file_path}")
+        
+        
+        # ========================================================================
+        # 6c. Run Testing for this checkpoint
+        # ========================================================================
+        logging.info("\nSTARTING TESTING")
+        logging.info("=" * 80 + "\n")
+        
+        try:
+            # Run appropriate test function based on test_function argument
+            if test_args.test_function == 'float':
+                test_results = load_and_test_float(
+                    model=model,
+                    checkpoint_path=checkpoint_path,
+                    test_loader=test_loader,
+                    loss_fn=loss_fn,
+                    device=device,
+                    augmenter=augmenter,
+                    apply_augmentation_fn=apply_augmentation
+                )
+                
+            elif test_args.test_function == 'single_precision_quantized':
+                test_results = load_and_test_single_precision(
+                    model=model,
+                    checkpoint_path=checkpoint_path,
+                    test_loader=test_loader,
+                    loss_fn=loss_fn,
+                    device=device,
+                    augmenter=augmenter,
+                    apply_augmentation_fn=apply_augmentation,
+                    config=config,
+                    test_args=test_args
+                )
+                
+                # Save single precision results to CSV
+                csv_filename = f"single_precision_results_{checkpoint_path.stem}.csv"
+                csv_path = test_run_dir / csv_filename
+                save_single_precision_results_to_csv(
+                    test_results=test_results,
+                    output_path=csv_path,
+                    checkpoint_name=checkpoint_path.name
+                )
+                
+            elif test_args.test_function == 'random_bitwidth':
+                # breakpoint()
+                test_results = load_and_test_random_bitwidths(
+                    model=model,
+                    checkpoint_path=checkpoint_path,
+                    test_loader=test_loader,
+                    loss_fn=loss_fn,
+                    device=device,
+                    augmenter=augmenter,
+                    apply_augmentation_fn=apply_augmentation,
+                    config=config,
+                    test_args=test_args
+                )
+
+                # Persist results so the test_run dir isn't empty.
+                # (This also makes it easy to post-process later.)
+                json_path = test_run_dir / f"random_bitwidth_results_{checkpoint_path.stem}.json"
+                with open(json_path, "w") as f:
+                    json.dump(test_results, f, indent=2)
+                logging.info(f"Random bitwidth results saved to: {json_path}")
+                
+            else:
+                raise ValueError(f"Invalid test function: {test_args.test_function}, "
+                              f"must be one of: float, single_precision_quantized, random_bitwidth")
+            
+            # ========================================================================
+            # 6d. Log Results for this checkpoint
+            # ========================================================================
+            logging.info("\n" + "=" * 80)
+            logging.info(f"TESTING COMPLETED FOR CHECKPOINT: {checkpoint_path.name}")
+            logging.info("=" * 80)
+            for key, value in (test_results.items() if test_results else []):
+                logging.info(f"{key}: {value} \n")
+            logging.info(f"Test run directory: {test_run_dir}")
+            logging.info("=" * 80)
+            
+            # Store results for this checkpoint
+            all_results[checkpoint_path.name] = test_results
+            
+        except KeyboardInterrupt:
+            logging.info("\n" + "=" * 80)
+            logging.warning(f"Testing interrupted by user on checkpoint: {checkpoint_path.name}")
+            logging.info("=" * 80)
+            sys.exit(0)
+        
+        except Exception as e:
+            logging.error("\n" + "=" * 80)
+            logging.error(f"ERROR DURING TESTING OF CHECKPOINT: {checkpoint_path.name}")
+            logging.error("=" * 80)
+            logging.error(f"Error: {e}")
+            import traceback
+            traceback.print_exc()
+            # Continue to next checkpoint instead of exiting
+            logging.info("Continuing to next checkpoint...")
+            continue
+    
+    # ========================================================================
+    # 7. Final Summary
     # ========================================================================
     logging.info("\n" + "=" * 80)
-    logging.info("STARTING TESTING")
-    logging.info("=" * 80 + "\n")
-    
-    try:
-        test_results = test(
-            model=model,
-            test_loader=test_loader,
-            config=config,
-            experiment_dir=experiment_dir,
-            checkpoint_path=checkpoint_path,
-            loss_fn=loss_fn,
-            test_fn=None,  # Use default test function
-            augmenter=augmenter,
-            apply_augmentation_fn=apply_augmentation
-        )
-        
-        logging.info("\n" + "=" * 80)
-        logging.info("TESTING COMPLETED SUCCESSFULLY!")
-        logging.info("=" * 80)
-        logging.info(f"Test Loss: {test_results['loss']:.4f}")
-        logging.info(f"Test Accuracy: {test_results['accuracy']:.4f}")
-        logging.info(f"Results saved to: {experiment_dir}/logs/test_results.txt")
-        logging.info("=" * 80)
-        
-    except KeyboardInterrupt:
-        logging.info("\n" + "=" * 80)
-        logging.warning("Testing interrupted by user")
-        logging.info("=" * 80)
-        sys.exit(0)
-    
-    except Exception as e:
-        logging.error("\n" + "=" * 80)
-        logging.error("ERROR DURING TESTING")
-        logging.error("=" * 80)
-        logging.error(f"Error: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+    logging.info("ALL TESTING COMPLETED!")
+    logging.info("=" * 80)
+    # logging.info(f"Tested {len(all_results)} checkpoint(s)")
+    # for checkpoint_name, results in all_results.items():
+    #     logging.info(f"\n{checkpoint_name}:")
+    #     for key, value in (results.items() if results else []):
+    #         logging.info(f"  {key}: {value}")
+    # logging.info("=" * 80)
 
 
 if __name__ == "__main__":
