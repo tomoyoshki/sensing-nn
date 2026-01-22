@@ -1,0 +1,154 @@
+\section{Methodology}
+\label{sec:methodology}
+In this section, we outline the key innovations of \name's design that achieve
+enhanced accuracy under dynamic resource constraints. The total loss
+($\mathcal{L}_{\text{total}}$) consists of three components: (a) Cross-Entropy
+loss ($\mathcal{L}_{\text{CE}}$), (b) Bit Cost ($\mathcal{L}_{\text{BC}}$),
+and (c) Distillation Loss of hidden activations ($\mathcal{L}_{\text{DL}}$). Both,
+$\mathcal{L}_{\text{BC}}$ and $\mathcal{L}_{\text{DL}}$ are weighted by spectrally
+informed properties of the frequency band (Section~\ref{sec:optimization_process}).
+For QSE, we design a value function and a novel greedy algorithm to solve the
+MCKP for quantization scheme selection (Section~\ref{sec:qse}).
+\fixmeam{needs to be refined}
+
+\subsection{Optimization Process}
+\label{sec:optimization_process}
+To construct the training loss function, we first introduce a \textit{Spectral
+Saliency Measure} that quantifies the task-relevance of each frequency band.
+Recall from Section~\ref{sec:problem_formulation} that the frequency dimension
+is partitioned into $G$ disjoint bands.
+\fixmeam{Write why this works as saliency metric, give an introductory sentence on what we need to achieve and then show the mathematically formulate it}
+For each frequency bin $i \in G_g$, we compute the bin-level saliency as 
+$i_j = E_j \times (1 - \mathcal{H}_j)$, where $E_j$ and $\mathcal{H}_j$ denote the energy 
+and normalized entropy of bin $j$ across $T$ time steps, respectively. 
+The \textit{Band Saliency} for band $g$ is then:
+\begin{equation}
+    I_g = \sum_{j \in G_g} i_j = \sum_{j \in G_g} E_j \times (1 - \mathcal{H}_j)
+\end{equation}
+
+High-energy bins with low entropy (structured signal) have higher saliency
+values, than low-energy or high-entropy bins (noise). The \textit{Relative Band
+Saliency} is defined as:
+\begin{equation}
+    \tilde{I}_g = \frac{I_g}{\sum_{j=1}^{G} I_j + \epsilon}
+\end{equation}
+where $\epsilon$ is a small constant for numerical stability.
+
+For each band $g$ at layer $l$, we define $\boldsymbol{\beta}_g^{(l)} = [\beta_{g,k}^{(l)}] \, {k \in \mathcal{K}}$ 
+as a learnable categorical distribution over bitwidths in $\mathcal{K}$, parameterized via 
+Gumbel-Softmax\fixmeam{cite Jang et al. 2017 Gumbel-Softmax} for differentiable sampling.
+
+We leverage both $\tilde{I}_g$ and $\boldsymbol{\beta}_g^{(l)}$ to weight the distillation loss $\mathcal{L}_{DL}$ 
+and bit cost $\mathcal{L}_{BC}$, prioritizing precision allocation to salient frequency regions.
+
+%==============================================================================
+\subsubsection{Weighted Distillation Loss}
+%==============================================================================
+
+We formulate a weighted distillation loss between the hidden activations of a 32-bit
+floating-point ``teacher'' model and a low-bitwidth ``student'' model. The key idea is that
+it is more important to mimic the teacher on frequency bands with high saliency scores,
+while bands with low saliency (i.e., noise) can tolerate larger distillation errors.
+
+\fixmeam{not sure how this came to be if we introducing then we should that - }
+The student model employs \fixmeam{soft/hard} quantization during training: for each band $g$ at layer $l$,
+the student's feature map is defined as:
+\begin{equation}
+    \mathbf{S}^{(l,g)} = \sum_{k \in \mathcal{K}} \beta_{g,k}^{(l)} \cdot \left( Q_k(\mathbf{W}^{(l,g)}) \ast Q_k(\mathbf{X}^{(l,g)}) \right)
+\end{equation}
+
+To ensure that bands with near-zero saliency do not contribute to the loss, we introduce a \textit{Soft Mask}:
+\begin{equation}
+    m_g = \frac{\tilde{I}_g}{\tilde{I}_g + \delta}
+\end{equation}
+where $\delta$ is a small threshold controlling the suppression of low-saliency bands.
+
+The \textit{Layer Depth Decay} function controls the contribution of spectral information across layers:
+\begin{equation}
+    \alpha(l) = \cos\left(\frac{\pi l}{2L}\right)
+\end{equation}
+where $L$ is the total number of layers. The intuition is that early layers preserve spectral structure
+due to the locality of convolutional operations, while deeper layers learn increasingly abstract features
+where the original spectral properties are less relevant. As $l \to L$, $\alpha(l) \to 0$.
+
+The \textit{Spectral Saliency Weight} for band $g$ at layer $l$ is defined as:
+\begin{equation}
+    w_g(l) = \frac{m_g \cdot \left[ \alpha(l) \cdot \tilde{I}_g + (1 - \alpha(l)) \cdot \frac{1}{G} \right]}{\sum_{j=1}^{G} m_j \cdot \left[ \alpha(l) \cdot \tilde{I}_j + (1 - \alpha(l)) \cdot \frac{1}{G} \right] + \epsilon}
+\end{equation}
+
+This formulation interpolates between saliency-weighted distillation (early layers) and uniform distillation (deep layers),
+while ensuring that bands with zero saliency never contribute to the loss.
+
+The \textit{Weighted Distillation Loss} is:
+\begin{equation}
+    \mathcal{L}_{DL} = \sum_{l=1}^{L} G \cdot \sum_{g=1}^{G} w_g(l) \cdot \| \mathbf{T}^{(l,g)} - \mathbf{S}^{(l,g)} \|_2^2
+\end{equation}
+where $\mathbf{T}^{(l,g)}$ and $\mathbf{S}^{(l,g)}$ are the teacher's and student's feature maps 
+for the $g$-th frequency band at the $l$-th layer, respectively.
+
+\textbf{Edge Cases:} (i) If all $\tilde{I}_g = 0$, then $m_g = 0$ for all $g$, yielding $\mathcal{L}_{DL} = 0$ (nothing to learn).
+(ii) If all $\tilde{I}_g = \frac{1}{G}$ (equal saliency), the loss reduces to traditional distillation: 
+$\mathcal{L}_{DL} = \sum_{l} \| \mathbf{T}^{(l)} - \mathbf{S}^{(l)} \|_2^2$.
+(iii) At deep layers ($\alpha(l) \to 0$), the weights become uniform among active bands regardless of saliency.
+
+
+%==============================================================================
+\subsubsection{Weighted Bit Cost}
+%==============================================================================
+
+Let $\mathbf{W}^{(l)}$ denote the full-precision weights for layer $l$, and let
+$\mathcal{K} = \{2, 4, 8, \dots\}$ be the set of candidate bit-widths. 
+The intra-layer mixed-precision quantization function for layer $l$ is $Q(\cdot, \mathbf{k}_l)$ 
+where $\mathbf{k}_l \in \mathcal{K}^{G}$ assigns a bit-width to each frequency band.
+
+Using the probabilities $\boldsymbol{\beta}_g^{(l)}$ defined above, the expected \textit{Bit Cost} for band $g$ is:
+\begin{equation}
+    B_g^{(l)} = \sum_{b \in \mathcal{K}} \beta_{g,b}^{(l)} \cdot b = \beta_{g,2}^{(l)} \cdot 2 + \beta_{g,4}^{(l)} \cdot 4 + \beta_{g,8}^{(l)} \cdot 8
+\end{equation}
+
+Unlike distillation where equal saliency means ``learn from all equally,'' for bit allocation, 
+equal saliency means ``no discriminative signal'' and should default to minimizing bit cost.
+To capture this, we introduce a \textit{Variance Gate}:
+\begin{equation}
+    \sigma^2 = \frac{1}{G} \sum_{g=1}^{G} \left( \tilde{I}_g - \frac{1}{G} \right)^2, \qquad
+    \gamma = \frac{\sigma^2}{\sigma^2 + \eta}
+\end{equation}
+where $\eta$ controls the sensitivity. When all bands have equal saliency, $\sigma^2 = 0$ and $\gamma = 0$.
+
+The \textit{Bit Allocation Coefficient} for band $g$ at layer $l$ is:
+\begin{equation}
+    c_g(l) = \alpha(l) \cdot \gamma \cdot m_g \cdot \frac{\tilde{I}_g}{\max_{j} \tilde{I}_j + \epsilon}
+\end{equation}
+
+This coefficient is bounded in $[0, 1]$ and determines whether to minimize bit cost ($c_g \to 0$) 
+or maximize bit-width ($c_g \to 1$) for each band.
+
+The \textit{Weighted Bit Cost Loss} is:
+\begin{equation}
+    \mathcal{L}_{BC} = \sum_{l=1}^{L} \sum_{g=1}^{G} \left[ (1 - c_g(l)) \cdot B_g^{(l)} + c_g(l) \cdot (B_{\max} - B_g^{(l)}) \right]
+\end{equation}
+where $B_{\max} = 8$ (or the maximum bit-width in $\mathcal{K}$).
+
+\textbf{Edge Cases:} (i) If all $\tilde{I}_g = 0$, then $m_g = 0$, so $c_g(l) = 0$ and the optimizer minimizes $B_g^{(l)}$.
+(ii) If all $\tilde{I}_g$ are equal, then $\gamma = 0$, so $c_g(l) = 0$ and bit cost is minimized (no saliency signal to guide allocation).
+(iii) At deep layers ($\alpha(l) \to 0$), $c_g(l) \to 0$ for all bands, defaulting to bit cost minimization.
+(iv) For the highest-saliency band at early layers, $c_g(l) \to 1$, pushing it toward $B_{\max}$.
+
+
+%==============================================================================
+\subsubsection{Total Loss}
+%==============================================================================
+
+The total training objective combines task loss, distillation loss, and bit cost:
+\begin{equation}
+    \mathcal{L}_{\text{total}} = \mathcal{L}_{\text{task}} + \lambda_{DL} \cdot \mathcal{L}_{DL} + \lambda_{BC} \cdot \mathcal{L}_{BC}
+\end{equation}
+where $\lambda_{DL}$ and $\lambda_{BC}$ are hyperparameters controlling the relative importance of each term.
+
+\fixmeam{take advice how to show $p(\mu|k)$}
+
+
+\subsection{Quantization Scheme Estimation}
+\label{sec:qse}
+
+

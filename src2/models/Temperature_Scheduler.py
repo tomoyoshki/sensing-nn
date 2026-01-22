@@ -123,6 +123,10 @@ class TemperatureScheduler(ABC):
         """Get the current temperature"""
         return self.current_temp
     
+    def get_temperature(self):
+        """Get the current temperature (alias for get_last_temp)"""
+        return self.current_temp
+    
     def state_dict(self):
         """Return state dict for checkpointing"""
         return {

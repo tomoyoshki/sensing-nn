@@ -27,6 +27,197 @@ import matplotlib.patches as mpatches
 
 
 
+def log_loss_components_to_tensorboard(writer, loss_components, global_step, prefix='Train/Batch', exclude_keys=None):
+    """
+    Log all loss components to TensorBoard.
+    
+    Args:
+        writer: TensorBoard SummaryWriter
+        loss_components: Dict of loss component names to values
+        global_step: Global step for TensorBoard logging
+        prefix: Prefix for the scalar names (default: 'Train/Batch')
+        exclude_keys: List of keys to exclude from logging (default: ['lambda_BC'])
+    """
+    if writer is None:
+        return
+    
+    if exclude_keys is None:
+        exclude_keys = ['lambda_BC']
+    
+    for key, value in loss_components.items():
+        if key not in exclude_keys:
+            writer.add_scalar(f'{prefix}_{key}', value, global_step)
+
+
+def log_freqquant_beta_distributions(model, writer, epoch, num_epochs):
+    """
+    Log beta distributions for FreqQuant QuanConvSplit layers to TensorBoard.
+    
+    Creates grouped bar plots showing upper/lower band preferences for each bitwidth option.
+    
+    Args:
+        model: PyTorch model with QuanConvSplit layers
+        writer: TensorBoard SummaryWriter
+        epoch: Current epoch number
+        num_epochs: Total number of epochs
+    """
+    if writer is None:
+        return
+    
+    from models.QuantModules import QuanConvSplit
+    
+    try:
+        # Collect all QuanConvSplit layers
+        quanconv_layers = []
+        for module in model.modules():
+            if isinstance(module, QuanConvSplit):
+                quanconv_layers.append(module)
+        
+        if len(quanconv_layers) == 0:
+            return
+        
+        # Get bitwidth options from first layer (same for all)
+        bitwidth_options = quanconv_layers[0].bitwidth_opts
+        num_bitwidths = len(bitwidth_options)
+        
+        # Create figure with subplots for each layer
+        num_layers = len(quanconv_layers)
+        cols = min(3, num_layers)  # Max 3 columns
+        rows = (num_layers + cols - 1) // cols
+        
+        fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows))
+        if num_layers == 1:
+            axes = [axes]
+        else:
+            axes = axes.flatten() if num_layers > 1 else [axes]
+        
+        # Plot each layer's beta distribution
+        for layer_idx, module in enumerate(quanconv_layers):
+            ax = axes[layer_idx]
+            
+            # Get beta probabilities
+            beta_upper_probs = torch.softmax(module.beta_upper, dim=0).detach().cpu().numpy()
+            beta_lower_probs = torch.softmax(module.beta_lower, dim=0).detach().cpu().numpy()
+            
+            # Create grouped bar plot
+            x = np.arange(num_bitwidths)  # positions for each bitwidth
+            width = 0.35  # width of bars
+            
+            # Plot bars
+            bars1 = ax.bar(x - width/2, beta_upper_probs, width, 
+                          label='Upper Band', color='steelblue', alpha=0.8, edgecolor='navy')
+            bars2 = ax.bar(x + width/2, beta_lower_probs, width, 
+                          label='Lower Band', color='coral', alpha=0.8, edgecolor='darkred')
+            
+            # Customize plot
+            ax.set_xlabel('Bitwidth', fontsize=10, fontweight='bold')
+            ax.set_ylabel('Probability', fontsize=10, fontweight='bold')
+            ax.set_title(f'Layer {layer_idx + 1}', fontsize=11, fontweight='bold')
+            ax.set_xticks(x)
+            ax.set_xticklabels([f'{bw}' for bw in bitwidth_options])
+            ax.set_ylim([0, 1.0])
+            ax.legend(loc='upper right', fontsize=9)
+            ax.grid(True, alpha=0.3, axis='y')
+            
+            # Add value labels on bars
+            for bar in bars1:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height + 0.02,
+                       f'{height:.2f}', ha='center', va='bottom', fontsize=8)
+            for bar in bars2:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height + 0.02,
+                       f'{height:.2f}', ha='center', va='bottom', fontsize=8)
+            
+            # Log individual scalars for tracking over time
+            for i, bw in enumerate(bitwidth_options):
+                writer.add_scalar(f'Beta/Layer{layer_idx}_Upper_{bw}bit', beta_upper_probs[i], epoch)
+                writer.add_scalar(f'Beta/Layer{layer_idx}_Lower_{bw}bit', beta_lower_probs[i], epoch)
+        
+        # Hide unused subplots
+        for idx in range(num_layers, len(axes)):
+            axes[idx].axis('off')
+        
+        # Add overall title
+        fig.suptitle(f'Beta Distributions - Epoch {epoch + 1}/{num_epochs}', 
+                    fontsize=14, fontweight='bold', y=0.995)
+        plt.tight_layout()
+        
+        # Log figure to TensorBoard
+        writer.add_figure('Beta/Distributions', fig, epoch)
+        plt.close(fig)
+        
+        logging.info(f"  Beta distributions logged for {num_layers} QuanConvSplit layers")
+        
+    except Exception as e:
+        logging.warning(f"Could not log beta distributions: {e}")
+
+
+def log_freqquant_validation_to_tensorboard(writer, val_stats, epoch):
+    """
+    Log FreqQuant validation metrics to TensorBoard.
+    
+    Logs sampled and greedy validation accuracies, relative BitOps,
+    and creates a comparison bar plot.
+    
+    Args:
+        writer: TensorBoard SummaryWriter
+        val_stats: Dictionary with 'sampled' and 'greedy' validation stats
+        epoch: Current epoch number
+    """
+    if writer is None:
+        return
+    
+    # Log sampled validation metrics
+    writer.add_scalar('Validation/sampled_mean_acc', val_stats['sampled']['mean_acc'], epoch)
+    writer.add_scalar('Validation/sampled_std_acc', val_stats['sampled']['std_acc'], epoch)
+    writer.add_scalar('Validation/sampled_min_acc', val_stats['sampled']['min_acc'], epoch)
+    writer.add_scalar('Validation/sampled_max_acc', val_stats['sampled']['max_acc'], epoch)
+    
+    # Log greedy validation metrics
+    writer.add_scalar('Validation/greedy_acc', val_stats['greedy']['accuracy'], epoch)
+    
+    # Log relative BitOps (memory) statistics
+    writer.add_scalar('BitOps/sampled_mean_relative', val_stats['sampled']['mean_relative_memory'], epoch)
+    writer.add_scalar('BitOps/greedy_relative', val_stats['greedy']['relative_memory'], epoch)
+    
+    # Create comparison bar plot
+    try:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        modes = ['Sampled\n(from prefs)', 'Greedy\n(argmax)']
+        accs = [
+            val_stats['sampled']['mean_acc'],
+            val_stats['greedy']['accuracy']
+        ]
+        stds = [
+            val_stats['sampled']['std_acc'],
+            0.0  # Single measurement for greedy
+        ]
+        
+        bars = ax.bar(modes, accs, yerr=stds, capsize=5, alpha=0.7, 
+                     color=['steelblue', 'orange'])
+        ax.set_ylabel('Validation Accuracy', fontsize=12, fontweight='bold')
+        ax.set_title(f'FreqQuant Validation Comparison (Epoch {epoch + 1})', 
+                   fontsize=14, fontweight='bold')
+        ax.set_ylim([min(accs) - 0.05, max(accs) + 0.05])
+        ax.grid(True, alpha=0.3, axis='y')
+        
+        # Add value labels on bars
+        for bar, acc, std in zip(bars, accs, stds):
+            height = bar.get_height()
+            label = f'{acc:.4f}'
+            if std > 0:
+                label += f'±{std:.4f}'
+            ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                   label, ha='center', va='bottom', fontsize=10, fontweight='bold')
+        
+        plt.tight_layout()
+        writer.add_figure('Validation/freqquant_comparison', fig, epoch)
+        plt.close(fig)
+    except Exception as e:
+        logging.warning(f"Could not create freqquant validation comparison plot: {e}")
+
+
 def get_conv_class_from_model(model):
     """
     Extract the Conv class being used in the model by inspecting its modules.
@@ -88,43 +279,64 @@ def set_random_bitwidth_all_layers(model, bitwidth_options):
 
 def get_relative_memory_consumption(model, max_bitwidth=8):
     """
-    Calculate the relative memory consumption compared to full max_bitwidth precision.
+    Calculate the relative BitOps consumption compared to full max_bitwidth precision.
     
-    Relative memory = current_memory / max_memory
-    where:
-        current_memory = Σ (Nw_i × bw_i) for each layer i
-        max_memory = Σ (Nw_i × max_bitwidth) for each layer i
+    BitOps (Bit Operations) = MACs × weight_bitwidth × activation_bitwidth
+    
+    For relative calculation (input shapes are the same across comparisons):
+        current_bitops = Σ (Nw_i × bw_w_i × bw_a_i) for each layer i
+        max_bitops = Σ (Nw_i × max_bitwidth²) for each layer i
+    
+    Since weight and activation use the same bitwidth in these quantization methods:
+        - For QuanConv (single bitwidth): bitops contribution = Nw × bw²
+        - For QuanConvSplit (split bitwidths for upper/lower frequency bands):
+          bitops contribution = 0.5 × Nw × (bw_upper² + bw_lower²)
+          (half the input is processed at each bitwidth)
 
     Args:
         model: PyTorch model containing quantized Conv layers
         max_bitwidth: Reference maximum bitwidth (default: 8)
 
     Returns:
-        float: Relative memory consumption (0 to 1), or None if not applicable.
+        float: Relative BitOps consumption (0 to 1), or None if not applicable.
     """
     conv_class = get_conv_class_from_model(model)
     if conv_class is None:
         return None
 
-    total_weights = 0.0
-    current_memory = 0.0
+    total_max_bitops = 0.0
+    current_bitops = 0.0
     
     for module in model.modules():
         if isinstance(module, conv_class):
             Nw = module.weight.numel()
-            total_weights += Nw
+            
+            # Max bitops for this layer (assuming max_bitwidth for both weight and activation)
+            max_bitops_layer = Nw * float(max_bitwidth) ** 2
+            total_max_bitops += max_bitops_layer
 
             bw = module.get_bitwidth()
             if bw is None:
                 continue
-            current_memory += Nw * float(bw)
+            
+            # Check if this is a split conv (returns tuple) or regular conv (returns int)
+            if isinstance(bw, tuple):
+                # QuanConvSplit: (bw_upper, bw_lower)
+                bw_upper, bw_lower = bw
+                if bw_upper is None or bw_lower is None:
+                    continue
+                # Half the input is processed at each bitwidth
+                # BitOps = 0.5 × Nw × bw_upper² + 0.5 × Nw × bw_lower²
+                current_bitops += 0.5 * Nw * (float(bw_upper) ** 2 + float(bw_lower) ** 2)
+            else:
+                # QuanConv: single bitwidth for both weight and activation
+                # BitOps = Nw × bw²
+                current_bitops += Nw * float(bw) ** 2
 
-    if total_weights == 0.0:
+    if total_max_bitops == 0.0:
         return None
 
-    max_memory = total_weights * float(max_bitwidth)
-    
-    return current_memory / max_memory
+    return current_bitops / total_max_bitops
 
 def set_all_bitwidths_given_list(model, bitwidth_list):
     """
@@ -584,6 +796,193 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
     }
 
 
+def validate_freqquant_comprehensive(model, val_loader, loss_fn, device, 
+                                     augmenter, apply_augmentation_fn, 
+                                     num_configs=10):
+    """
+    Comprehensive validation for freqquant training with two modes:
+    1. Sampled configurations: Sample bitwidths from learned preference distributions (softmax of beta)
+    2. Greedy configuration: Use argmax of beta vectors (best learned configuration)
+    
+    Args:
+        model: PyTorch model with QuanConvSplit layers
+        val_loader: Validation data loader
+        loss_fn: Loss function
+        device: Device to run validation on
+        augmenter: Data augmenter object
+        apply_augmentation_fn: Function to apply augmentation
+        num_configs: Number of random configurations to sample from preference distributions (default: 10)
+    
+    Returns:
+        dict: Comprehensive statistics for both validation modes
+    """
+    from models.QuantModules import QuanConvSplit
+    
+    model.eval()
+    
+    # Save original layer states before validation
+    original_states = []
+    for module in model.modules():
+        if isinstance(module, QuanConvSplit):
+            original_states.append({
+                'hard_mode': module.get_hard_mode(),
+                'use_random': module.is_it_using_random(),
+                'use_argmax': module.is_using_argmax()
+            })
+    
+    logging.info("=" * 80)
+    logging.info("Comprehensive FreqQuant Validation")
+    logging.info("=" * 80)
+    
+    # ========================================================================
+    # Mode 1: Sampled Configurations (Sample from preference distributions)
+    # ========================================================================
+    logging.info(f"\n[Mode 1] Sampled Configurations (n={num_configs})")
+    logging.info("-" * 80)
+    
+    # Set all QuanConvSplit layers to hard mode (one-hot sampling) and disable random
+    for module in model.modules():
+        if isinstance(module, QuanConvSplit):
+            module.set_hard_mode(True)  # Hard mode = sample one bitwidth per forward
+            module.set_use_random(False)  # Use learned preferences, not uniform random
+    
+    sampled_results = []
+    for i in range(num_configs):
+        # Run validation (bitwidths sampled from preference distributions per forward pass)
+        val_result = validate(
+            model, val_loader, loss_fn, device,
+            augmenter, apply_augmentation_fn
+        )
+        
+        # Get relative memory consumption
+        rel_memory = get_relative_memory_consumption(model, max_bitwidth=8)
+        
+        sampled_results.append({
+            'accuracy': val_result['accuracy'],
+            'loss': val_result['loss'],
+            'relative_memory': rel_memory if rel_memory is not None else 0.0
+        })
+        
+        memory_str = f", Rel Memory={rel_memory:.3f}" if rel_memory is not None else ""
+        logging.info(f"  Config {i+1}/{num_configs}: Acc={val_result['accuracy']:.4f}, "
+                    f"Loss={val_result['loss']:.4f}{memory_str}")
+    
+    # Calculate sampled configuration statistics
+    sampled_accs = [r['accuracy'] for r in sampled_results]
+    sampled_losses = [r['loss'] for r in sampled_results]
+    sampled_memories = [r['relative_memory'] for r in sampled_results]
+    
+    sampled_stats = {
+        'mean_acc': np.mean(sampled_accs),
+        'min_acc': np.min(sampled_accs),
+        'max_acc': np.max(sampled_accs),
+        'std_acc': np.std(sampled_accs),
+        'mean_loss': np.mean(sampled_losses),
+        'min_loss': np.min(sampled_losses),
+        'max_loss': np.max(sampled_losses),
+        'mean_relative_memory': np.mean(sampled_memories),
+        'all_accuracies': sampled_accs,
+        'all_relative_memories': sampled_memories
+    }
+    
+    logging.info(f"Sampled Stats: Acc={sampled_stats['mean_acc']:.4f}±{sampled_stats['std_acc']:.4f} "
+                f"[{sampled_stats['min_acc']:.4f}, {sampled_stats['max_acc']:.4f}], "
+                f"Loss={sampled_stats['mean_loss']:.4f}, Rel Memory={sampled_stats['mean_relative_memory']:.3f}")
+    
+    # ========================================================================
+    # Mode 2: Greedy Configuration (Argmax - Best learned bitwidths)
+    # ========================================================================
+    logging.info(f"\n[Mode 2] Greedy Configuration (Argmax of preferences)")
+    logging.info("-" * 80)
+    
+    # Collect greedy bitwidths for logging and enable argmax mode
+    greedy_bitwidths_upper = []
+    greedy_bitwidths_lower = []
+    
+    for module in model.modules():
+        if isinstance(module, QuanConvSplit):
+            # Get best bitwidths (argmax of preference vectors) for logging
+            greedy_bitwidths_upper.append(module.get_best_bitwidth_upper())
+            greedy_bitwidths_lower.append(module.get_best_bitwidth_lower())
+            
+            # Enable argmax mode (bypasses Gumbel-Softmax, uses argmax directly)
+            module.set_use_argmax(True)
+    
+    logging.info(f"  Greedy bitwidths (upper): {greedy_bitwidths_upper}")
+    logging.info(f"  Greedy bitwidths (lower): {greedy_bitwidths_lower}")
+    
+    # Run validation with greedy (argmax) configuration
+    val_result_greedy = validate(
+        model, val_loader, loss_fn, device,
+        augmenter, apply_augmentation_fn
+    )
+    
+    rel_memory_greedy = get_relative_memory_consumption(model, max_bitwidth=8)
+    
+    greedy_stats = {
+        'accuracy': val_result_greedy['accuracy'],
+        'loss': val_result_greedy['loss'],
+        'relative_memory': rel_memory_greedy if rel_memory_greedy is not None else 0.0,
+        'bitwidths_upper': greedy_bitwidths_upper,
+        'bitwidths_lower': greedy_bitwidths_lower
+    }
+    
+    memory_str = f", Rel Memory={rel_memory_greedy:.3f}" if rel_memory_greedy is not None else ""
+    logging.info(f"  Greedy: Acc={greedy_stats['accuracy']:.4f}, "
+                f"Loss={greedy_stats['loss']:.4f}{memory_str}")
+    
+    # Restore original layer states after validation
+    state_idx = 0
+    for module in model.modules():
+        if isinstance(module, QuanConvSplit):
+            module.set_hard_mode(original_states[state_idx]['hard_mode'])
+            module.set_use_random(original_states[state_idx]['use_random'])
+            module.set_use_argmax(original_states[state_idx]['use_argmax'])
+            state_idx += 1
+    
+    logging.info(f"Restored original layer states (hard_mode={original_states[0]['hard_mode']}, "
+                f"use_random={original_states[0]['use_random']}, use_argmax={original_states[0]['use_argmax']})")
+    
+    # ========================================================================
+    # Summary Statistics
+    # ========================================================================
+    logging.info("\n" + "=" * 80)
+    logging.info("Validation Summary:")
+    logging.info(f"  Sampled (n={num_configs}): Acc={sampled_stats['mean_acc']:.4f}±{sampled_stats['std_acc']:.4f}, "
+                f"Memory={sampled_stats['mean_relative_memory']:.3f}")
+    logging.info(f"  Greedy (argmax):           Acc={greedy_stats['accuracy']:.4f}, "
+                f"Memory={greedy_stats['relative_memory']:.3f}")
+    logging.info("=" * 80)
+    
+    return {
+        # Sampled configuration statistics
+        'sampled': {
+            'mean_acc': sampled_stats['mean_acc'],
+            'min_acc': sampled_stats['min_acc'],
+            'max_acc': sampled_stats['max_acc'],
+            'std_acc': sampled_stats['std_acc'],
+            'mean_loss': sampled_stats['mean_loss'],
+            'min_loss': sampled_stats['min_loss'],
+            'max_loss': sampled_stats['max_loss'],
+            'mean_relative_memory': sampled_stats['mean_relative_memory'],
+            'all_accuracies': sampled_stats['all_accuracies'],
+            'all_relative_memories': sampled_stats['all_relative_memories']
+        },
+        # Greedy configuration statistics
+        'greedy': {
+            'accuracy': greedy_stats['accuracy'],
+            'loss': greedy_stats['loss'],
+            'relative_memory': greedy_stats['relative_memory'],
+            'bitwidths_upper': greedy_stats['bitwidths_upper'],
+            'bitwidths_lower': greedy_stats['bitwidths_lower']
+        },
+        # Overall metrics (use greedy as main metric for model selection)
+        'mean_acc': greedy_stats['accuracy'],
+        'accuracy': greedy_stats['accuracy'],
+        'loss': greedy_stats['loss'],
+    }
+
+
 def plot_bitwidth_vs_accuracy(bitwidths, accuracies, epoch, title="Bitwidth vs Accuracy"):
     """
     Create a scatter plot or candlestick-style plot of bitwidth vs accuracy.
@@ -934,6 +1333,172 @@ def train_epoch_joint_quantization(model, train_loader, optimizer, loss_fn,
     }
 
 
+def train_epoch_freqquant(model, train_loader, optimizer, temp_scheduler, loss_fn, 
+                           config, augmenter, apply_augmentation_fn, 
+                           device, writer, epoch, clip_grad=None):
+    """
+    Train one epoch using FreqQuant spectral-aware quantization.
+    
+    FreqQuant uses QuanConvSplit layers with learnable beta vectors (beta_upper, beta_lower)
+    that are optimized via Gumbel-Softmax. The loss function (WeightedBitCostLoss) uses
+    spectral saliency measures from the data to guide bitwidth allocation.
+    
+    Key differences from joint_quantization:
+    - Single forward pass per batch (Gumbel-Softmax blends outputs internally)
+    - Importance scores from augmenter are passed to loss function
+    - Loss includes weighted bit cost based on spectral saliency
+    
+    Args:
+        model: PyTorch model with QuanConvSplit layers
+        train_loader: Training data loader
+        optimizer: Optimizer (optimizes network weights + beta vectors)
+        temp_scheduler: Temperature scheduler for Gumbel-Softmax
+        loss_fn: WeightedBitCostLoss instance
+        config: Configuration dictionary
+        augmenter: Data augmenter object (returns importance scores)
+        apply_augmentation_fn: Function to apply augmentation
+        device: Device to run training on
+        writer: TensorBoard writer
+        epoch: Current epoch number
+        clip_grad: Gradient clipping value (optional)
+    
+    Returns:
+        dict: Training metrics (loss, accuracy, task_loss, bitcost_loss, temperature)
+    """
+    model.train()
+    
+    # Running totals for metrics
+    train_loss = 0.0
+    train_task_loss = 0.0
+    train_bitcost_loss = 0.0
+    train_correct = 0
+    train_total = 0
+    
+    # Get current temperature and hard_mode from config
+    from models.QuantModules import QuanConvSplit
+    current_temp = temp_scheduler.get_temperature() if temp_scheduler else 1.0
+    
+    # Get hard_mode from config (default False = soft mode)
+    quantization_method = config.get('quantization_method', 'freqquant')
+    quant_config = config['quantization'][quantization_method]
+    train_hard_mode = quant_config.get('hard_mode', False)
+    
+    # Set temperature and modes for all QuanConvSplit layers
+    for module in model.modules():
+        if isinstance(module, QuanConvSplit):
+            module.set_temperature(current_temp)
+            module.set_hard_mode(train_hard_mode)
+            module.set_use_random(False)
+            module.set_use_argmax(False)
+    
+    mode_str = "hard" if train_hard_mode else "soft"
+    logging.info(f"Training with FreqQuant (temperature={current_temp:.4f}, mode={mode_str})")
+    
+    for batch_idx, batch_data in enumerate(train_loader):
+        # Unpack batch
+        if len(batch_data) == 3:
+            data, labels, idx = batch_data
+        else:
+            data, labels = batch_data[0], batch_data[1]
+        
+        # Apply augmentation if provided (returns importance scores)
+        if augmenter is not None and apply_augmentation_fn is not None:
+            data, labels = apply_augmentation_fn(augmenter, data, labels)
+        
+        # Handle importance scores if returned as list [data, importance_scores]
+        if isinstance(data, list) and len(data) == 2:
+            importance_scores = data[1]
+            data = data[0]
+        else:
+            importance_scores = None
+        
+        # Move to device
+        labels = labels.to(device)
+        if isinstance(data, dict):
+            # Multi-modal data
+            for loc in data:
+                for mod in data[loc]:
+                    data[loc][mod] = data[loc][mod].to(device)
+        else:
+            data = data.to(device)
+        
+        # Move importance scores to device if present
+        if importance_scores is not None and isinstance(importance_scores, dict):
+            for loc in importance_scores:
+                for mod in importance_scores[loc]:
+                    importance_scores[loc][mod] = importance_scores[loc][mod].to(device)
+        
+        # Forward pass
+        optimizer.zero_grad()
+        outputs = model(data)
+        
+        # Compute loss with importance scores
+        # WeightedBitCostLoss.forward(outputs, labels, model, importance_scores, data)
+        loss_result = loss_fn(outputs, labels, model=model, 
+                              importance_scores=importance_scores, data=data)
+        
+        # Unpack loss result (always returns tuple: total_loss, loss_components)
+        # loss_components = {
+        #     'task_loss'
+        #     'bitcost_loss'
+        #     'scaled_bitcost_loss'
+        #     'total_loss'
+        #     'accuracy'
+        #     'precision'
+        #     'recall'
+        #     'f1_score'
+        #     'lambda_BC'
+        # }
+        total_batch_loss, loss_components = loss_result
+        
+        # Backward pass
+        total_batch_loss.backward()
+        
+        # Gradient clipping
+        if clip_grad is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad)
+        
+        optimizer.step()
+        
+        # Calculate metrics
+        batch_size = labels.size(0)
+        train_loss += total_batch_loss.item() * batch_size
+        if 'task_loss' not in loss_components:
+            raise ValueError("Task loss not found in loss components")
+        if 'bitcost_loss' not in loss_components:
+            raise ValueError("Bitcost loss not found in loss components")
+        train_task_loss += loss_components['task_loss'] * batch_size
+        train_bitcost_loss += loss_components['bitcost_loss'] * batch_size
+        
+        predictions = torch.argmax(outputs, dim=1)
+        if len(labels.shape) == 2 and labels.shape[1] > 1:
+            labels_idx = torch.argmax(labels, dim=1)
+        else:
+            labels_idx = labels
+        
+        train_correct += (predictions == labels_idx).sum().item()
+        train_total += batch_size
+        
+        # Log to TensorBoard every 25 batches
+        if batch_idx % 25 == 0:
+            global_step = epoch * len(train_loader) + batch_idx
+            log_loss_components_to_tensorboard(writer, loss_components, global_step)
+    
+    # Calculate epoch metrics
+    epoch_train_loss = train_loss / train_total
+    epoch_train_acc = train_correct / train_total
+    epoch_task_loss = train_task_loss / train_total
+    epoch_bitcost_loss = train_bitcost_loss / train_total
+    
+    return {
+        'loss': epoch_train_loss,
+        'accuracy': epoch_train_acc,
+        'task_loss': epoch_task_loss,
+        'bitcost_loss': epoch_bitcost_loss,
+        'temperature': current_temp
+    }
+
+
 # def train_epoch_importance_vector(model, train_loader, optimizer, temp_scheduler, loss_fn, 
 #                                    quant_config, augmenter, apply_augmentation_fn, 
 #                                    device, writer, epoch, num_epochs, clip_grad=None):
@@ -1201,9 +1766,10 @@ def train_with_quantization(model, train_loader, val_loader, test_loader, config
     num_classes = config.get('vehicle_classification', {}).get('num_classes', 7)
     class_names = config.get('vehicle_classification', {}).get('class_names', None)
     clip_grad = config.get(model_name, {}).get('optimizer', {}).get('clip_grad', None)
-
-    if quant_config.get(quantization_method, {}).get('temp_scheduler', {}):
-        temp_config = quant_config.get(quantization_method, {}).get('temp_scheduler', {})
+    # breakpoint()
+    if quant_config.get('temp_scheduler', None) is not None:
+        temp_config = quant_config.get('temp_scheduler', {})
+        # breakpoint()
         temperature_scheduler = build_temp_scheduler(model, temp_config, num_epochs)
     else:
         temperature_scheduler = None
@@ -1226,7 +1792,9 @@ def train_with_quantization(model, train_loader, val_loader, test_loader, config
         'train_variance_loss': [],
         'train_budget_loss': [],
         'train_raw_variance': [],
-        'train_temperature': []
+        'train_temperature': [],
+        # Loss components for freqquant training
+        'train_bitcost_loss': []
     }
     
     # Best model tracking
@@ -1294,6 +1862,23 @@ def train_with_quantization(model, train_loader, val_loader, test_loader, config
                 num_epochs=num_epochs,
                 clip_grad=clip_grad
             )
+        elif training_method == "freqquant_training":
+            # FreqQuant: Spectral-aware quantization with weighted bit cost loss
+            assert temperature_scheduler is not None, "Temperature scheduler is required for freqquant"
+            train_metrics = train_epoch_freqquant(
+                model=model,
+                train_loader=train_loader,
+                optimizer=optimizer,
+                temp_scheduler=temperature_scheduler,
+                loss_fn=loss_fn,
+                config=config,
+                augmenter=augmenter,
+                apply_augmentation_fn=apply_augmentation_fn,
+                device=device,
+                writer=writer,
+                epoch=epoch,
+                clip_grad=clip_grad
+            )
         else:
             raise ValueError(f"Unknown training method: {training_method}")
         
@@ -1309,6 +1894,12 @@ def train_with_quantization(model, train_loader, val_loader, test_loader, config
             train_history['train_variance_loss'].append(train_metrics.get('variance_loss', 0.0))
             train_history['train_budget_loss'].append(train_metrics.get('budget_loss', 0.0))
             train_history['train_raw_variance'].append(train_metrics.get('raw_variance', 0.0))
+            train_history['train_temperature'].append(train_metrics.get('temperature', 0.0))
+        
+        # Append loss components for freqquant training
+        if training_method == "freqquant_training":
+            train_history['train_task_loss'].append(train_metrics.get('task_loss', 0.0))
+            train_history['train_bitcost_loss'].append(train_metrics.get('bitcost_loss', 0.0))
             train_history['train_temperature'].append(train_metrics.get('temperature', 0.0))
         
         # ====================================================================
@@ -1382,6 +1973,35 @@ def train_with_quantization(model, train_loader, val_loader, test_loader, config
             train_history['val_random_acc'].append(val_stats['random']['mean_acc'])
             # train_history['val_importance_acc'].append(val_stats['importance']['mean_acc'])
             train_history['val_highest_conf_acc'].append(val_stats['highest_conf']['accuracy'])
+        
+        elif validation_function == "freqquant_comprehensive_validation" or validation_function == "gumbel_softmax_hard_mode":
+            # Comprehensive validation for freqquant training
+            # Get validation config
+            val_config = config.get('quantization', {}).get('freqquant_comprehensive_validation', {})
+            num_configs = val_config.get('num_schemes_to_validate_on', 10)
+            
+            val_stats = validate_freqquant_comprehensive(
+                model=model,
+                val_loader=val_loader,
+                loss_fn=loss_fn,
+                device=device,
+                augmenter=augmenter,
+                apply_augmentation_fn=apply_augmentation_fn,
+                num_configs=num_configs,
+            )
+            
+            # Use greedy (argmax) as the main metric (for model selection)
+            epoch_val_loss = val_stats['loss']
+            epoch_val_acc = val_stats['accuracy']
+            
+            # Store both validation modes in history
+            if 'val_sampled_acc' not in train_history:
+                train_history['val_sampled_acc'] = []
+                train_history['val_greedy_acc'] = []
+            
+            train_history['val_sampled_acc'].append(val_stats['sampled']['mean_acc'])
+            train_history['val_greedy_acc'].append(val_stats['greedy']['accuracy'])
+        
         else:
             raise ValueError(f"Unknown validation function: {validation_function}")
         
@@ -1392,9 +2012,13 @@ def train_with_quantization(model, train_loader, val_loader, test_loader, config
         current_lr = optimizer.param_groups[0]['lr']
         train_history['learning_rates'].append(current_lr)
         
-        # Update scheduler
+        # Update learning rate scheduler
         if scheduler is not None:
             scheduler.step()
+        
+        # Update temperature scheduler (for freqquant and importance_vector)
+        if temperature_scheduler is not None:
+            temperature_scheduler.step()
         
         # ====================================================================
         # Logging
@@ -1487,54 +2111,10 @@ def train_with_quantization(model, train_loader, val_loader, test_loader, config
             writer.add_scalar('Bitwidth/random_mean_bw', val_stats['random']['mean_bitwidth'], epoch)
             # writer.add_scalar('Bitwidth/importance_mean_bw', val_stats['importance']['mean_bitwidth'], epoch)
             writer.add_scalar('Bitwidth/highest_conf_bw', val_stats['highest_conf']['avg_bitwidth'], epoch)
-            
-            # Create comparison plot
-            try:
-                fig, ax = plt.subplots(figsize=(10, 6))
-                modes = ['Random\nBitwidths', 'Highest\nConfidence']
-                accs = [
-                    val_stats['random']['mean_acc'],
-                    val_stats['highest_conf']['accuracy']
-                ]
-                stds = [
-                    val_stats['random']['std_acc'],
-                    0.0  # Single measurement for highest confidence
-                ]
-                
-                bars = ax.bar(modes, accs, yerr=stds, capsize=5, alpha=0.7, 
-                             color=['steelblue', 'orange'])
-                ax.set_ylabel('Validation Accuracy', fontsize=12, fontweight='bold')
-                ax.set_title(f'Validation Accuracy Comparison (Epoch {epoch + 1})', 
-                           fontsize=14, fontweight='bold')
-                ax.set_ylim([min(accs) - 0.05, max(accs) + 0.05])
-                ax.grid(True, alpha=0.3, axis='y')
-                
-                # Add value labels on bars
-                for bar, acc, std in zip(bars, accs, stds):
-                    height = bar.get_height()
-                    label = f'{acc:.4f}'
-                    if std > 0:
-                        label += f'±{std:.4f}'
-                    ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                           label, ha='center', va='bottom', fontsize=10, fontweight='bold')
-                
-                plt.tight_layout()
-                writer.add_figure('Validation/mode_comparison', fig, epoch)
-                plt.close(fig)
-            except Exception as e:
-                logging.warning(f"Could not create validation comparison plot: {e}")
-            
-            # Create and log bitwidth vs accuracy plot (every 5 epochs or last epoch)
-            if (epoch + 1) % 5 == 0 or epoch == num_epochs - 1:
-                bitwidth_acc_fig = plot_bitwidth_vs_accuracy(
-                    bitwidths=val_stats['all_bitwidths'],
-                    accuracies=val_stats['all_accuracies'],
-                    epoch=epoch,
-                    title="Bitwidth vs Validation Accuracy"
-                )
-                writer.add_figure('Bitwidth_Analysis/bitwidth_vs_accuracy', bitwidth_acc_fig, epoch)
-                plt.close(bitwidth_acc_fig)
-                logging.info(f"  Bitwidth vs Accuracy plot logged to TensorBoard")
+        
+        # Additional validation metrics for freqquant
+        if validation_function == "freqquant_comprehensive_validation" or validation_function == "gumbel_softmax_hard_mode":
+            log_freqquant_validation_to_tensorboard(writer, val_stats, epoch)
         
         # Additional logging for importance vector training
         if training_method == "joint_quantization_with_importance_vector":
@@ -1613,15 +2193,50 @@ def train_with_quantization(model, train_loader, val_loader, test_loader, config
                     plt.close(fig)
                     logging.info(f"  Importance distributions logged to TensorBoard")
         
+        # Additional logging for freqquant training
+        if training_method == "freqquant_training":
+            # Log temperature
+            if 'temperature' in train_metrics:
+                writer.add_scalar('Train/Epoch_Temperature', train_metrics['temperature'], epoch)
+            
+            # Log loss components
+            if 'task_loss' in train_metrics:
+                writer.add_scalar('Loss/Epoch_Task_Loss', train_metrics['task_loss'], epoch)
+            
+            if 'bitcost_loss' in train_metrics:
+                writer.add_scalar('Loss/Epoch_Bitcost_Loss', train_metrics['bitcost_loss'], epoch)
+            
+            # Log beta distributions for QuanConvSplit layers (every 5 epochs)
+            if (epoch + 1) % 5 == 0 or epoch == num_epochs - 1:
+                log_freqquant_beta_distributions(model, writer, epoch, num_epochs)
+        
         # ====================================================================
         # Save Checkpoints
         # ====================================================================
+        # Checkpoint structure:
+        # - epoch: Current epoch number
+        # - model_state_dict: Model parameters (includes beta_upper/beta_lower for freqquant)
+        # - optimizer_state_dict: Optimizer state for all parameters
+        # - temperature_scheduler_state_dict: Temperature scheduler state (freqquant/importance_vector)
+        # - val_acc, val_loss: Validation metrics
+        # - config, quantization_method: Configuration for reproducibility
+        #
+        # To resume training from checkpoint:
+        #   checkpoint = torch.load('best_model.pth')
+        #   model.load_state_dict(checkpoint['model_state_dict'])
+        #   optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        #   if 'temperature_scheduler_state_dict' in checkpoint:
+        #       temperature_scheduler.load_state_dict(checkpoint['temperature_scheduler_state_dict'])
+        #   start_epoch = checkpoint['epoch'] + 1
+        
         # Save best model (based on mean accuracy)
         if epoch_val_acc > best_val_acc:
             best_val_acc = epoch_val_acc
             best_epoch = epoch
             best_model_path = models_dir / "best_model.pth"
-            torch.save({
+            
+            # Prepare checkpoint
+            checkpoint = {
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
@@ -1629,13 +2244,21 @@ def train_with_quantization(model, train_loader, val_loader, test_loader, config
                 'val_loss': epoch_val_loss,
                 'config': config,
                 'quantization_method': quantization_method
-            }, best_model_path)
+            }
+            
+            # Add temperature scheduler state for freqquant/importance_vector
+            if temperature_scheduler is not None:
+                checkpoint['temperature_scheduler_state_dict'] = temperature_scheduler.state_dict()
+            
+            torch.save(checkpoint, best_model_path)
             logging.info(f"  Best model saved! (Val Acc: {best_val_acc:.4f})")
         
         # Save checkpoint every 10 epochs
         if (epoch + 1) % 10 == 0:
             checkpoint_path = models_dir / f"checkpoint_epoch_{epoch + 1}.pth"
-            torch.save({
+            
+            # Prepare checkpoint
+            checkpoint = {
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
@@ -1643,12 +2266,20 @@ def train_with_quantization(model, train_loader, val_loader, test_loader, config
                 'val_loss': epoch_val_loss,
                 'config': config,
                 'quantization_method': quantization_method
-            }, checkpoint_path)
+            }
+            
+            # Add temperature scheduler state for freqquant/importance_vector
+            if temperature_scheduler is not None:
+                checkpoint['temperature_scheduler_state_dict'] = temperature_scheduler.state_dict()
+            
+            torch.save(checkpoint, checkpoint_path)
             logging.info(f"  Checkpoint saved at epoch {epoch + 1}")
         
         # Save last epoch
         last_model_path = models_dir / "last_epoch.pth"
-        torch.save({
+        
+        # Prepare checkpoint
+        checkpoint = {
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
@@ -1656,7 +2287,13 @@ def train_with_quantization(model, train_loader, val_loader, test_loader, config
             'val_loss': epoch_val_loss,
             'config': config,
             'quantization_method': quantization_method
-        }, last_model_path)
+        }
+        
+        # Add temperature scheduler state for freqquant/importance_vector
+        if temperature_scheduler is not None:
+            checkpoint['temperature_scheduler_state_dict'] = temperature_scheduler.state_dict()
+        
+        torch.save(checkpoint, last_model_path)
     
     # Final summary
     logging.info("=" * 80)

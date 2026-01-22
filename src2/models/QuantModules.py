@@ -586,27 +586,39 @@ class QuanConvSplit(BaseQuanConv):
     
     def _custom_init(self):
         """
-        Custom initialization for split-precision quantization.
+        Custom initialization for split-precision quantization with learnable preferences.
         
-        Initializes dual bitwidth attributes for upper and lower frequency bands.
+        Initializes learnable bitwidth preference vectors for upper and lower frequency bands
+        using Gumbel-Softmax sampling.
         
         Note: self.curr_bitwidth is kept as None to make it explicit that this
-        class does not use a single bitwidth. Only curr_bitwidth_upper and 
-        curr_bitwidth_lower should be used.
+        class does not use a single bitwidth.
         """
-        # Initialize dual bitwidths (None means not set yet)
-        self.curr_bitwidth_upper = None
-        self.curr_bitwidth_lower = None
-        
         # Explicitly keep base class curr_bitwidth as None
         # This prevents unintended use of single-bitwidth code paths
         self.curr_bitwidth = None
+        
+        # Current bitwidths for upper and lower bands (used for BitOps calculation)
+        self.curr_bitwidth_upper = None
+        self.curr_bitwidth_lower = None
         
         # Separate quantizers for upper and lower halves (initialized in _setup_quantizers)
         self.quantize_w_upper = None
         self.quantize_w_lower = None
         self.quantize_a_upper = None
         self.quantize_a_lower = None
+        
+        # Learnable preference vectors (initialized in setup_quantize_funcs)
+        self.beta_upper = None
+        self.beta_lower = None
+        
+        # Gumbel-Softmax temperature (controlled externally via set_temperature)
+        self.temperature = 1.0
+        
+        # Sampling mode flags
+        self.hard_mode = False  # False = soft (all weights), True = hard (one-hot)
+        self.use_random = False  # True = random sampling (for baseline evaluation)
+        self.use_argmax = False  # True = deterministic argmax (for greedy validation)
     
     def _setup_quantizers(self):
         """
@@ -616,7 +628,7 @@ class QuanConvSplit(BaseQuanConv):
         - quantize_w_upper, quantize_w_lower: Weight quantizers
         - quantize_a_upper, quantize_a_lower: Activation quantizers
         
-        Also calls parent to setup base quantizers (for potential compatibility).
+        Also initializes learnable preference vectors (beta_upper, beta_lower).
         """
         # Call parent setup (sets self.quantize_w and self.quantize_a)
         super()._setup_quantizers()
@@ -654,144 +666,293 @@ class QuanConvSplit(BaseQuanConv):
             self.quantize_a_lower = LSQ(is_activation=True, bitwidth=self.bitwidth_opts[0])
         elif self.activation_quantization == "lsqplus":
             self.quantize_a_lower = LSQPlus(is_activation=True, bitwidth=self.bitwidth_opts[0])
-    
-    def set_bitwidth(self, bitwidth_upper, bitwidth_lower=None):
-        """
-        Set bitwidths for both upper and lower frequency bands.
         
-        Updates the bitwidths in the separate upper/lower quantizers.
+        # Initialize learnable preference vectors (logits for Gumbel-Softmax)
+        # Initialized to zeros so softmax gives uniform distribution initially
+        num_bitwidths = len(self.bitwidth_opts)
+        self.beta_upper = nn.Parameter(torch.zeros(num_bitwidths), requires_grad=True)
+        self.beta_lower = nn.Parameter(torch.zeros(num_bitwidths), requires_grad=True)
+    
+    def set_temperature(self, temperature):
+        """
+        Set the temperature for Gumbel-Softmax sampling.
+        
+        Higher temperature = more exploration (softer distribution)
+        Lower temperature = more exploitation (sharper distribution)
         
         Args:
-            bitwidth_upper (int): Bitwidth for upper half (0 to F/2)
-            bitwidth_lower (int, optional): Bitwidth for lower half (F/2 to F).
-                                          If None, uses same as upper.
-        
-        Raises:
-            AssertionError: If bitwidths are invalid or not in bitwidth_opts
+            temperature (float): Temperature value (typically 0.1 to 5.0)
         """
-        # If lower not provided, use same as upper
-        if bitwidth_lower is None:
-            bitwidth_lower = bitwidth_upper
-        
-        # Validate bitwidths
-        assert bitwidth_upper <= 32 and bitwidth_upper > 1, \
-            "bitwidth_upper should be between 2 and 32"
-        assert bitwidth_lower <= 32 and bitwidth_lower > 1, \
-            "bitwidth_lower should be between 2 and 32"
-        
-        if bitwidth_upper != 32 and self.bitwidth_opts is not None:
-            assert bitwidth_upper in self.bitwidth_opts, \
-                f"bitwidth_upper {bitwidth_upper} not in bitwidth_options {self.bitwidth_opts}"
-        if bitwidth_lower != 32 and self.bitwidth_opts is not None:
-            assert bitwidth_lower in self.bitwidth_opts, \
-                f"bitwidth_lower {bitwidth_lower} not in bitwidth_options {self.bitwidth_opts}"
-        
-        self.curr_bitwidth_upper = bitwidth_upper
-        self.curr_bitwidth_lower = bitwidth_lower
-        
-        # Update LSQ/LSQPlus bitwidths for upper quantizers
-        if bitwidth_upper != 32:
-            if isinstance(self.quantize_w_upper, (LSQ, LSQPlus)):
-                self.quantize_w_upper.update_bitwidth(bitwidth_upper)
-            if isinstance(self.quantize_a_upper, (LSQ, LSQPlus)):
-                self.quantize_a_upper.update_bitwidth(bitwidth_upper)
-        
-        # Update LSQ/LSQPlus bitwidths for lower quantizers
-        if bitwidth_lower != 32:
-            if isinstance(self.quantize_w_lower, (LSQ, LSQPlus)):
-                self.quantize_w_lower.update_bitwidth(bitwidth_lower)
-            if isinstance(self.quantize_a_lower, (LSQ, LSQPlus)):
-                self.quantize_a_lower.update_bitwidth(bitwidth_lower)
-        
-        # NOTE: We intentionally do NOT set self.curr_bitwidth
-        # It remains None to prevent silent invocation of single-bitwidth code paths
+        self.temperature = temperature
     
-    def set_bitwidth_upper(self, bitwidth):
+    def get_temperature(self):
         """
-        Set bitwidth for upper frequency band only.
+        Get the current temperature for Gumbel-Softmax sampling.
+        
+        Returns:
+            float: Current temperature value
+        """
+        return self.temperature
+    
+    def set_hard_mode(self, hard):
+        """
+        Set the sampling mode for Gumbel-Softmax.
         
         Args:
-            bitwidth (int): Bitwidth for upper half
+            hard (bool): If True, uses hard mode (one-hot with straight-through gradients)
+                        If False, uses soft mode (weighted combination, fully differentiable)
         """
-        assert bitwidth <= 32 and bitwidth > 1, "bitwidth should be between 2 and 32"
-        if bitwidth != 32 and self.bitwidth_opts is not None:
-            assert bitwidth in self.bitwidth_opts, \
-                f"bitwidth {bitwidth} not in bitwidth_options {self.bitwidth_opts}"
+        self.hard_mode = hard
+    
+    def get_hard_mode(self):
+        """
+        Get the current sampling mode.
         
-        self.curr_bitwidth_upper = bitwidth
+        Returns:
+            bool: True if hard mode, False if soft mode
+        """
+        return self.hard_mode
+    
+    def set_use_random(self, use_random):
+        """
+        Enable/disable random bitwidth sampling (for baseline evaluation).
         
-        # Update LSQ/LSQPlus bitwidths for upper quantizers
+        When enabled, bypasses Gumbel-Softmax and samples uniformly at random.
+        
+        Args:
+            use_random (bool): If True, use random sampling. If False, use learned preferences.
+        """
+        self.use_random = use_random
+    
+    def is_it_using_random(self):
+        """
+        Check if random sampling is enabled.
+        
+        Returns:
+            bool: True if using random sampling, False if using learned preferences
+        """
+        return self.use_random
+    
+    def set_use_argmax(self, use_argmax):
+        """
+        Enable/disable deterministic argmax mode (for greedy validation).
+        
+        When enabled, bypasses Gumbel-Softmax and uses argmax of beta vectors
+        to select a single bitwidth for each band. This is deterministic and
+        used for evaluating the final learned configuration.
+        
+        Args:
+            use_argmax (bool): If True, use argmax. If False, use Gumbel-Softmax.
+        """
+        self.use_argmax = use_argmax
+    
+    def is_using_argmax(self):
+        """
+        Check if argmax mode is enabled.
+        
+        Returns:
+            bool: True if using argmax mode, False otherwise
+        """
+        return self.use_argmax
+    
+    # def set_random_bitwidth(self):
+    #     """
+    #     Enable random bitwidth sampling mode for baseline evaluation.
+        
+    #     This is equivalent to set_use_random(True).
+    #     """
+    #     self.use_random = True
+    
+    def get_best_bitwidth_upper(self):
+        """
+        Get the bitwidth with highest preference for upper frequency band (argmax).
+        
+        Returns:
+            int: Best bitwidth for upper band according to learned preferences
+        """
+        assert self.beta_upper is not None, "beta_upper not initialized"
+        best_idx = torch.argmax(self.beta_upper).item()
+        return self.bitwidth_opts[best_idx]
+    
+    def get_best_bitwidth_lower(self):
+        """
+        Get the bitwidth with highest preference for lower frequency band (argmax).
+        
+        Returns:
+            int: Best bitwidth for lower band according to learned preferences
+        """
+        assert self.beta_lower is not None, "beta_lower not initialized"
+        best_idx = torch.argmax(self.beta_lower).item()
+        return self.bitwidth_opts[best_idx]
+    
+    def get_bitwidth(self):
+        """
+        Get the current bitwidths for upper and lower frequency bands.
+        
+        Returns:
+            tuple: (bitwidth_upper, bitwidth_lower) or None if not set
+        """
+        if hasattr(self, 'curr_bitwidth_upper') and self.curr_bitwidth_upper is not None:
+            return (self.curr_bitwidth_upper, self.curr_bitwidth_lower)
+        return None
+    
+    def get_preference_distribution(self):
+        """
+        Get the current preference distributions (softmax of beta vectors).
+        
+        Useful for visualization and analysis of learned bitwidth preferences.
+        
+        Returns:
+            dict: {
+                'upper': {
+                    'distribution': tensor of probabilities,
+                    'bitwidth_options': list of bitwidths,
+                    'best_bitwidth': int
+                },
+                'lower': {
+                    'distribution': tensor of probabilities,
+                    'bitwidth_options': list of bitwidths,
+                    'best_bitwidth': int
+                }
+            }
+        """
+        if self.beta_upper is None or self.beta_lower is None:
+            raise ValueError(" in QuanConvSplit, get_preference_distribution(), beta_upper or beta_lower is None \n Please make sure the setup is done correctly")
+            return None
+        
+        dist_upper = torch.softmax(self.beta_upper, dim=0)
+        dist_lower = torch.softmax(self.beta_lower, dim=0)
+        
+        return {
+            'upper': {
+                'distribution': dist_upper.detach().cpu(),
+                'bitwidth_options': self.bitwidth_opts,
+                'best_bitwidth': self.get_best_bitwidth_upper()
+            },
+            'lower': {
+                'distribution': dist_lower.detach().cpu(),
+                'bitwidth_options': self.bitwidth_opts,
+                'best_bitwidth': self.get_best_bitwidth_lower()
+            }
+        }
+    
+    def _forward_upper_at_bitwidth(self, inp_upper, inp_lower_shape, bitwidth):
+        """
+        Compute forward pass for upper frequency band at a specific bitwidth.
+        
+        Args:
+            inp_upper: Upper half of input tensor [B, C, T, F/2]
+            inp_lower_shape: Shape of lower half (for correct padding with odd F)
+            bitwidth: Bitwidth to use for quantization
+        
+        Returns:
+            Output tensor after quantization, padding, and convolution
+        """
+        # Update LSQ/LSQPlus bitwidth if needed
         if bitwidth != 32:
             if isinstance(self.quantize_w_upper, (LSQ, LSQPlus)):
                 self.quantize_w_upper.update_bitwidth(bitwidth)
             if isinstance(self.quantize_a_upper, (LSQ, LSQPlus)):
                 self.quantize_a_upper.update_bitwidth(bitwidth)
         
-        # NOTE: self.curr_bitwidth remains None intentionally
+        # Quantize weight with upper quantizer
+        if isinstance(self.quantize_w_upper, (LSQ, LSQPlus)):
+            w_upper = self.quantize_w_upper(self.weight)
+        else:
+            w_upper = self.quantize_w_upper(self.weight, bitwidth)
+        
+        # Weight normalization if enabled
+        if self.sat_weight_normalization:
+            std = w_upper.detach().std()
+            if std > 0:
+                w_upper = w_upper / std
+        
+        # Quantize activation with upper quantizer
+        if isinstance(self.quantize_a_upper, PACT):
+            alpha_upper = self.get_alpha(bitwidth)
+            x_upper_q = self.quantize_a_upper(inp_upper, bitwidth, alpha_upper)
+        elif isinstance(self.quantize_a_upper, DoReFaA):
+            x_upper_q = self.quantize_a_upper(inp_upper, bitwidth)
+        elif isinstance(self.quantize_a_upper, (LSQ, LSQPlus)):
+            x_upper_q = self.quantize_a_upper(inp_upper)
+        else:
+            raise ValueError(f"Unsupported activation quantization: {type(self.quantize_a_upper)}")
+         
+        # Compute padded output: pad lower half with zeros
+        # Use actual lower shape to handle odd frequency dimensions correctly
+        zeros_lower = torch.zeros(*inp_lower_shape, device=inp_upper.device, dtype=inp_upper.dtype)
+        x_upper_padded = torch.cat([x_upper_q, zeros_lower], dim=-1)
+        
+        # Convolve with quantized weight
+        output = self._apply_convolution(x_upper_padded, w_upper)
+        
+        return output
     
-    def set_bitwidth_lower(self, bitwidth):
+    def _forward_lower_at_bitwidth(self, inp_lower, inp_upper_shape, bitwidth):
         """
-        Set bitwidth for lower frequency band only.
+        Compute forward pass for lower frequency band at a specific bitwidth.
         
         Args:
-            bitwidth (int): Bitwidth for lower half
+            inp_lower: Lower half of input tensor [B, C, T, F/2 or F/2+1]
+            inp_upper_shape: Shape of upper half (for correct padding with odd F)
+            bitwidth: Bitwidth to use for quantization
+        
+        Returns:
+            Output tensor after quantization, padding, and convolution
         """
-        assert bitwidth <= 32 and bitwidth > 1, "bitwidth should be between 2 and 32"
-        if bitwidth != 32 and self.bitwidth_opts is not None:
-            assert bitwidth in self.bitwidth_opts, \
-                f"bitwidth {bitwidth} not in bitwidth_options {self.bitwidth_opts}"
-        
-        self.curr_bitwidth_lower = bitwidth
-        
-        # Update LSQ/LSQPlus bitwidths for lower quantizers
+        # Update LSQ/LSQPlus bitwidth if needed
         if bitwidth != 32:
             if isinstance(self.quantize_w_lower, (LSQ, LSQPlus)):
                 self.quantize_w_lower.update_bitwidth(bitwidth)
             if isinstance(self.quantize_a_lower, (LSQ, LSQPlus)):
                 self.quantize_a_lower.update_bitwidth(bitwidth)
-    
-    def get_bitwidth(self):
-        """
-        Get current bitwidths for both frequency bands.
         
-        Returns:
-            tuple: (upper_bitwidth, lower_bitwidth)
-        """
-        return (self.curr_bitwidth_upper, self.curr_bitwidth_lower)
-    
-    def set_uniform_bitwidth(self, bitwidth):
-        """
-        Set the same bitwidth for both upper and lower bands.
+        # Quantize weight with lower quantizer
+        if isinstance(self.quantize_w_lower, (LSQ, LSQPlus)):
+            w_lower = self.quantize_w_lower(self.weight)
+        else:
+            w_lower = self.quantize_w_lower(self.weight, bitwidth)
         
-        Args:
-            bitwidth (int): Bitwidth to use for both halves
-        """
-        self.set_bitwidth(bitwidth, bitwidth)
-    
-    def set_random_bitwidth(self):
-        """
-        Randomly select bitwidths for both bands from available options.
+        # Weight normalization if enabled
+        if self.sat_weight_normalization:
+            std = w_lower.detach().std()
+            if std > 0:
+                w_lower = w_lower / std
         
-        Each band independently samples from bitwidth_opts.
-        """
-        assert self.bitwidth_opts is not None, "bitwidth options not set"
-        bw_upper = self.bitwidth_opts[torch.randint(0, len(self.bitwidth_opts), (1,)).item()]
-        bw_lower = self.bitwidth_opts[torch.randint(0, len(self.bitwidth_opts), (1,)).item()]
-        self.set_bitwidth(bw_upper, bw_lower)
+        # Quantize activation with lower quantizer
+        if isinstance(self.quantize_a_lower, PACT):
+            alpha_lower = self.get_alpha(bitwidth)
+            x_lower_q = self.quantize_a_lower(inp_lower, bitwidth, alpha_lower)
+        elif isinstance(self.quantize_a_lower, DoReFaA):
+            x_lower_q = self.quantize_a_lower(inp_lower, bitwidth)
+        elif isinstance(self.quantize_a_lower, (LSQ, LSQPlus)):
+            x_lower_q = self.quantize_a_lower(inp_lower)
+        else:
+            raise ValueError(f"Unsupported activation quantization: {type(self.quantize_a_lower)}")
+        
+        # Compute padded output: pad upper half with zeros
+        # Use actual upper shape to handle odd frequency dimensions correctly
+        zeros_upper = torch.zeros(*inp_upper_shape, device=inp_lower.device, dtype=inp_lower.dtype)
+        x_lower_padded = torch.cat([zeros_upper, x_lower_q], dim=-1)
+        
+        # Convolve with quantized weight
+        output = self._apply_convolution(x_lower_padded, w_lower)
+        
+        return output
     
     def forward(self, inp):
         """
-        Forward pass with split-precision quantization using mask+add approach.
+        Forward pass with learnable split-precision quantization using Gumbel-Softmax.
         
-        Splits input along frequency dimension, quantizes each half (both weights 
-        AND activations) with different bitwidths, performs two separate convolutions,
-        and adds the outputs.
+        Learns optimal bitwidth preferences for upper and lower frequency bands,
+        then applies weighted combination of outputs from all bitwidths.
         
-        Key difference from standard QuanConv:
-            - Weights are quantized TWICE at different bitwidths:
-              * w_upper quantized at curr_bitwidth_upper
-              * w_lower quantized at curr_bitwidth_lower
-            - Each convolution uses differently-quantized weights
+        Mathematical Formulation:
+            Y_upper = sum_{j=1}^{B} beta_upper^j * Y_upper^{(j)}
+            Y_lower = sum_{j=1}^{B} beta_lower^j * Y_lower^{(j)}
+            Y = Y_upper + Y_lower
+        
+        Where beta comes from Gumbel-Softmax on learnable logits.
         
         Args:
             inp (torch.Tensor): Input tensor of shape [B, C, T, F] where:
@@ -804,13 +965,6 @@ class QuanConvSplit(BaseQuanConv):
             torch.Tensor: Output tensor of shape [B, C', T', F'] where:
                 - C': out_channels
                 - T', F': time segments and frequency bins after convolution
-        
-        Mathematical Justification:
-            At boundaries, the convolution kernel sees contributions from both halves.
-            By adding outputs:
-            - output_upper contains contributions from upper (lower was zeros)
-            - output_lower contains contributions from lower (upper was zeros)
-            - sum = full convolution with mixed quantization
         """
         # Full precision mode (no quantization)
         if not self.quantization_enabled:
@@ -819,101 +973,113 @@ class QuanConvSplit(BaseQuanConv):
         # Validate setup
         if isinstance(self.quantize_a, PACT):
             assert self.alpha_setup_flag, "Alpha not setup for PACT quantization"
-        assert self.curr_bitwidth_upper is not None, "bitwidth_upper is None"
-        assert self.curr_bitwidth_lower is not None, "bitwidth_lower is None"
-        assert self.quantize_w is not None, "quantize_w is None"
-        assert self.quantize_a is not None, "quantize_a is None"
+        assert self.beta_upper is not None, "beta_upper not initialized"
+        assert self.beta_lower is not None, "beta_lower not initialized"
+        assert self.quantize_w_upper is not None, "quantize_w_upper is None"
+        assert self.quantize_a_upper is not None, "quantize_a_upper is None"
+        assert self.quantize_w_lower is not None, "quantize_w_lower is None"
+        assert self.quantize_a_lower is not None, "quantize_a_lower is None"
         
         # Split along frequency dimension (last dim)
-        F = inp.shape[-1]
-        F_half = F // 2
-        inp_upper = inp[..., :F_half]      # Upper half [B, C, T, F/2]
-        inp_lower = inp[..., F_half:]      # Lower half [B, C, T, F/2 or F/2+1 if odd]
+        freq_dim = inp.shape[-1]
+        freq_half = freq_dim // 2
+        inp_upper = inp[..., :freq_half]      # Upper half [B, C, T, F/2]
+        inp_lower = inp[..., freq_half:]      # Lower half [B, C, T, F/2 or F/2+1 if odd]
         
         # ===================================================================
-        # UPPER HALF: Quantize with upper_bitwidth using upper quantizers
+        # Random sampling mode (for baseline evaluation)
         # ===================================================================
-        # Quantize weight with upper quantizer
-        if isinstance(self.quantize_w_upper, (LSQ, LSQPlus)):
-            w_upper = self.quantize_w_upper(self.weight)
-        else:
-            w_upper = self.quantize_w_upper(self.weight, self.curr_bitwidth_upper)
-        
-        # Weight normalization if enabled
-        if self.sat_weight_normalization:
-            std = w_upper.detach().std()
-            if std > 0:
-                w_upper = w_upper / std
-        
-        # Quantize activation with upper quantizer
-        if isinstance(self.quantize_a_upper, PACT):
-            alpha_upper = self.get_alpha(self.curr_bitwidth_upper)
-            x_upper_q = self.quantize_a_upper(inp_upper, self.curr_bitwidth_upper, alpha_upper)
-        elif isinstance(self.quantize_a_upper, DoReFaA):
-            x_upper_q = self.quantize_a_upper(inp_upper, self.curr_bitwidth_upper)
-        elif isinstance(self.quantize_a_upper, (LSQ, LSQPlus)):
-            x_upper_q = self.quantize_a_upper(inp_upper)
-        else:
-            raise ValueError(f"Unsupported activation quantization: {type(self.quantize_a_upper)}")
-        
-        # Pad lower half with zeros: [B, C, T, F/2] -> [B, C, T, F]
-        zeros_lower = torch.zeros_like(inp_lower)
-        x_upper_padded = torch.cat([x_upper_q, zeros_lower], dim=-1)  # [B, C, T, F]
-        
-        # Convolve upper padded with upper-bitwidth quantized weight
-        output_upper = self._apply_convolution(x_upper_padded, w_upper)
+        if self.use_random:
+            # Sample random bitwidths independently for upper and lower
+            idx_upper = torch.randint(0, len(self.bitwidth_opts), (1,)).item()
+            idx_lower = torch.randint(0, len(self.bitwidth_opts), (1,)).item()
+            bitwidth_upper = self.bitwidth_opts[idx_upper]
+            bitwidth_lower = self.bitwidth_opts[idx_lower]
+            
+            # Store current bitwidths for BitOps calculation
+            self.curr_bitwidth_upper = bitwidth_upper
+            self.curr_bitwidth_lower = bitwidth_lower
+            
+            # Forward pass with sampled bitwidths (pass correct shapes for padding)
+            output_upper = self._forward_upper_at_bitwidth(inp_upper, inp_lower.shape, bitwidth_upper)
+            output_lower = self._forward_lower_at_bitwidth(inp_lower, inp_upper.shape, bitwidth_lower)
+            
+            output = output_upper + output_lower
+            
+            # Shape validation for random mode too
+            output_fp = self._apply_convolution(inp, self.weight)
+            assert output.shape == output_fp.shape, \
+                f"Shape mismatch in random mode! Quantized: {output.shape}, Float: {output_fp.shape}"
+            print(f"✓ Random mode shape validation: {output.shape} == {output_fp.shape}")
+            
+            return output
         
         # ===================================================================
-        # LOWER HALF: Quantize with lower_bitwidth using lower quantizers
+        # Argmax mode (for greedy validation - deterministic)
         # ===================================================================
-        # Quantize weight with lower quantizer
-        if isinstance(self.quantize_w_lower, (LSQ, LSQPlus)):
-            w_lower = self.quantize_w_lower(self.weight)
-        else:
-            w_lower = self.quantize_w_lower(self.weight, self.curr_bitwidth_lower)
-        
-        # Weight normalization if enabled
-        if self.sat_weight_normalization:
-            std = w_lower.detach().std()
-            if std > 0:
-                w_lower = w_lower / std
-        
-        # Quantize activation with lower quantizer
-        if isinstance(self.quantize_a_lower, PACT):
-            alpha_lower = self.get_alpha(self.curr_bitwidth_lower)
-            x_lower_q = self.quantize_a_lower(inp_lower, self.curr_bitwidth_lower, alpha_lower)
-        elif isinstance(self.quantize_a_lower, DoReFaA):
-            x_lower_q = self.quantize_a_lower(inp_lower, self.curr_bitwidth_lower)
-        elif isinstance(self.quantize_a_lower, (LSQ, LSQPlus)):
-            x_lower_q = self.quantize_a_lower(inp_lower)
-        else:
-            raise ValueError(f"Unsupported activation quantization: {type(self.quantize_a_lower)}")
-        
-        # Pad upper half with zeros: [B, C, T, F/2] -> [B, C, T, F]
-        zeros_upper = torch.zeros_like(inp_upper)
-        x_lower_padded = torch.cat([zeros_upper, x_lower_q], dim=-1)  # [B, C, T, F]
-        # breakpoint() # Check if the padding is correct
-        
-        # Convolve lower padded with lower-bitwidth quantized weight
-        output_lower = self._apply_convolution(x_lower_padded, w_lower)
-        
-        # NOTE: self.curr_bitwidth remains None throughout (never modified)
+        if self.use_argmax:
+            # Get best bitwidths via argmax (no Gumbel-Softmax, fully deterministic)
+            bitwidth_upper = self.get_best_bitwidth_upper()
+            bitwidth_lower = self.get_best_bitwidth_lower()
+            
+            # Store current bitwidths for BitOps calculation
+            self.curr_bitwidth_upper = bitwidth_upper
+            self.curr_bitwidth_lower = bitwidth_lower
+            
+            # Forward pass with argmax bitwidths
+            output_upper = self._forward_upper_at_bitwidth(inp_upper, inp_lower.shape, bitwidth_upper)
+            output_lower = self._forward_lower_at_bitwidth(inp_lower, inp_upper.shape, bitwidth_lower)
+            
+            output = output_upper + output_lower
+            return output
         
         # ===================================================================
-        # ADD outputs (preserves full information at boundaries)
+        # Gumbel-Softmax sampling (soft or hard mode)
         # ===================================================================
-        output = output_upper + output_lower
+        # Get sampling weights from Gumbel-Softmax (beta coefficients, NOT conv weights)
+        beta_weights_upper = nn.functional.gumbel_softmax(self.beta_upper, tau=self.temperature, hard=self.hard_mode)
+        beta_weights_lower = nn.functional.gumbel_softmax(self.beta_lower, tau=self.temperature, hard=self.hard_mode)
+        
+        # Store expected bitwidths for BitOps calculation
+        # Expected bitwidth = sum(probability_i * bitwidth_i)
+        bitwidth_tensor = torch.tensor(self.bitwidth_opts, dtype=torch.float32, device=beta_weights_upper.device)
+        self.curr_bitwidth_upper = (beta_weights_upper * bitwidth_tensor).sum().item()
+        self.curr_bitwidth_lower = (beta_weights_lower * bitwidth_tensor).sum().item()
+        
+        # Compute outputs for all bitwidths
+        outputs_upper = []
+        outputs_lower = []
+        
+        for bitwidth in self.bitwidth_opts:
+            # Upper half: quantize at this bitwidth, pass lower shape for correct padding
+            out_upper = self._forward_upper_at_bitwidth(inp_upper, inp_lower.shape, bitwidth)
+            outputs_upper.append(out_upper)
+            
+            # Lower half: quantize at this bitwidth, pass upper shape for correct padding
+            out_lower = self._forward_lower_at_bitwidth(inp_lower, inp_upper.shape, bitwidth)
+            outputs_lower.append(out_lower)
+        
+        # Stack outputs: [num_bitwidths, B, C, T, F]
+        stacked_upper = torch.stack(outputs_upper, dim=0)
+        stacked_lower = torch.stack(outputs_lower, dim=0)
+        
+        # Expand beta weights for broadcasting: [num_bitwidths, 1, 1, 1, 1]
+        beta_weights_upper_expanded = beta_weights_upper.view(-1, 1, 1, 1, 1)
+        beta_weights_lower_expanded = beta_weights_lower.view(-1, 1, 1, 1, 1)
+        
+        # Weighted sum: Y_upper = sum(beta_j * Y_upper_j)
+        Y_upper = (stacked_upper * beta_weights_upper_expanded).sum(dim=0)
+        Y_lower = (stacked_lower * beta_weights_lower_expanded).sum(dim=0)
+        
+        # Final output: Y = Y_upper + Y_lower
+        output = Y_upper + Y_lower
         
         # ===================================================================
         # VALIDATION: Compare with floating point convolution (comment out later)
         # ===================================================================
-        # Perform full precision convolution for shape validation
         # output_fp = self._apply_convolution(inp, self.weight)
-        
-        # # Ensure shapes match
         # assert output.shape == output_fp.shape, \
         #     f"Shape mismatch! Quantized split: {output.shape}, Floating point: {output_fp.shape}"
-        
         # print(f"✓ Shape validation passed: {output.shape} == {output_fp.shape}")
         # ===================================================================
         

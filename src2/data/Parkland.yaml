@@ -23,6 +23,13 @@ importance_vector_loss:
         target_avg_bitwidth: 6.0
         budget_coeff: 0.01
 
+weighted_bitcost_loss:
+        name: "weighted_bitcost_loss"
+        lambda_BC: 0.01         # Coefficient for bit cost loss component
+        delta: 0.0001           # Soft mask threshold for suppressing low-saliency bands
+        eta: 0.0001             # Variance gate sensitivity
+        B_max: 8                # Maximum bitwidth in bitwidth_options
+
 loss_name: "cross_entropy"
 
 repetition: 3
@@ -84,6 +91,9 @@ quantization:
                 number_of_configs: 8
                 bitwidth_options: [4,8]
                 bin_tolerance: 0.5
+        freqquant_comprehensive_validation:
+                name: "freqquant_comprehensive_validation"
+                num_schemes_to_validate_on: 10  # Number of sampled configurations from preference distributions
         random_bitwidths:
                 name: "random_bitwidths"
                 number_of_configs: 8
@@ -153,6 +163,28 @@ quantization:
                 bitwidth_options: [8]
                 validation_function: "simple_validation" # simple_validation, random_bitwidths
                 training_method: "vanilla_single_precision_training" # joint_quantization, vanilla_single_precision_training
+        
+        # FreqQuant: Spectral-aware quantization with weighted bit cost loss
+        # Uses QuanConvSplit to learn different bitwidths for upper/lower frequency bands
+        # Based on spectral saliency (energy * (1 - entropy)) from the augmenter
+        freqquant:
+                Conv: "QuanConvSplit"  # Split-precision convolution for upper/lower bands
+                loss_name: "weighted_bitcost_loss"  # Spectral-weighted bit cost loss
+                bitwidth_options: [2, 4, 8]
+                weight_quantization: "dorefa"
+                activation_quantization: "dorefa"
+                validation_function: "freqquant_comprehensive_validation"  # Comprehensive validation with sampled + greedy
+                training_method: "freqquant_training"  # Freqquant-specific training method
+                switchable_clipping: True
+                sat_weight_normalization: False
+                hard_mode: False  # False = soft mode (differentiable, all bitwidths weighted), True = hard mode (one-hot with STE)
+                
+                # Temperature scheduler for Gumbel-Softmax on beta_upper/beta_lower
+                # Using exponential for more aggressive decay (faster convergence to exploitation)
+                temp_scheduler:
+                        name: "exponential"   # More aggressive than cosine
+                        temp_start: 5.0       # High temperature = more exploration
+                        temp_min: 0.1         # Very low temperature = strong exploitation (argmax-like)
 
 ViT:
         model_name: "ViT"
