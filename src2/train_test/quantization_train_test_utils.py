@@ -19,7 +19,7 @@ from tqdm import tqdm
 from models.Temperature_Scheduler import build_temp_scheduler
 # Import validation function from train_test_utils
 from train_test.train_test_utils import (
-    validate, calculate_confusion_matrix, plot_confusion_matrix,
+    validate, calculate_confusion_matrix, plot_confusion_matrix, calculate_macro_f1_from_confusion_matrix,
     setup_optimizer, setup_scheduler
 )
 import matplotlib.pyplot as plt
@@ -305,7 +305,10 @@ def validate_simple(model, val_loader, loss_fn, device, augmenter, apply_augment
         augmenter, apply_augmentation_fn
     )
     
-    logging.info(f"  Validation - Acc: {val_result['accuracy']:.4f}, Loss: {val_result['loss']:.4f}")
+    f1_str = ""
+    if val_result.get("f1_macro") is not None:
+        f1_str = f", Macro-F1: {val_result['f1_macro']:.4f}"
+    logging.info(f"  Validation - Acc: {val_result['accuracy']:.4f}, Loss: {val_result['loss']:.4f}{f1_str}")
     
     return val_result
 
@@ -353,16 +356,19 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
         results.append({
             'accuracy': val_result['accuracy'],
             'loss': val_result['loss'],
+            'f1_macro': val_result.get('f1_macro', None),
             'relative_memory_consumption': relative_memory_consumption if relative_memory_consumption is not None else 0.0
         })
         
+        f1_str = f", Macro-F1={val_result['f1_macro']:.4f}" if val_result.get("f1_macro") is not None else ""
         memory_str = f", Relative Memory={relative_memory_consumption:.4f}" if relative_memory_consumption is not None else ""
         logging.info(f"  Config {i+1}/{num_configs}: Acc={val_result['accuracy']:.4f}, "
-                    f"Loss={val_result['loss']:.4f}{memory_str}")
+                    f"Loss={val_result['loss']:.4f}{f1_str}{memory_str}")
     
     # Calculate statistics
     accuracies = [r['accuracy'] for r in results]
     losses = [r['loss'] for r in results]
+    f1_macros = [r['f1_macro'] for r in results if r.get('f1_macro') is not None]
     relative_memory_consumptions = [r['relative_memory_consumption'] for r in results]
     
     # Calculate bin-level statistics
@@ -402,6 +408,10 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
         'min_acc': np.min(accuracies),
         'max_acc': np.max(accuracies),
         'std_acc': np.std(accuracies),
+        'mean_f1_macro': float(np.mean(f1_macros)) if len(f1_macros) > 0 else None,
+        'min_f1_macro': float(np.min(f1_macros)) if len(f1_macros) > 0 else None,
+        'max_f1_macro': float(np.max(f1_macros)) if len(f1_macros) > 0 else None,
+        'std_f1_macro': float(np.std(f1_macros)) if len(f1_macros) > 0 else None,
         'mean_loss': np.mean(losses),
         'min_loss': np.min(losses),
         'max_loss': np.max(losses),
@@ -411,9 +421,11 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
         'max_relative_memory_consumption': np.max(relative_memory_consumptions),
         'std_relative_memory_consumption': np.std(relative_memory_consumptions),
         'accuracy': np.mean(accuracies),  # For compatibility with standard validation
+        'f1_macro': float(np.mean(f1_macros)) if len(f1_macros) > 0 else None,
         'loss': np.mean(losses),
         # Store raw data for plotting
         'all_accuracies': accuracies,
+        'all_f1_macros': f1_macros,
         'all_relative_memory_consumptions': relative_memory_consumptions,
         # Store bin-level statistics
         'bin_stats': bin_stats,
@@ -424,6 +436,9 @@ def validate_random_bitwidths(model, val_loader, loss_fn, device,
     logging.info("Random Bitwidths Validation Statistics:")
     logging.info(f"  Accuracy - Mean: {stats['mean_acc']:.4f}, Min: {stats['min_acc']:.4f}, "
                 f"Max: {stats['max_acc']:.4f}, Std: {stats['std_acc']:.4f}")
+    if stats.get("mean_f1_macro") is not None:
+        logging.info(f"  Macro-F1 - Mean: {stats['mean_f1_macro']:.4f}, Min: {stats['min_f1_macro']:.4f}, "
+                    f"Max: {stats['max_f1_macro']:.4f}, Std: {stats['std_f1_macro']:.4f}")
     logging.info(f"  Loss - Mean: {stats['mean_loss']:.4f}, Min: {stats['min_loss']:.4f}, "
                 f"Max: {stats['max_loss']:.4f}, Std: {stats['std_loss']:.4f}")
     logging.info(f"  Relative Memory - Mean: {stats['mean_relative_memory_consumption']:.4f}, Min: {stats['min_relative_memory_consumption']:.4f}, "
@@ -504,6 +519,7 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
         random_results.append({
             'accuracy': val_result['accuracy'],
             'loss': val_result['loss'],
+            'f1_macro': val_result.get('f1_macro', None),
             'relative_memory_consumption': rel_memory if rel_memory is not None else 0.0
         })
         
@@ -513,6 +529,7 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
     # Calculate random bitwidth statistics
     random_accs = [r['accuracy'] for r in random_results]
     random_losses = [r['loss'] for r in random_results]
+    random_f1s = [r['f1_macro'] for r in random_results if r.get('f1_macro') is not None]
     random_rel_mems = [r['relative_memory_consumption'] for r in random_results]
     
     random_stats = {
@@ -520,10 +537,15 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
         'std_acc': np.std(random_accs),
         'mean_loss': np.mean(random_losses),
         'mean_relative_memory_consumption': np.mean(random_rel_mems),
+        'mean_f1_macro': float(np.mean(random_f1s)) if len(random_f1s) > 0 else None,
+        'std_f1_macro': float(np.std(random_f1s)) if len(random_f1s) > 0 else None,
     }
     
+    f1_str = ""
+    if random_stats.get("mean_f1_macro") is not None:
+        f1_str = f", Macro-F1={random_stats['mean_f1_macro']:.4f}±{random_stats['std_f1_macro']:.4f}"
     logging.info(f"Random BW Stats: Acc={random_stats['mean_acc']:.4f}±{random_stats['std_acc']:.4f}, "
-                f"Loss={random_stats['mean_loss']:.4f}, Rel Mem={random_stats['mean_relative_memory_consumption']:.4f}")
+                f"Loss={random_stats['mean_loss']:.4f}{f1_str}, Rel Mem={random_stats['mean_relative_memory_consumption']:.4f}")
     
     # ========================================================================
     # Mode 2: Importance-Based Sampling (Stochastic from learned distribution)
@@ -600,11 +622,13 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
     highest_conf_stats = {
         'accuracy': val_result['accuracy'],
         'loss': val_result['loss'],
+        'f1_macro': val_result.get('f1_macro', None),
         'relative_memory_consumption': rel_memory if rel_memory is not None else 0.0
     }
     
     logging.info(f"Highest Confidence Stats: Acc={highest_conf_stats['accuracy']:.4f}, "
-                f"Loss={highest_conf_stats['loss']:.4f}, Rel Mem={highest_conf_stats['relative_memory_consumption']:.4f}")
+                f"Loss={highest_conf_stats['loss']:.4f}, "
+                f"Macro-F1={highest_conf_stats['f1_macro']:.4f}, Rel Mem={highest_conf_stats['relative_memory_consumption']:.4f}")
     
     # ========================================================================
     # Summary
@@ -612,9 +636,15 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
     logging.info("\n" + "=" * 80)
     logging.info("Validation Summary")
     logging.info("=" * 80)
-    logging.info(f"Random BW (uniform):     Acc={random_stats['mean_acc']:.4f}±{random_stats['std_acc']:.4f}, Rel Mem={random_stats['mean_relative_memory_consumption']:.4f}")
+    if random_stats.get("mean_f1_macro") is not None:
+        logging.info(f"Random BW (uniform):     Acc={random_stats['mean_acc']:.4f}±{random_stats['std_acc']:.4f}, "
+                    f"Macro-F1={random_stats['mean_f1_macro']:.4f}±{random_stats['std_f1_macro']:.4f}, "
+                    f"Rel Mem={random_stats['mean_relative_memory_consumption']:.4f}")
+    else:
+        logging.info(f"Random BW (uniform):     Acc={random_stats['mean_acc']:.4f}±{random_stats['std_acc']:.4f}, Rel Mem={random_stats['mean_relative_memory_consumption']:.4f}")
     # logging.info(f"Importance Sampling:     Acc={importance_stats['mean_acc']:.4f}±{importance_stats['std_acc']:.4f}, Rel Mem={importance_stats['mean_relative_memory_consumption']:.4f}")
-    logging.info(f"Highest Confidence:      Acc={highest_conf_stats['accuracy']:.4f}, Rel Mem={highest_conf_stats['relative_memory_consumption']:.4f}")
+    logging.info(f"Highest Confidence:      Acc={highest_conf_stats['accuracy']:.4f}, "
+                f"Macro-F1={highest_conf_stats['f1_macro']:.4f}, Rel Mem={highest_conf_stats['relative_memory_consumption']:.4f}")
     logging.info("=" * 80)
     
     # Return comprehensive statistics
@@ -625,7 +655,10 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
             'std_acc': random_stats['std_acc'],
             'mean_loss': random_stats['mean_loss'],
             'mean_relative_memory_consumption': random_stats['mean_relative_memory_consumption'],
+            'mean_f1_macro': random_stats.get('mean_f1_macro', None),
+            'std_f1_macro': random_stats.get('std_f1_macro', None),
             'all_accuracies': random_accs,
+            'all_f1_macros': random_f1s,
             'all_relative_memory_consumptions': random_rel_mems,
         },
         # Mode 2: Importance sampling (stochastic)
@@ -641,11 +674,13 @@ def validate_importance_vector_comprehensive(model, val_loader, loss_fn, device,
         'highest_conf': {
             'accuracy': highest_conf_stats['accuracy'],
             'loss': highest_conf_stats['loss'],
+            'f1_macro': highest_conf_stats.get('f1_macro', None),
             'relative_memory_consumption': highest_conf_stats['relative_memory_consumption'],
         },
         # Overall metrics (use highest_conf as main metric for model selection)
         'mean_acc': highest_conf_stats['accuracy'],
         'accuracy': highest_conf_stats['accuracy'],
+        'f1_macro': highest_conf_stats.get('f1_macro', None),
         'loss': highest_conf_stats['loss'],
     }
 
@@ -1620,6 +1655,15 @@ def train_with_quantization(model, train_loader, val_loader, config, experiment_
             writer.add_scalar('Validation/std_acc', val_stats['std_acc'], epoch)
             writer.add_scalar('Validation/min_acc', val_stats['min_acc'], epoch)
             writer.add_scalar('Validation/max_acc', val_stats['max_acc'], epoch)
+
+            if val_stats.get("mean_f1_macro") is not None:
+                writer.add_scalar('F1/val_macro', val_stats['mean_f1_macro'], epoch)
+                writer.add_scalar('Validation/mean_f1_macro', val_stats['mean_f1_macro'], epoch)
+                writer.add_scalar('Validation/std_f1_macro', val_stats['std_f1_macro'], epoch)
+                if val_stats.get("min_f1_macro") is not None:
+                    writer.add_scalar('Validation/min_f1_macro', val_stats['min_f1_macro'], epoch)
+                if val_stats.get("max_f1_macro") is not None:
+                    writer.add_scalar('Validation/max_f1_macro', val_stats['max_f1_macro'], epoch)
             
             # Log relative memory consumption statistics
             writer.add_scalar('Relative_Memory_Consumption/mean_relative_memory_consumption', val_stats['mean_relative_memory_consumption'], epoch)

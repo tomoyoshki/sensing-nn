@@ -263,6 +263,41 @@ def calculate_confusion_matrix(all_predictions, all_labels, num_classes):
     return cm
 
 
+def calculate_macro_f1_from_confusion_matrix(cm: np.ndarray) -> float:
+    """
+    Calculate macro-F1 from a confusion matrix.
+    
+    Macro-F1 = mean(F1_i) over classes i, where:
+      F1_i = 2*TP_i / (2*TP_i + FP_i + FN_i)
+    
+    If a class has no support (TP=FP=FN=0), its F1 is defined as 0.
+    
+    Args:
+        cm: Confusion matrix of shape (C, C)
+    
+    Returns:
+        float: macro-F1 in [0, 1]
+    """
+    if cm is None:
+        return 0.0
+    cm = np.asarray(cm)
+    if cm.ndim != 2 or cm.shape[0] != cm.shape[1]:
+        raise ValueError(f"Confusion matrix must be square, got shape={cm.shape}")
+    num_classes = cm.shape[0]
+    if num_classes == 0:
+        return 0.0
+
+    f1s = []
+    for i in range(num_classes):
+        tp = float(cm[i, i])
+        fp = float(cm[:, i].sum() - tp)
+        fn = float(cm[i, :].sum() - tp)
+        denom = 2.0 * tp + fp + fn
+        f1s.append((2.0 * tp / denom) if denom > 0 else 0.0)
+
+    return float(np.mean(f1s)) if f1s else 0.0
+
+
 def plot_confusion_matrix(cm, class_names=None, normalize=False):
     """
     Create a matplotlib figure of the confusion matrix.
@@ -299,7 +334,7 @@ def plot_confusion_matrix(cm, class_names=None, normalize=False):
 # Validation Function
 # ============================================================================
 
-def validate(model, val_loader, loss_fn, device, augmenter=None, apply_augmentation_fn=None):
+def validate(model, val_loader, loss_fn, device, augmenter=None, apply_augmentation_fn=None, num_classes=None):
     """
     Default validation function.
     
@@ -324,6 +359,7 @@ def validate(model, val_loader, loss_fn, device, augmenter=None, apply_augmentat
     val_total = 0
     all_val_preds = []
     all_val_labels = []
+    num_classes_from_outputs = None
     
     with torch.no_grad():
         for batch_data in val_loader:
@@ -348,6 +384,10 @@ def validate(model, val_loader, loss_fn, device, augmenter=None, apply_augmentat
             
             # Forward pass
             outputs = model(data)
+            try:
+                num_classes_from_outputs = int(outputs.shape[1])
+            except Exception:
+                pass
             
             # Handle one-hot labels
             if len(labels.shape) == 2 and labels.shape[1] > 1:
@@ -367,10 +407,26 @@ def validate(model, val_loader, loss_fn, device, augmenter=None, apply_augmentat
     
     epoch_val_loss = val_loss / val_total
     epoch_val_acc = val_correct / val_total
+
+    # Confusion-matrix-derived metrics
+    inferred_num_classes = num_classes
+    if inferred_num_classes is None:
+        if num_classes_from_outputs is not None:
+            inferred_num_classes = num_classes_from_outputs
+        elif len(all_val_preds) > 0 and len(all_val_labels) > 0:
+            inferred_num_classes = int(max(np.max(all_val_preds), np.max(all_val_labels)) + 1)
+
+    cm = None
+    f1_macro = None
+    if inferred_num_classes is not None and inferred_num_classes > 0 and len(all_val_preds) > 0:
+        cm = calculate_confusion_matrix(all_val_preds, all_val_labels, inferred_num_classes)
+        f1_macro = calculate_macro_f1_from_confusion_matrix(cm)
     
     return {
         'loss': epoch_val_loss,
         'accuracy': epoch_val_acc,
+        'f1_macro': f1_macro,
+        'confusion_matrix': cm,
         'predictions': all_val_preds,
         'labels': all_val_labels
     }
@@ -747,6 +803,7 @@ def test(model, test_loader, config, experiment_dir, checkpoint_path=None,
     
     # Calculate confusion matrix
     cm = calculate_confusion_matrix(all_preds, all_labels, num_classes)
+    f1_macro = calculate_macro_f1_from_confusion_matrix(cm)
     
     # Calculate per-class accuracy
     per_class_acc = cm.diagonal() / cm.sum(axis=1)
@@ -759,6 +816,7 @@ def test(model, test_loader, config, experiment_dir, checkpoint_path=None,
         
         f.write(f"Test Loss: {test_loss:.4f}\n")
         f.write(f"Test Accuracy: {test_acc:.4f}\n\n")
+        f.write(f"Test Macro-F1: {f1_macro:.4f}\n\n")
         
         f.write("Per-Class Accuracy:\n")
         for i, acc in enumerate(per_class_acc):
@@ -784,6 +842,7 @@ def test(model, test_loader, config, experiment_dir, checkpoint_path=None,
     logging.info("=" * 80)
     logging.info(f"Test Loss: {test_loss:.4f}")
     logging.info(f"Test Accuracy: {test_acc:.4f}")
+    logging.info(f"Test Macro-F1: {f1_macro:.4f}")
     logging.info(f"Results saved to: {log_file}")
     logging.info(f"Confusion matrix saved to: {logs_dir / 'confusion_matrix.png'}")
     logging.info("=" * 80)
@@ -792,6 +851,7 @@ def test(model, test_loader, config, experiment_dir, checkpoint_path=None,
     test_results = {
         'loss': test_loss,
         'accuracy': test_acc,
+        'f1_macro': f1_macro,
         'confusion_matrix': cm,
         'per_class_accuracy': per_class_acc,
         'predictions': all_preds,

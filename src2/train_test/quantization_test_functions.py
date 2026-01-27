@@ -182,14 +182,16 @@ def test_random_bitwidths(model, test_loader, loss_fn, device,
         results.append({
             'accuracy': test_result['accuracy'],
             'loss': test_result['loss'],
+            'f1_macro': test_result.get('f1_macro', None),
             'relative_memory_consumption': relative_memory_consumption if relative_memory_consumption is not None else 0.0
         })
         
         # Only log first 10 schemes to avoid cluttering logs
         if i < 10 or i == num_quantization_schemes - 1:
             bitwidth_str = f", Avg Bitwidth={relative_memory_consumption:.2f}" if relative_memory_consumption is not None else ""
+            f1_str = f", Macro-F1={test_result['f1_macro']:.4f}" if test_result.get("f1_macro") is not None else ""
             logging.info(f"  Scheme {i+1}/{num_quantization_schemes}: Acc={test_result['accuracy']:.4f}, "
-                        f"Loss={test_result['loss']:.4f}{bitwidth_str}")
+                        f"Loss={test_result['loss']:.4f}{f1_str}{bitwidth_str}")
 
     return results
     
@@ -369,6 +371,10 @@ def load_and_test_random_bitwidths(model, checkpoint_path, test_loader, loss_fn,
         if isinstance(test_results, list) and len(test_results) > 0:
             accs = np.array([r.get("accuracy", 0.0) for r in test_results], dtype=float)
             logging.info(f"Uniform random accuracy: {accs.mean():.4f}±{accs.std():.4f} (n={len(test_results)})")
+            f1s = np.array([r.get("f1_macro", np.nan) for r in test_results], dtype=float)
+            if np.isfinite(f1s).any():
+                f1s = f1s[np.isfinite(f1s)]
+                logging.info(f"Uniform random macro-F1: {f1s.mean():.4f}±{f1s.std():.4f} (n={len(f1s)})")
         
         # Wrap results in a dictionary for consistency with multi-range case
         return {"uniform_random": test_results}
@@ -408,6 +414,10 @@ def load_and_test_random_bitwidths(model, checkpoint_path, test_loader, loss_fn,
         if isinstance(range_results, list) and len(range_results) > 0:
             accs = np.array([r.get("accuracy", 0.0) for r in range_results], dtype=float)
             logging.info(f"Range accuracy [{bin_min}, {bin_max}]: {accs.mean():.4f}±{accs.std():.4f} (n={len(range_results)})")
+            f1s = np.array([r.get("f1_macro", np.nan) for r in range_results], dtype=float)
+            if np.isfinite(f1s).any():
+                f1s = f1s[np.isfinite(f1s)]
+                logging.info(f"Range macro-F1 [{bin_min}, {bin_max}]: {f1s.mean():.4f}±{f1s.std():.4f} (n={len(f1s)})")
         elif isinstance(range_results, dict) and range_results.get("status") == "generation_failed":
             logging.error(f"Range [{bin_min}, {bin_max}] failed: scheme generation failed.")
         
